@@ -101,7 +101,8 @@ Deno.serve(async(req:Request)=>{
         .select("id,title,body,category,published_at,created_at")
         .eq("is_published",true).order("published_at",{ascending:false}).limit(20);
       if(error) throw error;
-      return json(200,{announcements:data||[],is_admin:isAdmin});
+      const visibleAnnouncements=isAdmin?(data||[]):(data||[]).map((item)=>({...item,is_published:true}));
+      return json(200,{announcements:visibleAnnouncements,is_admin:isAdmin});
     }
 
     if(action==="announcement-save") {
