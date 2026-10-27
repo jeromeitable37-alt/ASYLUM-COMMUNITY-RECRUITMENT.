@@ -55,6 +55,7 @@ export default function App() {
   const [evidenceUploadKey,setEvidenceUploadKey]=useState('');
   const [selectedEvidence,setSelectedEvidence]=useState<Evidence[]>([]);
   const [evidenceNotes,setEvidenceNotes]=useState<Record<string,string>>({});
+  const [applicantEvidenceNotes,setApplicantEvidenceNotes]=useState<Record<string,string>>({});
   const notify=(message:string,isError=false)=>{setNotice(message);setHasError(isError);};
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   const updateForm=(key:keyof typeof form,value:string)=>setForm(old=>({...old,[key]:value}));
@@ -112,7 +113,7 @@ export default function App() {
       if(!createResponse.ok)throw new Error(uploadInfo.error||'Could not start the upload.');
       const {error:uploadError}=await supabase.storage.from('asy-recruitment-private').uploadToSignedUrl(uploadInfo.path,uploadInfo.token,file,{contentType:file.type,cacheControl:'3600'});
       if(uploadError)throw new Error(uploadError.message||'The screenshot upload failed.');
-      const finalizeResponse=await fetch(EVIDENCE_API_URL,{method:'POST',headers:{apikey:SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({action:'finalize-upload',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),requirement_key:key,path:uploadInfo.path,file_name:file.name,content_type:file.type,file_size_bytes:file.size})});
+      const finalizeResponse=await fetch(EVIDENCE_API_URL,{method:'POST',headers:{apikey:SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({action:'finalize-upload',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),requirement_key:key,path:uploadInfo.path,file_name:file.name,content_type:file.type,file_size_bytes:file.size,applicant_note:applicantEvidenceNotes[key]?.trim().slice(0,500)||null})});
       const finalInfo=await finalizeResponse.json();
       if(!finalizeResponse.ok)throw new Error(finalInfo.error||'Could not submit this screenshot for review.');
       await loadApplicantProgress(applicationCode.trim(),contactEmail.trim().toLowerCase());
@@ -231,7 +232,7 @@ export default function App() {
             const statusLabel=({locked:'Locked',not_submitted:'Awaiting upload',pending:'Pending recruiter review',approved:'Approved',needs_correction:'Needs correction'} as Record<string,string>)[item.status]||item.status;
             return <article className={'applicant-evidence-item '+item.status} key={item.requirement_key}>
               <div className="applicant-evidence-copy"><strong>{item.requirement_label}</strong><span className={'evidence-status '+item.status}>{statusLabel}</span>{item.file_name&&<small>Uploaded file: {item.file_name}</small>}{item.reviewer_notes&&item.status==='needs_correction'&&<p className="correction-note">Recruiter note: {item.reviewer_notes}</p>}</div>
-              {canUpload&&<label className="upload-control"><span>{evidenceUploadKey===item.requirement_key?'Uploading…':item.status==='needs_correction'?'Upload replacement':'Choose screenshot'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadRequirement(item.requirement_key,file);e.currentTarget.value='';}}/></label>}
+              {canUpload&&<><Field label="Optional note for recruiter"><textarea rows={2} maxLength={500} value={applicantEvidenceNotes[item.requirement_key]??item.applicant_note??''} onChange={e=>setApplicantEvidenceNotes(old=>({...old,[item.requirement_key]:e.target.value}))} placeholder="Add context for this proof, if needed…"/></Field><label className="upload-control"><span>{evidenceUploadKey===item.requirement_key?'Uploading…':item.status==='needs_correction'?'Upload replacement':'Choose screenshot'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadRequirement(item.requirement_key,file);e.currentTarget.value='';}}/></label></>}
             </article>;
           })}</div>
           {!['tag_proofs','membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)&&<p className="muted">Uploads will unlock here when an authorized recruiter approves your current step.</p>}
@@ -261,7 +262,7 @@ export default function App() {
             <section className="panel admin-evidence">
               <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each submitted screenshot. The database unlocks the next step only when every required item in this step is approved.</p>
               {selectedEvidence.map(item=><article className="admin-evidence-item" key={item.requirement_key}>
-                <div className="admin-evidence-title"><div><strong>{item.requirement_label}</strong><small>Stage {item.stage_number} · {item.status.replace('_',' ')}</small>{item.file_name&&<small>{item.file_name} · {item.file_size_bytes?Math.round(item.file_size_bytes/1024)+' KB':''}</small>}</div>
+                <div className="admin-evidence-title"><div><strong>{item.requirement_label}</strong><small>Stage {item.stage_number} · {item.status.replace('_',' ')}</small>{item.file_name&&<small>{item.file_name} · {item.file_size_bytes?Math.round(item.file_size_bytes/1024)+' KB':''}</small>}{item.applicant_note&&<small>Applicant note: {item.applicant_note}</small>}</div>
                   {item.storage_path&&<button type="button" className="secondary compact-button" onClick={()=>void openEvidence(item.storage_path!)}>View private proof</button>}
                 </div>
                 {item.status==='pending'&&<><Field label="Feedback for applicant"><textarea rows={2} value={evidenceNotes[item.id||'']??item.reviewer_notes??''} onChange={e=>setEvidenceNotes(old=>({...old,[item.id||'']:e.target.value}))} placeholder="Optional note; add one if requesting correction"/></Field><div className="action-row"><button type="button" className="secondary" disabled={busy} onClick={()=>void reviewEvidence(item,'needs_correction')}>Request correction</button><button type="button" className="primary" disabled={busy} onClick={()=>void reviewEvidence(item,'approved')}>Approve proof <CheckCircle2 size={15}/></button></div></>}
