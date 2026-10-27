@@ -706,15 +706,15 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
       links: [screeningLinks[2]],
     };
   }
-  if (/apply|application|join|recruitment/.test(q)) {
-    return {
-      text: 'Choose Apply to join, select Casual or Referral, and complete the form. Save the tracking code and email shown after submission, then use Track application for updates.',
-      links: [],
-    };
-  }
   if (/status|tracking|tracking code|pending|review/.test(q)) {
     return {
       text: 'Open Track application and enter your tracking code plus the same email you used to apply. This chat can’t look up private application records directly.',
+      links: [],
+    };
+  }
+  if (/apply|application|join|recruitment/.test(q)) {
+    return {
+      text: 'Choose Apply to join, select Casual or Referral, and complete the form. Save the tracking code and email shown after submission, then use Track application for updates.',
       links: [],
     };
   }
@@ -790,7 +790,7 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
           <input value={draft} onChange={event=>setDraft(event.target.value)} placeholder="Ask about ASY recruitment…" aria-label="Ask about ASY recruitment" maxLength={500} disabled={chatBusy}/>
           <button type="submit" disabled={!draft.trim()||chatBusy} aria-label="Send message"><Send size={17}/></button>
         </form>
-        <p className="chat-disclaimer">AI replies use a private server key; official FAQ answers remain the fallback. Recruiters make final decisions.</p>
+        <p className="chat-disclaimer">Automated help, not live recruiter chat. For personal review, contact staff in the official Discord. Never share passwords or login codes.</p>
       </section>}
       <button type="button" className="chat-launcher" aria-label={open?'Close support chat':'Open support chat'} aria-expanded={open} onClick={()=>setOpen(value=>!value)}>
         {open?<X size={23}/>:<MessageCircle size={24}/>}
