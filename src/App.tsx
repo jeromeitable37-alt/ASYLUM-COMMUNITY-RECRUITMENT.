@@ -404,7 +404,7 @@ export default function App() {
             </div>
           </>}
           <Field label="Why do you want to join ASY? *"><textarea required minLength={10} maxLength={1000} rows={3} value={form.reason} onChange={e=>updateForm('reason',e.target.value)} placeholder="A few sentences are enough…"/></Field>
-          <div className="privacy"><ShieldCheck size={17}/> Your email and UID are for recruitment review only. Email is not shown on the public roster.</div>
+          <div className="privacy"><ShieldCheck size={17}/> Profile links and IDs are for recruitment review only. Never share passwords or login codes.</div>
           <button className="primary" disabled={busy||intakeFull}>{busy?'Submitting…':intakeFull?'Applications closed':'Submit application'} <ArrowRight size={16}/></button>
         </form></section>}
       {page==='status'&&<section className="page narrow"><Heading kicker="02 / APPLICATION STATUS" title={<>CHECK YOUR <em>STATUS.</em></>} desc="Check your progress with your tracking code and the same email address used on your application."/>
@@ -483,7 +483,7 @@ export default function App() {
             </section>
             <div className="reason"><b>Why they want to join</b><p>{selected.reason}</p></div>
             <section className="panel admin-evidence">
-              <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each submitted screenshot or request a correction with a clear note. Only database-verified approval of every required proof unlocks the next stage. For the Membership Form, manually verify the form record when needed because of the reported MGC form issue. Before marking an applicant eligible for the Screening GC, confirm the CODM proof visibly shows the ASY tag after the IGN. The invite itself remains a manual staff action.</p>
+              <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each proof or request a correction with a note. Every required proof must be approved before the next stage opens.</p>
               {selectedEvidence.map(item=><article className="admin-evidence-item" key={item.requirement_key}>
                 <div className="admin-evidence-title"><div><strong>{item.requirement_label}</strong><small>Stage {item.stage_number} · {({locked:'Locked',not_submitted:'Awaiting upload',pending:'Pending review',approved:'Approved',needs_correction:'Needs correction'} as Record<string,string>)[item.status]||item.status}</small>{item.file_name&&<small>{item.file_name} · {item.file_size_bytes?Math.round(item.file_size_bytes/1024)+' KB':''}</small>}{item.submitted_at&&<small>Submitted: {new Date(item.submitted_at).toLocaleString()}</small>}{item.reviewed_at&&<small>Reviewed: {new Date(item.reviewed_at).toLocaleString()}{item.reviewed_by_email?' · '+item.reviewed_by_email:''}</small>}{item.applicant_note&&<small>Applicant note: {item.applicant_note}</small>}</div>
                   {item.storage_path&&<button type="button" className="secondary compact-button" onClick={()=>void openEvidence(item.storage_path!)}>View private proof</button>}
@@ -492,7 +492,7 @@ export default function App() {
                 {item.status==='needs_correction'&&<p className="correction-note">Correction requested. The applicant can upload a replacement at the current step.</p>}
               </article>)}
               {selected.workflow_step==='eligibility_review'&&<button type="button" className="primary full" disabled={busy} onClick={()=>void advanceApplicationWorkflow(selected,'tag_proofs')}>Approve eligibility & unlock Step 1 <ArrowRight size={15}/></button>}
-              {selected.workflow_step==='final_review'&&<button type="button" className="primary full" disabled={busy} onClick={()=>void advanceApplicationWorkflow(selected,'screening_gc_ready')}>Complete final double-check · mark Screening GC ready <CheckCircle2 size={15}/></button>}
+              {selected.workflow_step==='final_review'&&<><button type="button" className="primary full" disabled={busy||selected.mgc_verification_status!=='verified'||!selected.mgc_applicant_contacted||!selected.mgc_checked_at||!selected.mgc_verification_notes?.trim()} onClick={()=>void advanceApplicationWorkflow(selected,'screening_gc_ready')}>Mark Screening GC ready <CheckCircle2 size={15}/></button>{selected.mgc_verification_status!=='verified'&&<small className="mgc-unavailable-note">Complete the MGC check and confirm applicant contact below first.</small>}</>}
               {selected.workflow_step==='screening_gc_ready'&&<p className="success-note">All required evidence is approved. The final recruitment decision is ready.</p>}
             </section>
             <section className="panel mgc-review">
