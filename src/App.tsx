@@ -600,6 +600,26 @@ export default function App() {
         :!authorized?<div className="panel empty"><ShieldCheck size={38}/><h2>Account not authorized</h2><p>Signed in as {session.user.email}, but this email is not on the recruiter allowlist.</p><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div>
         :<><div className="admin-head"><div><small className="kicker">ASYLUM COMMUNITY / RECRUITMENT CONTROL</small><h1>RECRUITER <em>DESK.</em></h1><p>{session.user.email}</p></div><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div>
           <div className="stats"><Stat icon={<ClipboardList/>} label="Total applicants" value={applications.length}/><Stat icon={<Zap/>} label="Pending review" value={count('pending')}/><Stat icon={<CalendarClock/>} label="In progress" value={count('reviewing')+count('interview')+count('tryout')}/><Stat icon={<Trophy/>} label="Accepted" value={count('accepted')}/></div>
+          <section className="panel announcement-admin">
+            <div className="announcement-admin-heading"><div><small className="kicker">COMMUNITY UPDATES</small><h2>Announcements</h2><p>Publish updates that appear on the public Community page.</p></div><span className="private-badge"><ShieldCheck size={13}/> Recruiter managed</span></div>
+            <form className="announcement-form" onSubmit={saveAnnouncement}>
+              <Field label="Title *"><input required minLength={3} maxLength={120} value={announcementDraft.title} onChange={event=>setAnnouncementDraft(old=>({...old,title:event.target.value}))} placeholder="Short announcement title"/></Field>
+              <div className="form-grid compact">
+                <Field label="Category"><select value={announcementDraft.category} onChange={event=>setAnnouncementDraft(old=>({...old,category:event.target.value as Announcement['category']}))}><option value="general">General</option><option value="recruitment">Recruitment</option><option value="event">Event</option><option value="maintenance">Maintenance</option></select></Field>
+                <label className="announcement-publish-toggle"><input type="checkbox" checked={announcementDraft.is_published} onChange={event=>setAnnouncementDraft(old=>({...old,is_published:event.target.checked}))}/><span><strong>Publish now</strong><small>Visible to everyone on Community.</small></span></label>
+              </div>
+              <Field label="Message *"><textarea required rows={3} maxLength={3000} value={announcementDraft.body} onChange={event=>setAnnouncementDraft(old=>({...old,body:event.target.value}))} placeholder="Write the important details in a few clear sentences…"/></Field>
+              <div className="announcement-form-actions"><button className="primary" disabled={announcementBusy}>{announcementBusy?'Saving…':announcementDraft.id?'Save changes':'Post announcement'} <Send size={14}/></button>{announcementDraft.id&&<button type="button" className="secondary" disabled={announcementBusy} onClick={()=>setAnnouncementDraft(emptyAnnouncementDraft)}>Cancel edit</button>}</div>
+            </form>
+            <div className="announcement-admin-list">
+              <div className="announcement-list-heading"><strong>Recent announcements</strong><button type="button" className="secondary compact-button" onClick={()=>void loadAnnouncements()}>Refresh</button></div>
+              {announcements.length===0&&<p className="message-empty">No announcements yet. Create one above.</p>}
+              {announcements.map(item=><article className="announcement-admin-item" key={item.id}>
+                <div className="announcement-admin-item-copy"><span className={'announcement-category '+item.category}>{item.category}</span><strong>{item.title}</strong><small>{item.is_published?'Published':'Draft'} · {new Date(item.updated_at||item.created_at).toLocaleString()}</small></div>
+                <div className="announcement-admin-item-actions"><button type="button" className="secondary compact-button" disabled={announcementBusy} onClick={()=>setAnnouncementDraft({id:item.id,title:item.title,body:item.body,category:item.category,is_published:item.is_published})}>Edit</button><button type="button" className="secondary compact-button" disabled={announcementBusy} onClick={()=>void setAnnouncementPublished(item,!item.is_published)}>{item.is_published?'Unpublish':'Publish'}</button><button type="button" className="danger compact-button" disabled={announcementBusy} onClick={()=>void deleteAnnouncement(item)}>Delete</button></div>
+              </article>)}
+            </div>
+          </section>
            <section className="panel intake-admin">
               <div className="intake-admin-heading">
                 <div className="intake-admin-title">
