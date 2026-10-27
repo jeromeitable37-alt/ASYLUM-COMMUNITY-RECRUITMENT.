@@ -97,6 +97,122 @@ export default function App() {
   useEffect(()=>{if(selected&&authorized)void loadSelectedEvidence(selected.id);else setSelectedEvidence([]);},[selected?.id,authorized]);
   useEffect(()=>{setMgcNotes(selected?.mgc_verification_notes||'');setMgcContactConfirmed(Boolean(selected?.mgc_applicant_contacted));},[selected?.id]);
 
+  async function messagingRequest(payload:Record<string,unknown>):Promise<any>{
+    const headers:Record<string,string>={apikey:SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'};
+    if(session?.access_token)headers.Authorization='Bearer '+session.access_token;
+    const response=await fetch(MESSAGING_API_URL,{method:'POST',headers,body:JSON.stringify(payload),cache:'no-store'});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'Messaging service is temporarily unavailable.');
+    return data;
+  }
+  async function loadAnnouncements(){
+    try{
+      const data=await messagingRequest({action:'announcements-list'});
+      setAnnouncements(Array.isArray(data.announcements)?data.announcements as Announcement[]:[]);
+    }catch(error){console.warn('Could not load ASY announcements.',error);}
+  }
+  async function loadCommunityMessages(){
+    try{
+      const data=await messagingRequest({action:'community-chat-list'});
+      setCommunityMessages(Array.isArray(data.messages)?data.messages as CommunityChatMessage[]:[]);
+    }catch(error){console.warn('Could not load community chat.',error);}
+  }
+  async function loadApplicantMessages(code=applicationCode,emailValue=contactEmail){
+    if(!code.trim()||!emailValue.trim()||!tracked)return;
+    try{
+      const data=await messagingRequest({action:'application-messages-list',application_code:code.trim(),contact_email:emailValue.trim().toLowerCase()});
+      setApplicantMessages(Array.isArray(data.messages)?data.messages as ApplicationChatMessage[]:[]);
+    }catch(error){console.warn('Could not load private applicant messages.',error);}
+  }
+  async function loadAdminApplicationMessages(applicationId=selected?.id){
+    if(!applicationId||!session?.access_token||!authorized)return;
+    try{
+      const data=await messagingRequest({action:'admin-application-messages-list',application_id:applicationId});
+      setAdminApplicationMessages(Array.isArray(data.messages)?data.messages as ApplicationChatMessage[]:[]);
+    }catch(error){console.warn('Could not load recruiter/applicant messages.',error);}
+  }
+  async function saveAnnouncement(event:FormEvent){
+    event.preventDefault();
+    const title=announcementDraft.title.trim();
+    const body=announcementDraft.body.trim();
+    if(title.length<3||!body){notify('Add a short title and announcement message.',true);return;}
+    setAnnouncementBusy(true);
+    try{
+      await messagingRequest({action:'announcement-save',id:announcementDraft.id||undefined,title,body,category:announcementDraft.category,is_published:announcementDraft.is_published});
+      setAnnouncementDraft(emptyAnnouncementDraft);
+      await loadAnnouncements();
+      notify(announcementDraft.is_published?'Announcement published.':'Announcement saved as a draft.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not save announcement.',true);}
+    finally{setAnnouncementBusy(false);}
+  }
+  async function setAnnouncementPublished(item:Announcement,published:boolean){
+    setAnnouncementBusy(true);
+    try{
+      await messagingRequest({action:'announcement-save',id:item.id,title:item.title,body:item.body,category:item.category,is_published:published});
+      await loadAnnouncements();
+      notify(published?'Announcement published.':'Announcement unpublished.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not update announcement.',true);}
+    finally{setAnnouncementBusy(false);}
+  }
+  async function deleteAnnouncement(item:Announcement){
+    if(!window.confirm('Delete this announcement?'))return;
+    setAnnouncementBusy(true);
+    try{
+      await messagingRequest({action:'announcement-delete',id:item.id});
+      if(announcementDraft.id===item.id)setAnnouncementDraft(emptyAnnouncementDraft);
+      await loadAnnouncements();
+      notify('Announcement deleted.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not delete announcement.',true);}
+    finally{setAnnouncementBusy(false);}
+  }
+  async function sendCommunityMessage(event:FormEvent){
+    event.preventDefault();
+    const displayName=communityDisplayName.trim().slice(0,32);
+    const body=communityDraft.trim().slice(0,500);
+    if(displayName.length<2||!body){notify('Enter your display name and a short message.',true);return;}
+    setCommunityChatBusy(true);
+    try{
+      await messagingRequest({action:'community-chat-send',display_name:displayName,body});
+      setCommunityDraft('');
+      await loadCommunityMessages();
+    }catch(error){notify(error instanceof Error?error.message:'Could not send community message.',true);}
+    finally{setCommunityChatBusy(false);}
+  }
+  async function hideCommunityMessage(message:CommunityChatMessage){
+    if(!window.confirm('Hide this public message from the community chat?'))return;
+    try{
+      await messagingRequest({action:'community-chat-hide',id:message.id,moderation_note:'Hidden by authorized recruiter'});
+      await loadCommunityMessages();
+      notify('Community message hidden.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not hide message.',true);}
+  }
+  async function sendApplicantMessage(event:FormEvent){
+    event.preventDefault();
+    const body=applicantMessageDraft.trim().slice(0,2000);
+    if(!tracked||!body)return;
+    setApplicantMessageBusy(true);
+    try{
+      await messagingRequest({action:'application-messages-send',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),body});
+      setApplicantMessageDraft('');
+      await loadApplicantMessages(applicationCode,contactEmail);
+    }catch(error){notify(error instanceof Error?error.message:'Could not send your message.',true);}
+    finally{setApplicantMessageBusy(false);}
+  }
+  async function sendAdminApplicantMessage(event:FormEvent){
+    event.preventDefault();
+    if(!selected)return;
+    const body=adminMessageDraft.trim().slice(0,2000);
+    if(!body)return;
+    setAdminMessageBusy(true);
+    try{
+      await messagingRequest({action:'admin-application-messages-send',application_id:selected.id,body});
+      setAdminMessageDraft('');
+      await loadAdminApplicationMessages(selected.id);
+      notify('Reply sent to applicant.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not send recruiter reply.',true);}
+    finally{setAdminMessageBusy(false);}
+  }
+
   async function loadIntakeSettings(){
     const {data,error}=await supabase.from('asy_recruitment_settings').select('id,intake_open,application_limit,application_count,cycle_started_at,updated_at').eq('id',1).maybeSingle();
     if(error){console.error('Could not load recruitment intake settings.',error.message);return;}
