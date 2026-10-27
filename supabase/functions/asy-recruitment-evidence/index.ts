@@ -189,7 +189,7 @@ Deno.serve(async (req: Request) => {
           file_size_bytes: size,
           status: "pending",
           submitted_at: new Date().toISOString(),
-          applicant_note: null,
+          applicant_note: typeof body.applicant_note === "string" ? body.applicant_note.trim().slice(0, 500) : null,
           reviewer_notes: null,
           reviewed_at: null,
           reviewed_by_email: null,
