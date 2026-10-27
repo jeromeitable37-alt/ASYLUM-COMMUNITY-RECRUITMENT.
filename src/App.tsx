@@ -3,13 +3,15 @@ import { createClient, Session } from '@supabase/supabase-js';
 import { ArrowRight, BadgeCheck, Bot, CalendarClock, CheckCircle2, ClipboardList, Copy, Mail, Crosshair, Gamepad2, LogIn, LogOut, MessageCircle, Search, Send, ShieldCheck, Swords, Trophy, Users, X, Zap } from 'lucide-react';
 
 const supabase = createClient('https://tyhszzztltamrohhyykh.supabase.co', 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn');
-type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; submitted_at:string; updated_at:string };
+type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
+type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
+type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string };
 type SavedApplication = { application_code:string; contact_email:string; ign:string; submitted_at:string };
 type IntakeSettings = { id:number; intake_open:boolean; application_limit:number|null; application_count:number; cycle_started_at:string; updated_at:string };
 const statuses = ['pending','reviewing','interview','tryout','accepted','rejected','waitlisted'];
 const labels: Record<string,string> = { pending:'Pending review', reviewing:'In review', interview:'Interview', tryout:'Tryout', accepted:'Accepted', rejected:'Rejected', waitlisted:'Waitlisted' };
-const blankForm = { ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
+const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', ageConfirmed:'', legendarySeriesCount:'6', ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
 const createCode = () => { const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const bytes=new Uint8Array(8); crypto.getRandomValues(bytes); return 'ASYLUM-'+Array.from(bytes,b=>alphabet[b%alphabet.length]).join(''); };
 
 export default function App() {
@@ -45,6 +47,11 @@ export default function App() {
   const [intakeLimitDraft,setIntakeLimitDraft]=useState('');
   const [intakeOpenDraft,setIntakeOpenDraft]=useState(true);
   const [settingsBusy,setSettingsBusy]=useState(false);
+  const [applicantProgress,setApplicantProgress]=useState<ApplicantProgress|null>(null);
+  const [evidenceServiceConfigured,setEvidenceServiceConfigured]=useState<boolean|null>(null);
+  const [evidenceUploadKey,setEvidenceUploadKey]=useState('');
+  const [selectedEvidence,setSelectedEvidence]=useState<Evidence[]>([]);
+  const [evidenceNotes,setEvidenceNotes]=useState<Record<string,string>>({});
   const notify=(message:string,isError=false)=>{setNotice(message);setHasError(isError);};
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   const updateForm=(key:keyof typeof form,value:string)=>setForm(old=>({...old,[key]:value}));
@@ -54,6 +61,7 @@ export default function App() {
   useEffect(()=>{supabase.auth.getSession().then(({data})=>setSession(data.session));const {data:listener}=supabase.auth.onAuthStateChange((_event,next)=>setSession(next));return()=>listener.subscription.unsubscribe();},[]);
   useEffect(()=>{if(session?.user.email) void checkAdmin(session.user.email);else setAuthorized(false);},[session]);
   useEffect(()=>{if(page==='roster')void loadRoster();if(page==='admin'&&session&&authorized)void loadApplications();},[page,session,authorized]);
+  useEffect(()=>{if(selected&&authorized)void loadSelectedEvidence(selected.id);else setSelectedEvidence([]);},[selected?.id,authorized]);
 
   async function loadIntakeSettings(){
     const {data,error}=await supabase.from('asy_recruitment_settings').select('id,intake_open,application_limit,application_count,cycle_started_at,updated_at').eq('id',1).maybeSingle();
@@ -82,11 +90,69 @@ export default function App() {
     await loadIntakeSettings();
     notify('New intake cycle started. Existing application history was kept.');
   }
+  async function loadApplicantProgress(code:string,emailValue:string){
+    try{
+      const response=await fetch('/api/evidence?application_code='+encodeURIComponent(code)+'&contact_email='+encodeURIComponent(emailValue),{cache:'no-store'});
+      const data=await response.json();
+      if(!response.ok){setEvidenceServiceConfigured(response.status!==503);setApplicantProgress(null);return;}
+      setEvidenceServiceConfigured(true);setApplicantProgress(data as ApplicantProgress);
+    }catch{setEvidenceServiceConfigured(false);setApplicantProgress(null);}
+  }
+  async function uploadRequirement(key:string,file:File){
+    if(!applicationCode.trim()||!contactEmail.trim()){notify('Check your tracking code and application email first.',true);return;}
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)){notify('Upload a JPG, PNG, or WEBP screenshot.',true);return;}
+    if(file.size>8*1024*1024){notify('Each screenshot must be 8 MB or smaller.',true);return;}
+    setEvidenceUploadKey(key);
+    try{
+      const createResponse=await fetch('/api/evidence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create-upload',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),requirement_key:key,content_type:file.type,file_size_bytes:file.size})});
+      const uploadInfo=await createResponse.json();
+      if(!createResponse.ok)throw new Error(uploadInfo.error||'Could not start the upload.');
+      const {error:uploadError}=await supabase.storage.from('asy-recruitment-private').uploadToSignedUrl(uploadInfo.path,uploadInfo.token,file,{contentType:file.type,cacheControl:'3600'});
+      if(uploadError)throw new Error(uploadError.message||'The screenshot upload failed.');
+      const finalizeResponse=await fetch('/api/evidence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'finalize-upload',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),requirement_key:key,path:uploadInfo.path,file_name:file.name,content_type:file.type,file_size_bytes:file.size})});
+      const finalInfo=await finalizeResponse.json();
+      if(!finalizeResponse.ok)throw new Error(finalInfo.error||'Could not submit this screenshot for review.');
+      await loadApplicantProgress(applicationCode.trim(),contactEmail.trim().toLowerCase());
+      notify('Screenshot submitted privately. Wait for a recruiter to review it.');
+    }catch(error){notify(error instanceof Error?error.message:'Screenshot upload failed. Please try again.',true);}
+    finally{setEvidenceUploadKey('');}
+  }
+  async function loadSelectedEvidence(applicationId:string){
+    const {data,error}=await supabase.from('asy_recruitment_evidence').select('*').eq('application_id',applicationId).order('stage_number').order('requirement_label');
+    if(error){notify('Could not load requirement evidence. Confirm recruiter permissions.',true);return;}
+    setSelectedEvidence((data||[]) as Evidence[]);
+  }
+  async function reviewEvidence(item:Evidence,status:'approved'|'needs_correction'){
+    if(!selected||!item.id)return;
+    setBusy(true);
+    const reviewerNotes=evidenceNotes[item.id]?.trim()||null;
+    const {error}=await supabase.from('asy_recruitment_evidence').update({status,reviewer_notes:reviewerNotes,reviewed_by_email:session?.user.email||null,reviewed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',item.id);
+    setBusy(false);
+    if(error){notify('Could not update this requirement. Check recruiter access.',true);return;}
+    await loadSelectedEvidence(selected.id);
+    await loadApplications();
+    notify(status==='approved'?'Requirement approved. The next step unlocks when all required items in this step are approved.':'Correction requested. The applicant can upload a replacement screenshot.');
+  }
+  async function openEvidence(path:string){
+    const {data,error}=await supabase.storage.from('asy-recruitment-private').createSignedUrl(path,300);
+    if(error||!data?.signedUrl){notify('Could not open this private screenshot.',true);return;}
+    window.open(data.signedUrl,'_blank','noopener,noreferrer');
+  }
+  async function advanceApplicationWorkflow(app:Application,nextStep:'tag_proofs'|'screening_gc_ready'){
+    setBusy(true);
+    const {data,error}=await supabase.from('asy_clan_applications').update({workflow_step:nextStep,updated_at:new Date().toISOString()}).eq('id',app.id).select('*').single();
+    setBusy(false);
+    if(error||!data){notify('Could not advance the applicant. Make sure the evidence step is complete and recruiter permissions are active.',true);return;}
+    setSelected(data as Application);
+    await loadSelectedEvidence(app.id);
+    await loadApplications();
+    notify(nextStep==='tag_proofs'?'Eligibility approved. Step 1 screenshot submissions are now unlocked.':'Final review completed. Applicant is now eligible for the Screening GC decision.');
+  }
   async function checkAdmin(userEmail:string){const {data,error}=await supabase.from('asy_recruitment_admins').select('email').eq('email',userEmail.toLowerCase()).maybeSingle();setAuthorized(!error&&Boolean(data));}
   async function signIn(event:FormEvent){event.preventDefault();setBusy(true);const {error}=await supabase.auth.signInWithPassword({email:email.trim().toLowerCase(),password});setBusy(false);if(error){notify(error.message.toLowerCase().includes('invalid login credentials')?'Email or password is incorrect. Use the Supabase recruiter account connected to this website.':error.message,true);}else notify('Signed in. Checking recruiter permissions…');}
   async function signOut(){await supabase.auth.signOut();setAuthorized(false);setApplications([]);setSelected(null);notify('Signed out.');}
-  async function submitApplication(event:FormEvent){event.preventDefault();if(intakeFull){notify(!intakeSettings?.intake_open?'Recruitment is temporarily closed. Please check back later.':'The current recruitment application limit has been reached. Please check back later.',true);return;}setBusy(true);const code=createCode();const payload={application_code:code,ign:form.ign.trim(),codm_uid:form.uid.trim(),contact_email:form.email.trim().toLowerCase(),discord_username:form.discord.trim()||null,region:form.region,rank:form.rank,level:form.level?Number(form.level):null,main_role:form.role,preferred_mode:form.mode,availability:form.availability,clan_experience:form.experience.trim()||null,reason:form.reason.trim(),status:'pending',reviewer_notes:null};const {error}=await supabase.from('asy_clan_applications').insert(payload);if(error){setBusy(false);const message=error.message.toLowerCase();notify(message.includes('temporarily closed')?'Recruitment is temporarily closed. Please check back later.':message.includes('application limit reached')?'The current recruitment application limit has been reached. Please check back later.':'Could not submit your application. Please check your details and try again.',true);return;}void loadIntakeSettings();try{await fetch('/api/notify-discord',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ign:payload.ign,rank:payload.rank,role:payload.main_role,mode:payload.preferred_mode,code})});}catch{}setBusy(false);setApplicationCode(code);setContactEmail(payload.contact_email);const saved:SavedApplication={application_code:code,contact_email:payload.contact_email,ign:payload.ign,submitted_at:new Date().toISOString()};setSavedApplication(saved);try{localStorage.setItem('asy-recruitment:last-application',JSON.stringify(saved));}catch{}setForm(blankForm);setTracked(null);setPage('status');notify('Application submitted! Your tracking code is shown below and saved on this device.');}
-  async function checkStatus(event:FormEvent){event.preventDefault();setBusy(true);setTracked(null);const {data,error}=await supabase.rpc('asy_check_application',{p_application_code:applicationCode.trim(),p_contact_email:contactEmail.trim().toLowerCase()});setBusy(false);if(error)notify('We could not check the status right now. Please try again in a moment.',true);else if(!data?.length)notify('We could not find a match. Check your tracking code and the same email used in your application.',true);else{setTracked(data[0]);notify('Application found. Your latest status is ready.');}}
+  async function submitApplication(event:FormEvent){event.preventDefault();if(form.ageConfirmed!=='yes'){notify('Confirm that you are at least 16 years old before applying.',true);return;}if(Number(form.legendarySeriesCount)<6){notify('You need at least 6 Legendary Series in BR or MP to apply.',true);return;}if(form.applicationType==='referral'&&(!form.referrerName.trim()||!form.referrerFacebookUrl.trim())){notify('Referral applications need the referrer name and Facebook link.',true);return;}if(intakeFull){notify(!intakeSettings?.intake_open?'Recruitment is temporarily closed. Please check back later.':'The current recruitment application limit has been reached. Please check back later.',true);return;}setBusy(true);const code=createCode();const payload={application_code:code,application_type:form.applicationType,referrer_name:form.applicationType==='referral'?form.referrerName.trim():null,referrer_facebook_url:form.applicationType==='referral'?form.referrerFacebookUrl.trim():null,meets_age_requirement:form.ageConfirmed==='yes',legendary_series_count:Number(form.legendarySeriesCount),ign:form.ign.trim(),codm_uid:form.uid.trim(),contact_email:form.email.trim().toLowerCase(),discord_username:form.discord.trim()||null,region:form.region,rank:form.rank,level:form.level?Number(form.level):null,main_role:form.role,preferred_mode:form.mode,availability:form.availability,clan_experience:form.experience.trim()||null,reason:form.reason.trim(),status:'pending',reviewer_notes:null};const {error}=await supabase.from('asy_clan_applications').insert(payload);if(error){setBusy(false);const message=error.message.toLowerCase();notify(message.includes('temporarily closed')?'Recruitment is temporarily closed. Please check back later.':message.includes('application limit reached')?'The current recruitment application limit has been reached. Please check back later.':'Could not submit your application. Please check your details and try again.',true);return;}void loadIntakeSettings();try{await fetch('/api/notify-discord',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ign:payload.ign,rank:payload.rank,role:payload.main_role,mode:payload.preferred_mode,code})});}catch{}setBusy(false);setApplicationCode(code);setContactEmail(payload.contact_email);const saved:SavedApplication={application_code:code,contact_email:payload.contact_email,ign:payload.ign,submitted_at:new Date().toISOString()};setSavedApplication(saved);try{localStorage.setItem('asy-recruitment:last-application',JSON.stringify(saved));}catch{}setForm(blankForm);setTracked({application_code:code,ign:payload.ign,status:'pending',submitted_at:saved.submitted_at,updated_at:saved.submitted_at});void loadApplicantProgress(code,payload.contact_email);setPage('status');notify('Application submitted! Your tracking code is shown below and saved on this device.');}
+  async function checkStatus(event:FormEvent){event.preventDefault();setBusy(true);setTracked(null);setApplicantProgress(null);const {data,error}=await supabase.rpc('asy_check_application',{p_application_code:applicationCode.trim(),p_contact_email:contactEmail.trim().toLowerCase()});setBusy(false);if(error)notify('We could not check the status right now. Please try again in a moment.',true);else if(!data?.length)notify('We could not find a match. Check your tracking code and the same email used in your application.',true);else{setTracked(data[0]);await loadApplicantProgress(applicationCode.trim(),contactEmail.trim().toLowerCase());notify('Application found. Your latest status is ready.');}}
   async function copyApplicationCode(codeToCopy=savedApplication?.application_code||applicationCode){if(!codeToCopy){notify('There is no tracking code to copy yet.',true);return;}try{await navigator.clipboard.writeText(codeToCopy);notify('Tracking code copied. Keep it private with your application email.');}catch{notify('Copy is unavailable in this browser. Select the code and copy it manually.',true);}}
   function clearSavedApplication(){try{localStorage.removeItem('asy-recruitment:last-application');}catch{}setSavedApplication(null);setApplicationCode('');setContactEmail('');setTracked(null);notify('Saved tracking details cleared from this device.');}
   async function loadApplications(){const {data,error}=await supabase.from('asy_clan_applications').select('*').order('submitted_at',{ascending:false});if(error)notify('Unable to load applications. Confirm recruiter access.',true);else setApplications((data||[]) as Application[]);}
@@ -111,7 +177,19 @@ export default function App() {
       {page==='apply'&&<section className="page"><Heading kicker="01 / RECRUITMENT FORM" title={<>YOUR RUN <em>STARTS HERE.</em></>} desc="Complete the form honestly. Required fields are marked *. No account needed."/>
         <div className={'panel intake-banner '+(intakeFull?'closed':'open')}><div><strong>{intakeFull?(!intakeSettings?.intake_open?'Applications are temporarily closed':'Application limit reached'):'Recruitment intake is open'}</strong><p>{intakeSettings?.application_limit!==null&&intakeSettings?`${intakeSettings.application_count} of ${intakeSettings.application_limit} applications used this intake.`:'Check the eligibility requirements and complete the form once. Recruiters review applications individually.'}</p></div><span className="intake-dot"/></div>
         <form className="panel form" onSubmit={submitApplication}>
-          <Section n="01" title="Player details" sub="How recruiters can identify and contact you."/>
+          <Section n="00" title="Application route" sub="Choose the correct recruitment path so the team can verify the right proofs."/>
+          <Field label="Application type *"><select value={form.applicationType} onChange={e=>updateForm('applicationType',e.target.value)}><option value="casual">Casual Recruitment</option><option value="referral">Referral Recruitment</option></select></Field>
+          {form.applicationType==='referral'&&<div className="form-grid">
+            <Field label="Referring member name *"><input required value={form.referrerName} onChange={e=>updateForm('referrerName',e.target.value)} placeholder="Member who referred you"/></Field>
+            <Field label="Referring member Facebook profile link *"><input required type="url" value={form.referrerFacebookUrl} onChange={e=>updateForm('referrerFacebookUrl',e.target.value)} placeholder="https://facebook.com/…"/></Field>
+          </div>}
+          <Section n="01" title="Eligibility confirmation" sub="Confirm the minimum requirements before submitting your application."/>
+          <label className="screening-check eligibility-check"><input type="checkbox" required checked={form.ageConfirmed==='yes'} onChange={e=>updateForm('ageConfirmed',e.target.checked?'yes':'')}/><span>I confirm that I am at least 16 years old.</span></label>
+          <div className="form-grid">
+            <Field label="Legendary Series achieved (BR or MP) *"><input type="number" min="6" max="100" required value={form.legendarySeriesCount} onChange={e=>updateForm('legendarySeriesCount',e.target.value)} placeholder="At least 6"/></Field>
+          </div>
+          <p className="muted form-helper">You must have at least 6 Legendary Series in BR or MP, use an appropriate Facebook name, be willing to add the ASY tag after your IGN on your main CODM and TikTok accounts, and submit a proper roster photo if accepted.</p>
+          <Section n="02" title="Player details" sub="How recruiters can identify and contact you."/>
           <div className="form-grid">
             <Field label="In-game name (IGN) *"><input required minLength={2} maxLength={32} value={form.ign} onChange={e=>updateForm('ign',e.target.value)} placeholder="Your CODM name"/></Field>
             <Field label="CODM UID *"><input required minLength={5} maxLength={32} value={form.uid} onChange={e=>updateForm('uid',e.target.value)} placeholder="Player UID"/></Field>
@@ -121,7 +199,7 @@ export default function App() {
             <Field label="Current rank *"><select value={form.rank} onChange={e=>updateForm('rank',e.target.value)}>{['Rookie','Veteran','Elite','Pro','Master','Grand Master','Legendary'].map(v=><option key={v}>{v}</option>)}</select></Field>
             <Field label="Current level"><input type="number" min="1" max="500" value={form.level} onChange={e=>updateForm('level',e.target.value)} placeholder="e.g. 220"/></Field>
           </div>
-          <Section n="02" title="Your playstyle" sub="Help us understand where you fit."/>
+          <Section n="03" title="Your playstyle" sub="Help us understand where you fit."/>
           <div className="form-grid">
             <Field label="Main role *"><select value={form.role} onChange={e=>updateForm('role',e.target.value)}>{['Slayer','Support','Sniper','Objective','Flex','Entry Fragger','IGL / Shot-caller'].map(v=><option key={v}>{v}</option>)}</select></Field>
             <Field label="Preferred mode *"><select value={form.mode} onChange={e=>updateForm('mode',e.target.value)}>{['Ranked Multiplayer','Search & Destroy','Hardpoint','Domination','Battle Royale','Scrims / Competitive','Casual / Mixed'].map(v=><option key={v}>{v}</option>)}</select></Field>
@@ -136,6 +214,20 @@ export default function App() {
         {savedApplication&&<div className="panel saved-reference"><div className="saved-reference-head"><div><small className="kicker">SAVED ON THIS DEVICE</small><h2>Your tracking code</h2><p>We saved your latest application reference here so you can find it again after you leave the site.</p></div><span className="saved-reference-icon"><ClipboardList size={20}/></span></div><div className="reference-code-row"><code>{savedApplication.application_code}</code><button className="secondary" type="button" onClick={()=>void copyApplicationCode(savedApplication.application_code)}><Copy size={15}/> Copy code</button></div><p className="saved-email"><Mail size={15}/> Email used: <strong>{savedApplication.contact_email}</strong></p><p className="saved-help">Using another device? Contact an ASy recruiter with your in-game name and the email you applied with. Do not post your UID or email publicly.</p><button className="saved-clear" type="button" onClick={clearSavedApplication}>Forget saved details on this device</button></div>}
         <form className="panel form" onSubmit={checkStatus}><Field label="Application code"><input required value={applicationCode} onChange={e=>setApplicationCode(e.target.value.toUpperCase())} placeholder="ASYLUM-XXXXXXXX"/></Field><Field label="Contact email"><input required type="email" value={contactEmail} onChange={e=>setContactEmail(e.target.value)} placeholder="Email used in your application"/></Field><button className="primary full" disabled={busy}>{busy?'Checking…':'Check application'} <ArrowRight size={16}/></button></form>
         {tracked&&<div className="panel tracked"><small>APPLICATION FOUND</small><span className={'pill '+tracked.status}>{labels[tracked.status]||tracked.status}</span><h2>{tracked.ign}</h2><div className="tracked-reference"><p className="muted">Tracking code: <strong>{tracked.application_code}</strong></p><button className="saved-clear" type="button" onClick={()=>void copyApplicationCode(tracked.application_code)}><Copy size={14}/> Copy code</button></div><div className="timeline">{['pending','reviewing','interview','tryout','accepted'].map((stage,index)=><div className={'step '+(statuses.indexOf(tracked.status)>=statuses.indexOf(stage)&&tracked.status!=='rejected'?'done':'')} key={stage}><b>{index+1}</b><div><strong>{labels[stage]}</strong><small>{['Application received','Recruiter review','Interview stage','Tryout stage','Welcome to the roster'][index]}</small></div></div>)}</div><p className="muted">Submitted {new Date(tracked.submitted_at).toLocaleString()}</p></div>}
+        {applicantProgress&&<section className="panel applicant-progress">
+          <div className="applicant-progress-head"><small className="kicker">SCREENING PROGRESS / {applicantProgress.application.application_type.toUpperCase()}</small><h2>{({eligibility_review:'Step 0 · Recruiter eligibility review',tag_proofs:'Step 1 · CODM and TikTok tag proofs',membership_proofs:'Step 2 · Follow and Membership Form',discord_roster:'Step 3 · Discord nickname and roster photo',final_review:'Final recruiter double-check',screening_gc_ready:'Requirements approved · Screening GC review',complete:'Recruitment completed'} as Record<string,string>)[applicantProgress.application.workflow_step]||'Application in review'}</h2><p>Your next step unlocks after the recruiter approves all required items in the current step. Keep your tracking code and application email private.</p></div>
+          {evidenceServiceConfigured===false&&<div className="notice bad">Private upload service is not configured yet. Your application is saved; contact management while the upload service is configured.</div>}
+          <div className="applicant-evidence-list">{applicantProgress.evidence.map(item=>{
+            const currentStage=({tag_proofs:1,membership_proofs:2,discord_roster:3} as Record<string,number>)[applicantProgress.application.workflow_step]||0;
+            const canUpload=currentStage===item.stage_number&&(item.status==='not_submitted'||item.status==='needs_correction');
+            const statusLabel=({locked:'Locked',not_submitted:'Awaiting upload',pending:'Pending recruiter review',approved:'Approved',needs_correction:'Needs correction'} as Record<string,string>)[item.status]||item.status;
+            return <article className={'applicant-evidence-item '+item.status} key={item.requirement_key}>
+              <div className="applicant-evidence-copy"><strong>{item.requirement_label}</strong><span className={'evidence-status '+item.status}>{statusLabel}</span>{item.file_name&&<small>Uploaded file: {item.file_name}</small>}{item.reviewer_notes&&item.status==='needs_correction'&&<p className="correction-note">Recruiter note: {item.reviewer_notes}</p>}</div>
+              {canUpload&&<label className="upload-control"><span>{evidenceUploadKey===item.requirement_key?'Uploading…':item.status==='needs_correction'?'Upload replacement':'Choose screenshot'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadRequirement(item.requirement_key,file);e.currentTarget.value='';}}/></label>}
+            </article>;
+          })}</div>
+          {!['tag_proofs','membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)&&<p className="muted">Uploads will unlock here when an authorized recruiter approves your current step.</p>}
+        </section>}
       </section>}
       {page==='screening'&&<ScreeningGuide intakeSettings={intakeSettings}/>}
       {page==='roster'&&<RosterPage roster={roster} onApply={()=>setPage('apply')}/>}
@@ -157,8 +249,22 @@ export default function App() {
           <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.rank} · {app.main_role}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
           {selected&&<div className="panel detail"><header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
             <div className="details">{[['CODM UID',selected.codm_uid],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank],['Main role',selected.main_role],['Mode',selected.preferred_mode],['Availability',selected.availability],['Community / team experience',selected.clan_experience||'Not provided']].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
-            <div className="reason"><b>Why they want to join</b><p>{selected.reason}</p></div><Field label="Private reviewer notes"><textarea rows={3} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Internal notes — not shown to applicant"/></Field>
-            <div className="action-row"><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'reviewing')}>Mark in review</button><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'waitlisted')}>Waitlist</button><button className="danger" disabled={busy} onClick={()=>void updateApplication(selected,'rejected')}>Reject</button><button className="primary" disabled={busy} onClick={()=>void updateApplication(selected,'accepted')}>Accept + add member <CheckCircle2 size={15}/></button></div>
+            <div className="reason"><b>Why they want to join</b><p>{selected.reason}</p></div>
+            <section className="panel admin-evidence">
+              <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each submitted screenshot. The database unlocks the next step only when every required item in this step is approved.</p>
+              {selectedEvidence.map(item=><article className="admin-evidence-item" key={item.requirement_key}>
+                <div className="admin-evidence-title"><div><strong>{item.requirement_label}</strong><small>Stage {item.stage_number} · {item.status.replace('_',' ')}</small>{item.file_name&&<small>{item.file_name} · {item.file_size_bytes?Math.round(item.file_size_bytes/1024)+' KB':''}</small>}</div>
+                  {item.storage_path&&<button type="button" className="secondary compact-button" onClick={()=>void openEvidence(item.storage_path!)}>View private proof</button>}
+                </div>
+                {item.status==='pending'&&<><Field label="Feedback for applicant"><textarea rows={2} value={evidenceNotes[item.id||'']??item.reviewer_notes??''} onChange={e=>setEvidenceNotes(old=>({...old,[item.id||'']:e.target.value}))} placeholder="Optional note; add one if requesting correction"/></Field><div className="action-row"><button type="button" className="secondary" disabled={busy} onClick={()=>void reviewEvidence(item,'needs_correction')}>Request correction</button><button type="button" className="primary" disabled={busy} onClick={()=>void reviewEvidence(item,'approved')}>Approve proof <CheckCircle2 size={15}/></button></div></>}
+                {item.status==='needs_correction'&&<p className="correction-note">Correction requested. The applicant can upload a replacement at the current step.</p>}
+              </article>)}
+              {selected.workflow_step==='eligibility_review'&&<button type="button" className="primary full" disabled={busy} onClick={()=>void advanceApplicationWorkflow(selected,'tag_proofs')}>Approve eligibility & unlock Step 1 <ArrowRight size={15}/></button>}
+              {selected.workflow_step==='final_review'&&<button type="button" className="primary full" disabled={busy} onClick={()=>void advanceApplicationWorkflow(selected,'screening_gc_ready')}>Complete final double-check · mark Screening GC ready <CheckCircle2 size={15}/></button>}
+              {selected.workflow_step==='screening_gc_ready'&&<p className="success-note">All required evidence is approved. The final recruitment decision is ready.</p>}
+            </section>
+            <Field label="Private reviewer notes"><textarea rows={3} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Internal notes — not shown to applicant"/></Field>
+            <div className="action-row"><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'reviewing')}>Mark in review</button><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'waitlisted')}>Waitlist</button><button className="danger" disabled={busy} onClick={()=>void updateApplication(selected,'rejected')}>Reject</button><button className="primary" disabled={busy||selected.workflow_step!=='screening_gc_ready'} onClick={()=>void updateApplication(selected,'accepted')}>{selected.workflow_step==='screening_gc_ready'?'Accept + add member':'Complete all screening steps first'} <CheckCircle2 size={15}/></button></div>
             <div className="workflow"><div className="workflow-card"><h3><CalendarClock size={17}/> Schedule interview</h3><form onSubmit={scheduleInterview}><Field label="Date and time"><input type="datetime-local" required value={interviewAt} onChange={e=>setInterviewAt(e.target.value)}/></Field><Field label="Channel"><select value={interviewChannel} onChange={e=>setInterviewChannel(e.target.value)}><option>Discord</option><option>In-game voice</option><option>Other</option></select></Field><Field label="Details / invite"><input value={interviewDetails} onChange={e=>setInterviewDetails(e.target.value)} placeholder="Channel or meeting notes"/></Field><button className="secondary full" disabled={busy}>Save interview</button></form></div>
               <div className="workflow-card"><h3><Crosshair size={17}/> Record tryout</h3><form onSubmit={saveTryout}><Field label="Tryout date"><input type="datetime-local" value={tryoutAt} onChange={e=>setTryoutAt(e.target.value)}/></Field><Field label="Mode"><select value={tryoutMode} onChange={e=>setTryoutMode(e.target.value)}>{['Ranked','Scrim','Search & Destroy','Hardpoint','Battle Royale'].map(v=><option key={v}>{v}</option>)}</select></Field><div className="form-grid compact"><Field label="Score /100"><input type="number" min="0" max="100" value={tryoutScore} onChange={e=>setTryoutScore(e.target.value)} placeholder="Optional"/></Field><Field label="Result"><select value={tryoutResult} onChange={e=>setTryoutResult(e.target.value)}><option value="pending">Pending</option><option value="pass">Pass</option><option value="fail">Fail</option><option value="reschedule">Reschedule</option></select></Field></div><Field label="Tryout notes"><textarea rows={2} value={tryoutNotes} onChange={e=>setTryoutNotes(e.target.value)} placeholder="Performance, comms, teamwork…"/></Field><button className="secondary full" disabled={busy}>Save tryout</button></form></div></div>
           </div>}
@@ -331,7 +437,7 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
   ]);
 
   function ask(question: string) {
-    const answer = getRecruitmentReply(question);
+    const answer = getRecruitmentReply(question, intakeSettings);
     setMessages(old => [...old, { role: 'user', text: question }, { role: 'assistant', ...answer }]);
   }
 
