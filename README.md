@@ -23,6 +23,6 @@ npm install
 npm run dev
 ```
 
-The backend route in `backend/index.ts` uses the AppDeploy SDK and requires the AppDeploy runtime. Configure the `DISCORD_WEBHOOK_URL` secret in AppDeploy if Discord notifications are needed.
+The Vercel API route in `api/notify-discord.ts` sends Discord recruitment notifications. In Vercel, add `DISCORD_WEBHOOK_URL` under Project Settings → Environment Variables (Production, Preview as needed). Do not commit the webhook URL to this repository. `backend/index.ts` is the original AppDeploy-runtime route and is not used by Vercel.
 
 The hero and brand marks currently load the logo from the existing public AppDeploy asset URL. To make the repository fully self-contained, add the original PNG at `public/resources/asylum-community-logo.png` and switch the image references in `src/App.tsx` back to the local `/resources/asylum-community-logo.png` path.
