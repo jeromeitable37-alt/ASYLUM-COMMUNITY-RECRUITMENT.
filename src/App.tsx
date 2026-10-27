@@ -16,6 +16,14 @@ const statuses = ['pending','reviewing','interview','tryout','accepted','rejecte
 const labels: Record<string,string> = { pending:'Pending review', reviewing:'In review', interview:'Interview', tryout:'Tryout', accepted:'Accepted', rejected:'Rejected', waitlisted:'Waitlisted' };
 const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', ageConfirmed:'', legendarySeriesCount:'6', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
 const createCode = () => { const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const bytes=new Uint8Array(8); crypto.getRandomValues(bytes); return 'ASYLUM-'+Array.from(bytes,b=>alphabet[b%alphabet.length]).join(''); };
+const isAllowedProfileUrl=(value:string,domains:string[])=>{
+  if(!value.trim())return true;
+  try{
+    const url=new URL(value.trim());
+    return (url.protocol==='https:'||url.protocol==='http:')&&domains.some(domain=>url.hostname===domain||url.hostname.endsWith('.'+domain));
+  }catch{return false;}
+};
+const mgcStatusLabels:Record<Application['mgc_verification_status'],string>={not_checked:'Not checked',contact_needed:'Applicant contact needed',issue_found:'Form issue found',verified:'Manually verified'};
 
 export default function App() {
   const [page,setPage]=useState('home');
@@ -167,6 +175,14 @@ export default function App() {
       notify('CODM UID is required and must contain exactly 19 digits.', true);
       return;
     }
+    if (!isAllowedProfileUrl(form.applicantFacebookUrl,['facebook.com','fb.com'])) {
+      notify('Enter a valid Facebook profile link or leave it blank.', true);
+      return;
+    }
+    if (!isAllowedProfileUrl(form.applicantTikTokUrl,['tiktok.com'])) {
+      notify('Enter a valid TikTok profile link or leave it blank.', true);
+      return;
+    }
     if (form.ageConfirmed !== 'yes') {
       notify('Confirm that you are at least 16 years old before applying.', true);
       return;
@@ -208,6 +224,9 @@ export default function App() {
         codm_uid: form.uid.trim(),
         contact_email: form.email.trim().toLowerCase(),
         discord_username: form.discord.trim() || null,
+        applicant_facebook_url: form.applicantFacebookUrl.trim() || null,
+        applicant_tiktok_url: form.applicantTikTokUrl.trim() || null,
+        streamer_mode_id: form.streamerModeId.trim() || null,
         region: form.region,
         rank: form.rank,
         level: form.level ? Number(form.level) : null,
