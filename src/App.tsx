@@ -6,7 +6,7 @@ const SUPABASE_URL = 'https://tyhszzztltamrohhyykh.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn';
 const EVIDENCE_API_URL = SUPABASE_URL + '/functions/v1/asy-recruitment-evidence';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
+type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
 type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string };
@@ -14,7 +14,7 @@ type SavedApplication = { application_code:string; contact_email:string; ign:str
 type IntakeSettings = { id:number; intake_open:boolean; application_limit:number|null; application_count:number; cycle_started_at:string; updated_at:string };
 const statuses = ['pending','reviewing','interview','tryout','accepted','rejected','waitlisted'];
 const labels: Record<string,string> = { pending:'Pending review', reviewing:'In review', interview:'Interview', tryout:'Tryout', accepted:'Accepted', rejected:'Rejected', waitlisted:'Waitlisted' };
-const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', ageConfirmed:'', legendarySeriesCount:'6', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
+const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', ageConfirmed:'', legendarySeriesCount:'6', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
 const createCode = () => { const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const bytes=new Uint8Array(8); crypto.getRandomValues(bytes); return 'ASYLUM-'+Array.from(bytes,b=>alphabet[b%alphabet.length]).join(''); };
 
 export default function App() {
@@ -33,6 +33,8 @@ export default function App() {
   const [filter,setFilter]=useState('all');
   const [selected,setSelected]=useState<Application|null>(null);
   const [notes,setNotes]=useState('');
+  const [mgcNotes,setMgcNotes]=useState('');
+  const [mgcContactConfirmed,setMgcContactConfirmed]=useState(false);
   const [applicationCode,setApplicationCode]=useState('');
   const [contactEmail,setContactEmail]=useState('');
   const [tracked,setTracked]=useState<{application_code:string;ign:string;status:string;submitted_at:string}|null>(null);
@@ -67,6 +69,7 @@ export default function App() {
   useEffect(()=>{if(session?.user.email) void checkAdmin(session.user.email);else setAuthorized(false);},[session]);
   useEffect(()=>{if(page==='roster')void loadRoster();if(page==='admin'&&session&&authorized)void loadApplications();},[page,session,authorized]);
   useEffect(()=>{if(selected&&authorized)void loadSelectedEvidence(selected.id);else setSelectedEvidence([]);},[selected?.id,authorized]);
+  useEffect(()=>{setMgcNotes(selected?.mgc_verification_notes||'');setMgcContactConfirmed(Boolean(selected?.mgc_applicant_contacted));},[selected?.id]);
 
   async function loadIntakeSettings(){
     const {data,error}=await supabase.from('asy_recruitment_settings').select('id,intake_open,application_limit,application_count,cycle_started_at,updated_at').eq('id',1).maybeSingle();
