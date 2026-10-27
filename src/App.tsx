@@ -5,6 +5,7 @@ import { ArrowRight, BadgeCheck, Bot, CalendarClock, CheckCircle2, ClipboardList
 const SUPABASE_URL = 'https://tyhszzztltamrohhyykh.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn';
 const EVIDENCE_API_URL = SUPABASE_URL + '/functions/v1/asy-recruitment-evidence';
+const MESSAGING_API_URL = SUPABASE_URL + '/functions/v1/asy-community-messaging';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
@@ -12,6 +13,10 @@ type ApplicantProgress = { application:{application_code:string;ign:string;statu
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string };
 type SavedApplication = { application_code:string; contact_email:string; ign:string; submitted_at:string };
 type IntakeSettings = { id:number; intake_open:boolean; application_limit:number|null; application_count:number; cycle_started_at:string; updated_at:string };
+type Announcement = { id:string; title:string; body:string; category:'general'|'recruitment'|'event'|'maintenance'; is_published:boolean; created_at:string; updated_at?:string; published_at?:string|null; created_by_email?:string; updated_by_email?:string|null };
+type CommunityChatMessage = { id:string; display_name:string; body:string; created_at:string };
+type ApplicationChatMessage = { id:string; application_id:string; sender_role:'applicant'|'recruiter'; sender_name:string; body:string; created_at:string; applicant_read_at?:string|null; recruiter_read_at?:string|null };
+const emptyAnnouncementDraft = {id:'',title:'',body:'',category:'general' as Announcement['category'],is_published:true};
 const statuses = ['pending','reviewing','interview','tryout','accepted','rejected','waitlisted'];
 const labels: Record<string,string> = { pending:'Pending review', reviewing:'In review', interview:'Interview', tryout:'Tryout', accepted:'Accepted', rejected:'Rejected', waitlisted:'Waitlisted' };
 const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', ageConfirmed:'', legendarySeriesCount:'6', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
@@ -66,6 +71,19 @@ export default function App() {
   const [selectedEvidence,setSelectedEvidence]=useState<Evidence[]>([]);
   const [evidenceNotes,setEvidenceNotes]=useState<Record<string,string>>({});
   const [applicantEvidenceNotes,setApplicantEvidenceNotes]=useState<Record<string,string>>({});
+  const [announcements,setAnnouncements]=useState<Announcement[]>([]);
+  const [announcementDraft,setAnnouncementDraft]=useState(emptyAnnouncementDraft);
+  const [announcementBusy,setAnnouncementBusy]=useState(false);
+  const [communityMessages,setCommunityMessages]=useState<CommunityChatMessage[]>([]);
+  const [communityDisplayName,setCommunityDisplayName]=useState('');
+  const [communityDraft,setCommunityDraft]=useState('');
+  const [communityChatBusy,setCommunityChatBusy]=useState(false);
+  const [applicantMessages,setApplicantMessages]=useState<ApplicationChatMessage[]>([]);
+  const [applicantMessageDraft,setApplicantMessageDraft]=useState('');
+  const [applicantMessageBusy,setApplicantMessageBusy]=useState(false);
+  const [adminApplicationMessages,setAdminApplicationMessages]=useState<ApplicationChatMessage[]>([]);
+  const [adminMessageDraft,setAdminMessageDraft]=useState('');
+  const [adminMessageBusy,setAdminMessageBusy]=useState(false);
   const notify=(message:string,isError=false)=>{setNotice(message);setHasError(isError);};
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   const intakeUsagePercent=intakeSettings?.application_limit ? Math.min(100,Math.round((intakeSettings.application_count/intakeSettings.application_limit)*100)) : 0;
