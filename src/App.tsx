@@ -68,7 +68,7 @@ export default function App() {
   return <div className="shell">
     <div className="topline"><i/> ASYLUM COMMUNITY <span>/</span> GAMING COMMUNITY</div>
     <header className="nav">
-      <button className="brand" onClick={()=>setPage('home')}><b className="mark"><img src="/resources/asylum-community-logo.png" alt="Asylum Community logo" onError={event=>{event.currentTarget.style.opacity='0';}}/></b><span><strong>ASYLUM<span>.</span></strong><small>OFFICIAL COMMUNITY RECRUITMENT</small></span></button>
+      <button className="brand" onClick={()=>setPage('home')}><b className="mark"><img src="/resources/asylum-community-logo.jpg" alt="Asylum Community logo" onError={event=>{event.currentTarget.style.opacity='0';}}/></b><span><strong>ASYLUM<span>.</span></strong><small>OFFICIAL COMMUNITY RECRUITMENT</small></span></button>
       <button className="mobile-toggle" aria-label="Open menu" onClick={()=>setMobileOpen(!mobileOpen)}>☰</button>
       <nav className={mobileOpen?'open':''}>{navigation.map(([id,label])=><button key={id} className={page===id?'active':''} onClick={()=>{setPage(id);setMobileOpen(false);setNotice('');}}>{label}</button>)}<button className="login-nav" onClick={()=>{setPage('admin');setMobileOpen(false);setNotice('');}}><ShieldCheck size={15}/> Recruiter login</button></nav>
     </header>
@@ -121,14 +121,14 @@ export default function App() {
         </>}
       </section>}
     </main>
-    <footer className="footer"><div className="brand"><b className="mark"><img src="/resources/asylum-community-logo.png" alt="Asylum Community logo" onError={event=>{event.currentTarget.style.opacity='0';}}/></b><span><strong>ASYLUM<span>.</span></strong><small>OFFICIAL COMMUNITY RECRUITMENT</small></span></div><p>A gaming community built on teamwork and respect.</p><span>© {new Date().getFullYear()} ASYLUM COMMUNITY</span></footer>
+    <footer className="footer"><div className="brand"><b className="mark"><img src="/resources/asylum-community-logo.jpg" alt="Asylum Community logo" onError={event=>{event.currentTarget.style.opacity='0';}}/></b><span><strong>ASYLUM<span>.</span></strong><small>OFFICIAL COMMUNITY RECRUITMENT</small></span></div><p>A gaming community built on teamwork and respect.</p><span>© {new Date().getFullYear()} ASYLUM COMMUNITY</span></footer>
   </div>;
 }
 
 function Home({onApply,onRoster,onTrack}:{onApply:()=>void;onRoster:()=>void;onTrack:()=>void}) {
  return <>
   <section className="hero"><div className="hero-copy"><div className="eyebrow">— COMPETE WITH PURPOSE</div><h1>BUILT FOR THE<br/><em>NEXT LEVEL.</em></h1><p>A CODM community for players who value teamwork, respect, and growth. Find your squad, sharpen your skills, and make your mark with ASY.</p><div className="actions"><button className="primary" onClick={onApply}>Apply to join <ArrowRight size={16}/></button><button className="secondary" onClick={onRoster}>Meet the community <Users size={16}/></button></div><div className="trust"><span><ShieldCheck size={15}/> Fair review process</span><span><Zap size={15}/> Competitive mindset</span></div></div>
-   <div className="art"><div className="grid"/><div className="ring"/><div className="emblem"><img src="/resources/asylum-community-logo.png" alt="Asylum Community emblem" onError={event=>{event.currentTarget.style.opacity='0';}}/></div><div className="art-top"><i/> MEMBERSHIP OPEN</div><div className="art-bottom"><b>ASYLUM</b><span>PLAY TOGETHER. GROW TOGETHER.</span></div><div className="vertical">ASYLUM COMMUNITY // CODM</div></div>
+   <div className="art"><div className="grid"/><div className="ring"/><div className="emblem"><img src="/resources/asylum-community-logo.jpg" alt="Asylum Community emblem" onError={event=>{event.currentTarget.style.opacity='0';}}/></div><div className="art-top"><i/> MEMBERSHIP OPEN</div><div className="art-bottom"><b>ASYLUM</b><span>PLAY TOGETHER. GROW TOGETHER.</span></div><div className="vertical">ASYLUM COMMUNITY // CODM</div></div>
    <div className="hero-foot"><span>01 / JOIN THE COMMUNITY</span><span>PHILIPPINES · GLOBAL PLAYERS WELCOME</span></div>
   </section>
   <section className="features"><Feature icon={<Crosshair/>} title="Competitive play" desc="Improve together through ranked and scrims."/><Feature icon={<Users/>} title="Team-first culture" desc="Respect, communication, and consistency."/><Feature icon={<Trophy/>} title="Earn your spot" desc="Every application gets a fair review."/></section>
