@@ -14,7 +14,7 @@ Official ASy community recruitment site for Call of Duty: Mobile.
 
 - React + TypeScript + Vite
 - Supabase authentication and database
-- AppDeploy API route for Discord webhook notifications
+- Vercel serverless API route for Discord webhook notifications
 
 ## Development
 
