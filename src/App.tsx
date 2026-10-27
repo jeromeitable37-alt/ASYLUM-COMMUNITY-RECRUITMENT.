@@ -130,6 +130,7 @@ export default function App() {
     if(!selected||!item.id)return;
     setBusy(true);
     const reviewerNotes=evidenceNotes[item.id]?.trim()||null;
+    if(status==='needs_correction'&&!reviewerNotes){notify('Add a short correction note so the applicant knows what to fix.',true);return;}
     const {error}=await supabase.from('asy_recruitment_evidence').update({status,reviewer_notes:reviewerNotes,reviewed_by_email:session?.user.email||null,reviewed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',item.id);
     setBusy(false);
     if(error){notify('Could not update this requirement. Check recruiter access.',true);return;}
