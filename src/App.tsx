@@ -157,7 +157,119 @@ export default function App() {
   async function checkAdmin(userEmail:string){const {data,error}=await supabase.from('asy_recruitment_admins').select('email').eq('email',userEmail.toLowerCase()).maybeSingle();setAuthorized(!error&&Boolean(data));}
   async function signIn(event:FormEvent){event.preventDefault();setBusy(true);const {error}=await supabase.auth.signInWithPassword({email:email.trim().toLowerCase(),password});setBusy(false);if(error){notify(error.message.toLowerCase().includes('invalid login credentials')?'Email or password is incorrect. Use the Supabase recruiter account connected to this website.':error.message,true);}else notify('Signed in. Checking recruiter permissions…');}
   async function signOut(){await supabase.auth.signOut();setAuthorized(false);setApplications([]);setSelected(null);notify('Signed out.');}
-  async function submitApplication(event:FormEvent){event.preventDefault();if(form.ageConfirmed!=='yes'){notify('Confirm that you are at least 16 years old before applying.',true);return;}if(Number(form.legendarySeriesCount)<6){notify('You need at least 6 Legendary Series in BR or MP to apply.',true);return;}if(!form.facebookNameAppropriate||!form.willingToAddTag||!form.willingToSubmitPhoto){notify('Confirm the Facebook name, ASY tag, and roster photo requirements before applying.',true);return;}if(form.applicationType==='referral'&&(!form.referrerName.trim()||!form.referrerFacebookUrl.trim())){notify('Referral applications need the referrer name and Facebook link.',true);return;}if(intakeFull){notify(!intakeSettings?.intake_open?'Recruitment is temporarily closed. Please check back later.':'The current recruitment application limit has been reached. Please check back later.',true);return;}setBusy(true);const code=createCode();const payload={application_code:code,application_type:form.applicationType,workflow_enabled:true,referrer_name:form.applicationType==='referral'?form.referrerName.trim():null,referrer_facebook_url:form.applicationType==='referral'?form.referrerFacebookUrl.trim():null,meets_age_requirement:form.ageConfirmed==='yes',legendary_series_count:Number(form.legendarySeriesCount),facebook_name_appropriate:form.facebookNameAppropriate,willing_to_add_asy_tag:form.willingToAddTag,willing_to_submit_roster_photo:form.willingToSubmitPhoto,ign:form.ign.trim(),codm_uid:form.uid.trim(),contact_email:form.email.trim().toLowerCase(),discord_username:form.discord.trim()||null,region:form.region,rank:form.rank,level:form.level?Number(form.level):null,main_role:form.applicationType==='referral'?form.role:'Not specified',preferred_mode:form.applicationType==='referral'?form.mode:'Not specified',availability:form.applicationType==='referral'?form.availability:'Not specified',clan_experience:form.applicationType==='referral'?(form.experience.trim()||null):null,reason:form.reason.trim(),status:'pending',reviewer_notes:null};const {error}=await supabase.from('asy_clan_applications').insert(payload);if(error){setBusy(false);const message=error.message.toLowerCase();notify(message.includes('temporarily closed')?'Recruitment is temporarily closed. Please check back later.':message.includes('application limit reached')?'The current recruitment application limit has been reached. Please check back later.':'Could not submit your application. Please check your details and try again.',true);return;}void loadIntakeSettings();try{await fetch('/api/notify-discord',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ign:payload.ign,rank:payload.rank,role:payload.main_role,mode:payload.preferred_mode,code})});}catch{}setBusy(false);setApplicationCode(code);setContactEmail(payload.contact_email);const saved:SavedApplication={application_code:code,contact_email:payload.contact_email,ign:payload.ign,submitted_at:new Date().toISOString()};setSavedApplication(saved);try{localStorage.setItem('asy-recruitment:last-application',JSON.stringify(saved));}catch{}setForm(blankForm);setTracked({application_code:code,ign:payload.ign,status:'pending',submitted_at:saved.submitted_at});void loadApplicantProgress(code,payload.contact_email);setPage('status');notify('Application submitted! Your tracking code is shown below and saved on this device.');}
+  async function submitApplication(event:FormEvent) {
+    event.preventDefault();
+
+    if (!/^\d{19}$/.test(form.uid.trim())) {
+      notify('CODM UID is required and must contain exactly 19 digits.', true);
+      return;
+    }
+    if (form.ageConfirmed !== 'yes') {
+      notify('Confirm that you are at least 16 years old before applying.', true);
+      return;
+    }
+    if (Number(form.legendarySeriesCount) < 6) {
+      notify('You need at least 6 Legendary Series in BR or MP to apply.', true);
+      return;
+    }
+    if (!form.facebookNameAppropriate || !form.willingToAddTag || !form.willingToSubmitPhoto) {
+      notify('Confirm the Facebook name, ASY tag, and roster photo requirements before applying.', true);
+      return;
+    }
+    if (form.applicationType === 'referral' && (!form.referrerName.trim() || !form.referrerFacebookUrl.trim())) {
+      notify('Referral applications need the referrer name and Facebook link.', true);
+      return;
+    }
+    if (intakeFull) {
+      notify(!intakeSettings?.intake_open
+        ? 'Recruitment is temporarily closed. Please check back later.'
+        : 'The current recruitment application limit has been reached. Please check back later.', true);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const code = createCode();
+      const payload = {
+        application_code: code,
+        application_type: form.applicationType,
+        workflow_enabled: true,
+        referrer_name: form.applicationType === 'referral' ? form.referrerName.trim() : null,
+        referrer_facebook_url: form.applicationType === 'referral' ? form.referrerFacebookUrl.trim() : null,
+        meets_age_requirement: form.ageConfirmed === 'yes',
+        legendary_series_count: Number(form.legendarySeriesCount),
+        facebook_name_appropriate: form.facebookNameAppropriate,
+        willing_to_add_asy_tag: form.willingToAddTag,
+        willing_to_submit_roster_photo: form.willingToSubmitPhoto,
+        ign: form.ign.trim(),
+        codm_uid: form.uid.trim(),
+        contact_email: form.email.trim().toLowerCase(),
+        discord_username: form.discord.trim() || null,
+        region: form.region,
+        rank: form.rank,
+        level: form.level ? Number(form.level) : null,
+        main_role: form.applicationType === 'referral' ? form.role : 'Not specified',
+        preferred_mode: form.applicationType === 'referral' ? form.mode : 'Not specified',
+        availability: form.applicationType === 'referral' ? form.availability : 'Not specified',
+        clan_experience: form.applicationType === 'referral' ? (form.experience.trim() || null) : null,
+        reason: form.reason.trim(),
+        status: 'pending',
+        reviewer_notes: null,
+      };
+
+      const { error } = await supabase.from('asy_clan_applications').insert(payload);
+      if (error) {
+        const message = error.message.toLowerCase();
+        if (message.includes('codm uid') && message.includes('19')) {
+          notify('CODM UID must contain exactly 19 digits.', true);
+        } else if (message.includes('temporarily closed')) {
+          notify('Recruitment is temporarily closed. Please check back later.', true);
+        } else if (message.includes('application limit reached')) {
+          notify('The current recruitment application limit has been reached. Please check back later.', true);
+        } else {
+          console.error('Application insert failed.', error.message);
+          notify('Could not submit your application. Check the required fields and try again.', true);
+        }
+        return;
+      }
+
+      void loadIntakeSettings();
+      try {
+        await fetch('/api/notify-discord', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ign: payload.ign, rank: payload.rank, role: payload.main_role, mode: payload.preferred_mode, code }),
+        });
+      } catch (notifyError) {
+        console.error('Discord recruitment notification failed.', notifyError);
+      }
+
+      setApplicationCode(code);
+      setContactEmail(payload.contact_email);
+      const saved: SavedApplication = {
+        application_code: code,
+        contact_email: payload.contact_email,
+        ign: payload.ign,
+        submitted_at: new Date().toISOString(),
+      };
+      setSavedApplication(saved);
+      try {
+        localStorage.setItem('asy-recruitment:last-application', JSON.stringify(saved));
+      } catch (storageError) {
+        console.warn('Could not save application tracking details on this device.', storageError);
+      }
+      setForm(blankForm);
+      setTracked({ application_code: code, ign: payload.ign, status: 'pending', submitted_at: saved.submitted_at });
+      void loadApplicantProgress(code, payload.contact_email);
+      setPage('status');
+      notify('Application submitted! Your tracking code is shown below and saved on this device.');
+    } catch (submissionError) {
+      console.error('Unexpected application submission failure.', submissionError);
+      notify('A connection error stopped the submission. Please check your internet and try again.', true);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function checkStatus(event:FormEvent){event.preventDefault();setBusy(true);setTracked(null);setApplicantProgress(null);const {data,error}=await supabase.rpc('asy_check_application',{p_application_code:applicationCode.trim(),p_contact_email:contactEmail.trim().toLowerCase()});setBusy(false);if(error)notify('We could not check the status right now. Please try again in a moment.',true);else if(!data?.length)notify('We could not find a match. Check your tracking code and the same email used in your application.',true);else{setTracked(data[0]);await loadApplicantProgress(applicationCode.trim(),contactEmail.trim().toLowerCase());notify('Application found. Your latest status is ready.');}}
   async function copyApplicationCode(codeToCopy=savedApplication?.application_code||applicationCode){if(!codeToCopy){notify('There is no tracking code to copy yet.',true);return;}try{await navigator.clipboard.writeText(codeToCopy);notify('Tracking code copied. Keep it private with your application email.');}catch{notify('Copy is unavailable in this browser. Select the code and copy it manually.',true);}}
   function clearSavedApplication(){try{localStorage.removeItem('asy-recruitment:last-application');}catch{}setSavedApplication(null);setApplicationCode('');setContactEmail('');setTracked(null);notify('Saved tracking details cleared from this device.');}
