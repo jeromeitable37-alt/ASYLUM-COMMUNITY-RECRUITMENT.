@@ -6,7 +6,7 @@ const SUPABASE_URL = 'https://tyhszzztltamrohhyykh.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn';
 const EVIDENCE_API_URL = SUPABASE_URL + '/functions/v1/asy-recruitment-evidence';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
+type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
 type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string };
@@ -14,8 +14,16 @@ type SavedApplication = { application_code:string; contact_email:string; ign:str
 type IntakeSettings = { id:number; intake_open:boolean; application_limit:number|null; application_count:number; cycle_started_at:string; updated_at:string };
 const statuses = ['pending','reviewing','interview','tryout','accepted','rejected','waitlisted'];
 const labels: Record<string,string> = { pending:'Pending review', reviewing:'In review', interview:'Interview', tryout:'Tryout', accepted:'Accepted', rejected:'Rejected', waitlisted:'Waitlisted' };
-const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', ageConfirmed:'', legendarySeriesCount:'6', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
+const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', ageConfirmed:'', legendarySeriesCount:'6', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
 const createCode = () => { const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const bytes=new Uint8Array(8); crypto.getRandomValues(bytes); return 'ASYLUM-'+Array.from(bytes,b=>alphabet[b%alphabet.length]).join(''); };
+const isAllowedProfileUrl=(value:string,domains:string[])=>{
+  if(!value.trim())return true;
+  try{
+    const url=new URL(value.trim());
+    return (url.protocol==='https:'||url.protocol==='http:')&&domains.some(domain=>url.hostname===domain||url.hostname.endsWith('.'+domain));
+  }catch{return false;}
+};
+const mgcStatusLabels:Record<Application['mgc_verification_status'],string>={not_checked:'Not checked',contact_needed:'Applicant contact needed',issue_found:'Form issue found',verified:'Manually verified'};
 
 export default function App() {
   const [page,setPage]=useState('home');
@@ -33,6 +41,8 @@ export default function App() {
   const [filter,setFilter]=useState('all');
   const [selected,setSelected]=useState<Application|null>(null);
   const [notes,setNotes]=useState('');
+  const [mgcNotes,setMgcNotes]=useState('');
+  const [mgcContactConfirmed,setMgcContactConfirmed]=useState(false);
   const [applicationCode,setApplicationCode]=useState('');
   const [contactEmail,setContactEmail]=useState('');
   const [tracked,setTracked]=useState<{application_code:string;ign:string;status:string;submitted_at:string}|null>(null);
@@ -67,6 +77,7 @@ export default function App() {
   useEffect(()=>{if(session?.user.email) void checkAdmin(session.user.email);else setAuthorized(false);},[session]);
   useEffect(()=>{if(page==='roster')void loadRoster();if(page==='admin'&&session&&authorized)void loadApplications();},[page,session,authorized]);
   useEffect(()=>{if(selected&&authorized)void loadSelectedEvidence(selected.id);else setSelectedEvidence([]);},[selected?.id,authorized]);
+  useEffect(()=>{setMgcNotes(selected?.mgc_verification_notes||'');setMgcContactConfirmed(Boolean(selected?.mgc_applicant_contacted));},[selected?.id]);
 
   async function loadIntakeSettings(){
     const {data,error}=await supabase.from('asy_recruitment_settings').select('id,intake_open,application_limit,application_count,cycle_started_at,updated_at').eq('id',1).maybeSingle();
@@ -139,12 +150,56 @@ export default function App() {
     await loadApplications();
     notify(status==='approved'?'Proof approved. The next stage opens only when all required proofs in this stage are approved.':'Correction requested. The applicant can upload a replacement screenshot.');
   }
+  async function saveMgcVerification(status:'contact_needed'|'issue_found'|'verified'){
+    if(!selected)return;
+    const note=mgcNotes.trim();
+    if(!note){notify('Add a short note about the applicant contact or MGC check.',true);return;}
+    if(status==='verified'&&selected.workflow_step!=='final_review'){
+      notify('Finish and approve all three screenshot stages before the final MGC check.',true);
+      return;
+    }
+    if(status==='verified'&&!mgcContactConfirmed){
+      notify('Confirm that you spoke with the applicant before marking MGC verified.',true);
+      return;
+    }
+    const reviewerEmail=session?.user.email?.trim().toLowerCase();
+    if(!reviewerEmail){notify('Recruiter session expired. Sign in again to record the MGC check.',true);return;}
+    setBusy(true);
+    try{
+      const checkedAt=new Date().toISOString();
+      const {data,error}=await supabase.from('asy_clan_applications').update({
+        mgc_verification_status:status,
+        mgc_applicant_contacted:mgcContactConfirmed,
+        mgc_checked_by_email:reviewerEmail,
+        mgc_checked_at:checkedAt,
+        mgc_verification_notes:note,
+        updated_at:checkedAt,
+      }).eq('id',selected.id).select('*').single();
+      if(error||!data){
+        console.error('MGC manual verification save failed.',error?.message);
+        notify(error?.message?.includes('authorized recruiter')?'Only authorized recruiters can save this check.':'Could not save the MGC check. Confirm recruiter access and try again.',true);
+        return;
+      }
+      setSelected(data as Application);
+      await loadApplications();
+      notify(status==='verified'?'MGC double-check saved. Final Screening GC review can now continue.':status==='contact_needed'?'Applicant contact needed; final approval remains blocked.':'MGC issue recorded; resolve it before continuing.');
+    }catch(error){
+      console.error('MGC verification request failed.',error);
+      notify('Connection error while saving the MGC check. Please retry.',true);
+    }finally{
+      setBusy(false);
+    }
+  }
   async function openEvidence(path:string){
     const {data,error}=await supabase.storage.from('asy-recruitment-private').createSignedUrl(path,300);
     if(error||!data?.signedUrl){notify('Could not open this private screenshot.',true);return;}
     window.open(data.signedUrl,'_blank','noopener,noreferrer');
   }
   async function advanceApplicationWorkflow(app:Application,nextStep:'tag_proofs'|'screening_gc_ready'){
+    if(nextStep==='screening_gc_ready'&&(app.mgc_verification_status!=='verified'||!app.mgc_applicant_contacted||!app.mgc_checked_at||!app.mgc_verification_notes?.trim())){
+      notify('Complete the MGC manual check and confirm applicant contact before marking Screening GC ready.',true);
+      return;
+    }
     setBusy(true);
     const {data,error}=await supabase.from('asy_clan_applications').update({workflow_step:nextStep,updated_at:new Date().toISOString()}).eq('id',app.id).select('*').single();
     setBusy(false);
@@ -162,6 +217,14 @@ export default function App() {
 
     if (!/^\d{19}$/.test(form.uid.trim())) {
       notify('CODM UID is required and must contain exactly 19 digits.', true);
+      return;
+    }
+    if (!isAllowedProfileUrl(form.applicantFacebookUrl,['facebook.com','fb.com'])) {
+      notify('Enter a valid Facebook profile link or leave it blank.', true);
+      return;
+    }
+    if (!isAllowedProfileUrl(form.applicantTikTokUrl,['tiktok.com'])) {
+      notify('Enter a valid TikTok profile link or leave it blank.', true);
       return;
     }
     if (form.ageConfirmed !== 'yes') {
@@ -205,6 +268,9 @@ export default function App() {
         codm_uid: form.uid.trim(),
         contact_email: form.email.trim().toLowerCase(),
         discord_username: form.discord.trim() || null,
+        applicant_facebook_url: form.applicantFacebookUrl.trim() || null,
+        applicant_tiktok_url: form.applicantTikTokUrl.trim() || null,
+        streamer_mode_id: form.streamerModeId.trim() || null,
         region: form.region,
         rank: form.rank,
         level: form.level ? Number(form.level) : null,
@@ -295,24 +361,24 @@ export default function App() {
       {page==='apply'&&<section className="page"><Heading kicker="01 / RECRUITMENT FORM" title={<>YOUR RUN <em>STARTS HERE.</em></>} desc="Complete the form honestly. Required fields are marked *. No account needed."/>
         <div className={'panel intake-banner '+(intakeFull?'closed':'open')}><div><strong>{intakeFull?(!intakeSettings?.intake_open?'Applications are temporarily closed':'Application limit reached'):'Recruitment intake is open'}</strong><p>{intakeSettings?.application_limit!==null&&intakeSettings?`${intakeSettings.application_count} of ${intakeSettings.application_limit} applications used this intake.`:'Check the eligibility requirements and complete the form once. Recruiters review applications individually.'}</p></div><span className="intake-dot"/></div>
         <form className="panel form" onSubmit={submitApplication}>
-          <Section n="00" title="Application route" sub="Choose the correct recruitment path so the team can verify the right proofs."/>
+          <Section n="00" title="Application route" sub="Choose Casual or Referral."/>
           <Field label="Application type *"><select value={form.applicationType} onChange={e=>updateForm('applicationType',e.target.value)}><option value="casual">Casual Recruitment</option><option value="referral">Referral Recruitment</option></select></Field>
           {form.applicationType==='referral'&&<div className="form-grid">
             <Field label="Referring member name *"><input required value={form.referrerName} onChange={e=>updateForm('referrerName',e.target.value)} placeholder="Member who referred you"/></Field>
             <Field label="Referring member Facebook profile link *"><input required type="url" value={form.referrerFacebookUrl} onChange={e=>updateForm('referrerFacebookUrl',e.target.value)} placeholder="https://facebook.com/…"/></Field>
           </div>}
-          <Section n="01" title="Eligibility confirmation" sub="Confirm the minimum requirements before submitting your application."/>
+          <Section n="01" title="Eligibility" sub="Check the minimum requirements."/>
           <label className="screening-check eligibility-check"><input type="checkbox" required checked={form.ageConfirmed==='yes'} onChange={e=>updateForm('ageConfirmed',e.target.checked?'yes':'')}/><span>I confirm that I am at least 16 years old.</span></label>
           <div className="form-grid">
             <Field label="Legendary Series achieved (BR or MP) *"><input type="number" min="6" max="100" required value={form.legendarySeriesCount} onChange={e=>updateForm('legendarySeriesCount',e.target.value)} placeholder="At least 6"/></Field>
           </div>
-          <p className="muted form-helper">You must have at least 6 Legendary Series in BR or MP and confirm the community rules below. Your social account logins are never requested.</p>
+          <p className="muted form-helper">At least 6 Legendary Series in BR or MP. We never ask for social account passwords.</p>
           <div className="eligibility-confirmations">
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.facebookNameAppropriate} onChange={e=>setForm(old=>({...old,facebookNameAppropriate:e.target.checked}))}/><span>I confirm that my Facebook name is appropriate and not random or inappropriate.</span></label>
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.willingToAddTag} onChange={e=>setForm(old=>({...old,willingToAddTag:e.target.checked}))}/><span>I agree to put the ASY tag AFTER my IGN on my main CODM and TikTok accounts.</span></label>
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.willingToSubmitPhoto} onChange={e=>setForm(old=>({...old,willingToSubmitPhoto:e.target.checked}))}/><span>I agree to submit the required roster photo and follow the admin reference if accepted.</span></label>
           </div>
-          <Section n="02" title="Player details" sub="How recruiters can identify and contact you."/>
+          <Section n="02" title="Player details" sub="Your game and contact information."/>
           <div className="form-grid">
             <Field label="In-game name (IGN) *"><input required minLength={2} maxLength={32} value={form.ign} onChange={e=>updateForm('ign',e.target.value)} placeholder="Your CODM name"/></Field>
             <Field label="CODM UID (19 digits) *"><><input required type="text" inputMode="numeric" autoComplete="off" pattern="[0-9]{19}" title="Enter exactly 19 digits for your CODM UID." minLength={19} maxLength={19} value={form.uid} onChange={e=>updateForm('uid',e.target.value.replace(/[^0-9]/g,'').slice(0,19))} placeholder="Enter your 19-digit UID"/><small className="field-hint">Required · Numbers only · {form.uid.length}/19 digits</small></></Field>
@@ -322,8 +388,14 @@ export default function App() {
             <Field label="Current rank *"><select value={form.rank} onChange={e=>updateForm('rank',e.target.value)}>{['Rookie','Veteran','Elite','Pro','Master','Grand Master','Legendary'].map(v=><option key={v}>{v}</option>)}</select></Field>
             <Field label="Current level"><input type="number" min="1" max="500" value={form.level} onChange={e=>updateForm('level',e.target.value)} placeholder="e.g. 220"/></Field>
           </div>
+          <Section n="03" title="Social profiles" sub="Optional links for cross-checking your details."/>
+          <div className="form-grid">
+            <Field label="Facebook profile link"><input type="url" value={form.applicantFacebookUrl} onChange={e=>updateForm('applicantFacebookUrl',e.target.value)} placeholder="https://facebook.com/…"/><small className="field-hint">Optional · Profile link only.</small></Field>
+            <Field label="TikTok profile link"><input type="url" value={form.applicantTikTokUrl} onChange={e=>updateForm('applicantTikTokUrl',e.target.value)} placeholder="https://tiktok.com/@…"/><small className="field-hint">Optional · Profile link only.</small></Field>
+            <Field label="Streamer Mode ID"><input value={form.streamerModeId} maxLength={100} onChange={e=>updateForm('streamerModeId',e.target.value)} placeholder="Optional ID"/></Field>
+          </div>
           {form.applicationType==='referral'&&<>
-            <Section n="03" title="Player profile" sub="Optional context for recruiters reviewing a referral."/>
+            <Section n="04" title="Player profile" sub="Optional referral details."/>
             <div className="form-grid">
               <Field label="Main role"><select value={form.role} onChange={e=>updateForm('role',e.target.value)}>{['Slayer','Support','Sniper','Objective','Flex','Entry Fragger','IGL / Shot-caller'].map(v=><option key={v}>{v}</option>)}</select></Field>
               <Field label="Preferred mode"><select value={form.mode} onChange={e=>updateForm('mode',e.target.value)}>{['Ranked Multiplayer','Search & Destroy','Hardpoint','Domination','Battle Royale','Scrims / Competitive','Casual / Mixed'].map(v=><option key={v}>{v}</option>)}</select></Field>
@@ -331,8 +403,8 @@ export default function App() {
               <Field label="Previous community / team experience"><input value={form.experience} onChange={e=>updateForm('experience',e.target.value)} placeholder="Optional"/></Field>
             </div>
           </>}
-          <Field label="Why do you want to join Asylum Community? *"><textarea required minLength={10} maxLength={1000} rows={5} value={form.reason} onChange={e=>updateForm('reason',e.target.value)} placeholder="Tell us about your goals, teamwork, and what you can bring…"/></Field>
-          <div className="privacy"><ShieldCheck size={17}/> Your email and UID are for recruitment review only. Email is not shown on the public roster.</div>
+          <Field label="Why do you want to join ASY? *"><textarea required minLength={10} maxLength={1000} rows={3} value={form.reason} onChange={e=>updateForm('reason',e.target.value)} placeholder="A few sentences are enough…"/></Field>
+          <div className="privacy"><ShieldCheck size={17}/> Profile links and IDs are for recruitment review only. Never share passwords or login codes.</div>
           <button className="primary" disabled={busy||intakeFull}>{busy?'Submitting…':intakeFull?'Applications closed':'Submit application'} <ArrowRight size={16}/></button>
         </form></section>}
       {page==='status'&&<section className="page narrow"><Heading kicker="02 / APPLICATION STATUS" title={<>CHECK YOUR <em>STATUS.</em></>} desc="Check your progress with your tracking code and the same email address used on your application."/>
@@ -401,10 +473,17 @@ export default function App() {
           <div className="tools"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search IGN, UID, email, code…"/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All statuses</option>{statuses.map(stage=><option key={stage} value={stage}>{labels[stage]}</option>)}</select><button className="secondary" onClick={()=>void loadApplications()}>Refresh</button></div>
           <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'CASUAL'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
           {selected&&<div className="panel detail"><header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
-            <div className="details">{[['Application type',selected.application_type==='referral'?'Referral':'Casual'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank],['Main role',selected.main_role],['Mode',selected.preferred_mode],['Availability',selected.availability],['Community / team experience',selected.clan_experience||'Not provided']].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
+            <div className="details">{[['Application type',selected.application_type==='referral'?'Referral':'Casual'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank],['Main role',selected.main_role],['Mode',selected.preferred_mode],['Availability',selected.availability],['Community / team experience',selected.clan_experience||'Not provided']].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
+            <section className="panel admin-profile-links">
+              <div><small className="kicker">PROFILE LINKS</small><h3>Applicant social profiles</h3></div>
+              <div className="admin-profile-link-grid">
+                <div><small>Facebook</small>{selected.applicant_facebook_url?<a href={selected.applicant_facebook_url} target="_blank" rel="noreferrer">Open profile <ArrowRight size={13}/></a>:<span>Not provided</span>}</div>
+                <div><small>TikTok</small>{selected.applicant_tiktok_url?<a href={selected.applicant_tiktok_url} target="_blank" rel="noreferrer">Open profile <ArrowRight size={13}/></a>:<span>Not provided</span>}</div>
+              </div>
+            </section>
             <div className="reason"><b>Why they want to join</b><p>{selected.reason}</p></div>
             <section className="panel admin-evidence">
-              <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each submitted screenshot or request a correction with a clear note. Only database-verified approval of every required proof unlocks the next stage. For the Membership Form, manually verify the form record when needed because of the reported MGC form issue. Before marking an applicant eligible for the Screening GC, confirm the CODM proof visibly shows the ASY tag after the IGN. The invite itself remains a manual staff action.</p>
+              <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each proof or request a correction with a note. Every required proof must be approved before the next stage opens.</p>
               {selectedEvidence.map(item=><article className="admin-evidence-item" key={item.requirement_key}>
                 <div className="admin-evidence-title"><div><strong>{item.requirement_label}</strong><small>Stage {item.stage_number} · {({locked:'Locked',not_submitted:'Awaiting upload',pending:'Pending review',approved:'Approved',needs_correction:'Needs correction'} as Record<string,string>)[item.status]||item.status}</small>{item.file_name&&<small>{item.file_name} · {item.file_size_bytes?Math.round(item.file_size_bytes/1024)+' KB':''}</small>}{item.submitted_at&&<small>Submitted: {new Date(item.submitted_at).toLocaleString()}</small>}{item.reviewed_at&&<small>Reviewed: {new Date(item.reviewed_at).toLocaleString()}{item.reviewed_by_email?' · '+item.reviewed_by_email:''}</small>}{item.applicant_note&&<small>Applicant note: {item.applicant_note}</small>}</div>
                   {item.storage_path&&<button type="button" className="secondary compact-button" onClick={()=>void openEvidence(item.storage_path!)}>View private proof</button>}
@@ -413,11 +492,26 @@ export default function App() {
                 {item.status==='needs_correction'&&<p className="correction-note">Correction requested. The applicant can upload a replacement at the current step.</p>}
               </article>)}
               {selected.workflow_step==='eligibility_review'&&<button type="button" className="primary full" disabled={busy} onClick={()=>void advanceApplicationWorkflow(selected,'tag_proofs')}>Approve eligibility & unlock Step 1 <ArrowRight size={15}/></button>}
-              {selected.workflow_step==='final_review'&&<button type="button" className="primary full" disabled={busy} onClick={()=>void advanceApplicationWorkflow(selected,'screening_gc_ready')}>Complete final double-check · mark Screening GC ready <CheckCircle2 size={15}/></button>}
+              {selected.workflow_step==='final_review'&&<><button type="button" className="primary full" disabled={busy||selected.mgc_verification_status!=='verified'||!selected.mgc_applicant_contacted||!selected.mgc_checked_at||!selected.mgc_verification_notes?.trim()} onClick={()=>void advanceApplicationWorkflow(selected,'screening_gc_ready')}>Mark Screening GC ready <CheckCircle2 size={15}/></button>{selected.mgc_verification_status!=='verified'&&<small className="mgc-unavailable-note">Complete the MGC check and confirm applicant contact below first.</small>}</>}
               {selected.workflow_step==='screening_gc_ready'&&<p className="success-note">All required evidence is approved. The final recruitment decision is ready.</p>}
             </section>
-            <Field label="Private reviewer notes"><textarea rows={3} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Internal notes — not shown to applicant"/></Field>
-            <div className="action-row"><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'reviewing')}>Mark in review</button><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'waitlisted')}>Waitlist</button><button className="danger" disabled={busy} onClick={()=>void updateApplication(selected,'rejected')}>Reject</button><button className="primary" disabled={busy||selected.workflow_step!=='screening_gc_ready'} onClick={()=>void updateApplication(selected,'accepted')}>{selected.workflow_step==='screening_gc_ready'?'Accept + add member':'Complete all screening steps first'} <CheckCircle2 size={15}/></button></div>
+            <section className="panel mgc-review">
+              <div className="mgc-review-head">
+                <div><small className="kicker">FINAL MANUAL CHECK</small><h2>MGC / Membership Form</h2><p>Contact the applicant and double-check their form manually. The MGC form may contain incorrect records.</p></div>
+                <span className={'mgc-status-badge '+selected.mgc_verification_status}>{mgcStatusLabels[selected.mgc_verification_status]}</span>
+              </div>
+              {selected.mgc_checked_at&&<p className="mgc-audit-line">Last updated by {selected.mgc_checked_by_email||'recruiter'} · {new Date(selected.mgc_checked_at).toLocaleString()}</p>}
+              <label className="screening-check mgc-contact-check"><input type="checkbox" checked={mgcContactConfirmed} onChange={event=>setMgcContactConfirmed(event.target.checked)}/><span>I have spoken with the applicant.</span></label>
+              <Field label="MGC double-check note"><textarea rows={2} maxLength={1000} value={mgcNotes} onChange={event=>setMgcNotes(event.target.value)} placeholder="Example: confirmed IGN and details with applicant."/></Field>
+              {selected.workflow_step!=='final_review'&&selected.workflow_step!=='screening_gc_ready'&&selected.workflow_step!=='complete'&&<p className="muted mgc-unavailable-note">Complete and approve the required proof stages before confirming MGC.</p>}
+              <div className="mgc-actions">
+                <button type="button" className="secondary" disabled={busy} onClick={()=>void saveMgcVerification('contact_needed')}>Contact needed</button>
+                <button type="button" className="danger" disabled={busy} onClick={()=>void saveMgcVerification('issue_found')}>Flag form issue</button>
+                <button type="button" className="primary" disabled={busy||selected.workflow_step!=='final_review'||!mgcContactConfirmed||!mgcNotes.trim()} onClick={()=>void saveMgcVerification('verified')}>Confirm MGC checked <CheckCircle2 size={15}/></button>
+              </div>
+            </section>
+            <Field label="Private reviewer notes"><textarea rows={2} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Internal notes — not shown to applicant"/></Field>
+            <div className="action-row"><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'reviewing')}>Mark in review</button><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'waitlisted')}>Waitlist</button><button className="danger" disabled={busy} onClick={()=>void updateApplication(selected,'rejected')}>Reject</button><button className="primary" disabled={busy||selected.workflow_step!=='screening_gc_ready'||selected.mgc_verification_status!=='verified'||!selected.mgc_applicant_contacted||!selected.mgc_checked_at||!selected.mgc_verification_notes?.trim()} onClick={()=>void updateApplication(selected,'accepted')}>{selected.workflow_step==='screening_gc_ready'&&selected.mgc_verification_status==='verified'?'Accept + add member':'Complete proofs and MGC check first'} <CheckCircle2 size={15}/></button></div>
             <div className="workflow"><div className="workflow-card"><h3><CalendarClock size={17}/> Schedule interview</h3><form onSubmit={scheduleInterview}><Field label="Date and time"><input type="datetime-local" required value={interviewAt} onChange={e=>setInterviewAt(e.target.value)}/></Field><Field label="Channel"><select value={interviewChannel} onChange={e=>setInterviewChannel(e.target.value)}><option>Discord</option><option>In-game voice</option><option>Other</option></select></Field><Field label="Details / invite"><input value={interviewDetails} onChange={e=>setInterviewDetails(e.target.value)} placeholder="Channel or meeting notes"/></Field><button className="secondary full" disabled={busy}>Save interview</button></form></div>
               <div className="workflow-card"><h3><Crosshair size={17}/> Record tryout</h3><form onSubmit={saveTryout}><Field label="Tryout date"><input type="datetime-local" value={tryoutAt} onChange={e=>setTryoutAt(e.target.value)}/></Field><Field label="Mode"><select value={tryoutMode} onChange={e=>setTryoutMode(e.target.value)}>{['Ranked','Scrim','Search & Destroy','Hardpoint','Battle Royale'].map(v=><option key={v}>{v}</option>)}</select></Field><div className="form-grid compact"><Field label="Score /100"><input type="number" min="0" max="100" value={tryoutScore} onChange={e=>setTryoutScore(e.target.value)} placeholder="Optional"/></Field><Field label="Result"><select value={tryoutResult} onChange={e=>setTryoutResult(e.target.value)}><option value="pending">Pending</option><option value="pass">Pass</option><option value="fail">Fail</option><option value="reschedule">Reschedule</option></select></Field></div><Field label="Tryout notes"><textarea rows={2} value={tryoutNotes} onChange={e=>setTryoutNotes(e.target.value)} placeholder="Performance, comms, teamwork…"/></Field><button className="secondary full" disabled={busy}>Save tryout</button></form></div></div>
           </div>}
@@ -443,98 +537,89 @@ function Home({intakeSettings,onApply,onRoster,onTrack,onGuide}:{intakeSettings:
     <article className="community-tool"><span className="community-tool-icon"><Swords size={20}/></span><small className="tool-state planned">PLANNED</small><h3>Scrim hub</h3><p>Centralize scrim schedules, team requests, and match results when management is ready.</p><span className="tool-note">Scheduling and match records are not enabled yet.</span></article>
     <article className="community-tool"><span className="community-tool-icon"><ShieldCheck size={20}/></span><small className="tool-state planned">PLANNED</small><h3>Player reports</h3><p>A structured report form with evidence, context, and private management review.</p><span className="tool-note">Use the current official staff channel until this tool is enabled.</span></article>
   </div></section>
-  <section className="journey"><div className="journey-heading"><small>THE ASY RECRUITMENT ROADMAP</small><h2>FROM APPLICATION TO SCREENING GC. <em>SIX CLEAR STEPS.</em></h2><p>Everything is tracked in one place. Your next step unlocks only after the required review is complete.</p></div><div className="journey-grid"><article className="journey-card"><span className="journey-number">01</span><ClipboardList size={22}/><h3>Choose your route</h3><p>Select Casual or Referral Recruitment, then submit your player and contact details.</p></article><article className="journey-card"><span className="journey-number">02</span><ShieldCheck size={22}/><h3>Eligibility review</h3><p>A recruiter checks age, Legendary Series, Facebook name, ASY tag agreement, and roster-photo readiness.</p></article><article className="journey-card"><span className="journey-number">03</span><Upload size={22}/><h3>Upload private proofs</h3><p>Submit only the screenshots requested at each unlocked stage. Referral applicants also provide their referral conversation proof.</p></article><article className="journey-card"><span className="journey-number">04</span><CheckCircle2 size={22}/><h3>Review or correction</h3><p>Recruiters approve each proof or leave correction feedback. All required items must be approved before the next stage unlocks.</p></article><article className="journey-card"><span className="journey-number">05</span><ClipboardList size={22}/><h3>Final manual checks</h3><p>The team double-checks the Membership Form and manually verifies the MGC record when needed.</p></article><article className="journey-card"><span className="journey-number">06</span><ShieldCheck size={22}/><h3>Screening GC eligibility</h3><p>A recruiter confirms the CODM ASY tag and records eligibility. GC invitations and final decisions remain manual.</p></article></div><div className="journey-footer"><p><ShieldCheck size={17}/> Keep your tracking code and application email private. Submitting a form or screenshot does not guarantee acceptance.</p><button className="text-link" onClick={onTrack}>Already applied? Track your application <ArrowRight size={15}/></button></div></section>
+  <section className="journey"><div className="journey-heading"><small>HOW RECRUITMENT WORKS</small><h2>APPLY. <em>UPLOAD. GET REVIEWED.</em></h2><p>Three simple steps. Recruiters guide you through the rest.</p></div><div className="journey-grid"><article className="journey-card"><span className="journey-number">01</span><ClipboardList size={22}/><h3>Apply</h3><p>Choose Casual or Referral and send your details.</p></article><article className="journey-card"><span className="journey-number">02</span><Upload size={22}/><h3>Upload proofs</h3><p>Track your application and upload each stage when it unlocks.</p></article><article className="journey-card"><span className="journey-number">03</span><ShieldCheck size={22}/><h3>Final check</h3><p>Recruiters review your proofs and contact you for the MGC double-check.</p></article></div><div className="journey-footer"><p><ShieldCheck size={17}/> Keep your tracking code private. Applying does not guarantee acceptance.</p><button className="text-link" onClick={onTrack}>Already applied? Track your application <ArrowRight size={15}/></button></div></section>
   <section className="callout"><div><small>YOUR NEXT MOVE</small><h2>SHOW US WHAT YOU BRING.</h2><p>Tell us your role, your goals, and how you play.</p></div><button className="primary" onClick={onApply}>Start application <ArrowRight size={16}/></button></section>
  </>;
 }
 function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeSettings|null;onApply:()=>void;onTrack:()=>void}) {
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   return <section className="page screening-page">
-    <Heading kicker="04 / ONE-STOP RECRUITMENT GUIDE" title={<>THE ASY <em>SCREENING ROADMAP.</em></>} desc="Check the eligibility requirements, then follow each evidence stage in Track application. The guide below explains what each stage asks for."/>
+    <Heading kicker="ASY RECRUITMENT" title={<>YOUR <em>CHECKLIST.</em></>} desc="Three stages. Short checklist. Upload proofs in Track application."/>
     <div className={'panel guide-intake '+(intakeFull?'closed':'open')}>
       <span className="intake-dot"/>
       <div>
-        <small className="kicker">CURRENT RECRUITMENT STATUS</small>
-        <strong>{!intakeSettings?'Checking intake status…':!intakeSettings.intake_open?'Applications are temporarily closed':intakeSettings.application_limit!==null&&intakeSettings.application_count>=intakeSettings.application_limit?'Application limit reached':'Recruitment intake is open'}</strong>
-        <p>{intakeSettings?.application_limit!==null&&intakeSettings? `${intakeSettings.application_count} of ${intakeSettings.application_limit} application slots used in this intake.`:'Review the requirements before applying. Submitting an application does not guarantee acceptance.'}</p>
+        <small className="kicker">RECRUITMENT STATUS</small>
+        <strong>{!intakeSettings?'Checking status…':!intakeSettings.intake_open?'Applications are closed':intakeSettings.application_limit!==null&&intakeSettings.application_count>=intakeSettings.application_limit?'Application limit reached':'Applications are open'}</strong>
+        <p>Submit once. Recruiters review every application.</p>
       </div>
     </div>
     <section className="panel guide-eligibility">
       <div className="guide-section-heading">
-        <small className="kicker">STEP 01 / BEFORE APPLYING</small>
-        <h2>Eligibility requirements</h2>
-        <p>These are the minimum requirements confirmed in the application form. This guide is informational; your application form records your confirmations.</p>
+        <small className="kicker">BEFORE YOU APPLY</small>
+        <h2>Check eligibility</h2>
       </div>
       <div className="eligibility-grid">
-        <article className="eligibility-item"><span>01</span><div><strong>Age</strong><p>You must be at least 16 years old.</p></div></article>
-        <article className="eligibility-item"><span>02</span><div><strong>Legendary Series</strong><p>At least 6 Legendary Series in Battle Royale (BR) or Multiplayer (MP).</p></div></article>
-        <article className="eligibility-item"><span>03</span><div><strong>Facebook name</strong><p>Use an appropriate Facebook name; random or inappropriate names are not accepted.</p></div></article>
-        <article className="eligibility-item"><span>04</span><div><strong>ASY tag</strong><p>Agree to add the ASY tag after your IGN on your main CODM and TikTok accounts.</p></div></article>
-        <article className="eligibility-item"><span>05</span><div><strong>Roster photo</strong><p>Be ready to submit a roster photo using the admin's reference if requested.</p></div></article>
+        <article className="eligibility-item"><span>01</span><div><strong>Age 16+</strong><p>Confirm you meet the minimum age.</p></div></article>
+        <article className="eligibility-item"><span>02</span><div><strong>6 Legendary Series</strong><p>In BR or MP.</p></div></article>
+        <article className="eligibility-item"><span>03</span><div><strong>Facebook name</strong><p>Use an appropriate name.</p></div></article>
+        <article className="eligibility-item"><span>04</span><div><strong>ASY tag</strong><p>After your IGN on CODM and TikTok.</p></div></article>
+        <article className="eligibility-item"><span>05</span><div><strong>Roster photo</strong><p>Use the admin reference.</p></div></article>
       </div>
-      <div className="guide-action-row"><span>Ready to apply?</span><p>Submit these details in the application form, then save your tracking code and email.</p></div>
     </section>
     <div className="guide-screening-heading">
-      <small className="kicker">STEP 02 / SCREENING WORKFLOW</small>
-      <h2>Proof uploads, <em>one stage at a time.</em></h2>
-      <p>You do not tick these items off here. After you apply, go to <strong>Track application</strong>, enter your tracking code and application email, and upload the requested proofs when each stage unlocks.</p>
+      <small className="kicker">SCREENING / 3 STEPS</small>
+      <h2>What to <em>submit.</em></h2>
+      <p>Apply first. Open Track application with your tracking code and the same email. Upload when a stage unlocks.</p>
     </div>
     <div className="guide-stage-grid">
       <article className="guide-stage">
-        <div className="guide-stage-top"><span>STAGE 01</span><small>TAG VERIFICATION</small></div>
+        <div className="guide-stage-top"><span>01</span><small>CASUAL + REFERRAL</small></div>
         <h3>CODM &amp; TikTok tags</h3>
-        <p>Upload screenshots showing the ASY tag after your IGN on both accounts:</p>
         <ul className="guide-list">
-          <li>Main CODM account with ASY after IGN</li>
-          <li>TikTok account with ASY after IGN</li>
-          <li>Referral applicants: upload a screenshot of the conversation with the member who referred you</li>
+          <li>Screenshot of CODM with ASY after IGN</li>
+          <li>Screenshot of TikTok with ASY after IGN</li>
+          <li><strong>Referral only:</strong> screenshot of your conversation with the referring member</li>
         </ul>
-        <div className="guide-stage-foot">Unlocks after recruiter eligibility review.</div>
+        <div className="guide-stage-foot">Recruiter approval unlocks Step 2.</div>
       </article>
       <article className="guide-stage">
-        <div className="guide-stage-top"><span>STAGE 02</span><small>COMMUNITY FOLLOW</small></div>
-        <h3>Follow &amp; membership form</h3>
-        <p>When Stage 2 unlocks, submit these proofs:</p>
+        <div className="guide-stage-top"><span>02</span><small>CASUAL + REFERRAL</small></div>
+        <h3>Follow &amp; form</h3>
         <ul className="guide-list">
-          <li>Screenshot showing you follow the official ASY Community TikTok</li>
-          <li>Screenshot of the completed Membership Form with your IGN visible</li>
+          <li>Screenshot showing you follow the official ASY TikTok</li>
+          <li>Completed Membership Form screenshot with your IGN visible</li>
         </ul>
-        <div className="guide-stage-foot">Unlocks after all Stage 1 proofs are approved.</div>
+        <div className="guide-stage-foot">Recruiter approval unlocks Step 3.</div>
       </article>
       <article className="guide-stage">
-        <div className="guide-stage-top"><span>STAGE 03</span><small>DISCORD &amp; ROSTER</small></div>
-        <h3>Nickname &amp; roster photo</h3>
-        <p>When Stage 3 unlocks, complete the final profile proofs:</p>
+        <div className="guide-stage-top"><span>03</span><small>CASUAL + REFERRAL</small></div>
+        <h3>Discord &amp; roster photo</h3>
         <ul className="guide-list">
-          <li>Set your official ASY Discord server nickname to <strong>IGN ASY</strong></li>
-          <li>Upload your roster photo using the admin reference</li>
-          <li>Include your Facebook name in the photo caption</li>
+          <li>Set your Discord server nickname to <strong>IGN ASY</strong></li>
+          <li>Post your roster photo in the Discord channel named by staff</li>
+          <li>Put your Facebook name in the caption, then upload the requested proof in Track application</li>
         </ul>
-        <div className="guide-stage-foot">Unlocks after all Stage 2 proofs are approved.</div>
+        <div className="guide-stage-foot">Final MGC check and applicant contact are manual.</div>
       </article>
     </div>
     <section className="panel discord-howto">
-      <div className="guide-section-heading"><small className="kicker">DISCORD QUICK GUIDE</small><h2>Set your nickname and ask for the right role</h2><p>Use your server nickname so recruiters can match your Discord account with your application.</p></div>
+      <div className="guide-section-heading"><small className="kicker">DISCORD QUICK GUIDE</small><h2>Username &amp; role</h2></div>
       <ol className="discord-steps">
-        <li><span>01</span><div><strong>Join the official ASY Discord</strong><p>Use the official invite below, then open the server.</p></div></li>
-        <li><span>02</span><div><strong>Set your server nickname</strong><p>Open your server profile or member menu and change the nickname to <b>IGN ASY</b> using your exact in-game name.</p></div></li>
-        <li><span>03</span><div><strong>Follow staff role instructions</strong><p>Check the pinned instructions in the recruitment or verification channel. If the required role does not appear, ask an authorized staff member. Never share your password or login code.</p></div></li>
+        <li><span>01</span><div><strong>Join ASY Discord</strong><p>Use the official invite below.</p></div></li>
+        <li><span>02</span><div><strong>Set your nickname</strong><p>Open the server profile/menu and use <b>IGN ASY</b>.</p></div></li>
+        <li><span>03</span><div><strong>Get your role</strong><p>Follow the pinned staff instructions or ask a recruiter if you cannot see the right role.</p></div></li>
       </ol>
     </section>
     <section className="panel guide-links">
-      <div className="guide-section-heading">
-        <small className="kicker">STEP 03 / OFFICIAL RESOURCES</small>
-        <h2>Official links</h2>
-        <p>Use these links for the official community accounts and forms.</p>
-      </div>
+      <div className="guide-section-heading"><small className="kicker">OFFICIAL LINKS</small><h2>Open a resource</h2></div>
       <div className="guide-link-grid">
-        <a href="https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1" target="_blank" rel="noreferrer"><b>ASY Community TikTok</b><span>Follow the official account <ArrowRight size={14}/></span></a>
-        <a href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer"><b>Membership Form</b><span>Complete the membership form <ArrowRight size={14}/></span></a>
-        <a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer"><b>Official ASY Discord</b><span>Nickname, roster photo, and staff guidance <ArrowRight size={14}/></span></a>
+        <a href="https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1" target="_blank" rel="noreferrer"><b>ASY Community TikTok</b><span>Follow account <ArrowRight size={14}/></span></a>
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer"><b>Membership Form</b><span>Complete the form <ArrowRight size={14}/></span></a>
+        <a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer"><b>Official ASY Discord</b><span>Nickname &amp; role guide <ArrowRight size={14}/></span></a>
       </div>
     </section>
-    <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Important: follow the live status page</strong><p>This guide explains the process but does not approve or submit evidence. Your actual upload controls, recruiter feedback, and current stage appear in Track application. Upload privately only when a stage unlocks, wait for review, and keep your tracking code and application email private. Final acceptance remains a recruiter decision. The Screening GC invite is sent only when your CODM account already shows the ASY tag.</p></div></section>
-    <div className="guide-cta-row"><div><strong>Ready for your next step?</strong><p>Start a new application or return to your live screening progress.</p></div><div className="guide-cta-actions"><button className="primary" type="button" onClick={onApply}>Apply to join <ArrowRight size={15}/></button><button className="secondary" type="button" onClick={onTrack}>Track application <ArrowRight size={15}/></button></div></div>
+    <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Final check</strong><p>Recruiters will contact you to double-check the Membership Form/MGC because of the reported form bug. No GC invite or acceptance is automatic.</p></div></section>
+    <div className="guide-cta-row"><div><strong>Ready?</strong><p>Apply or track your current screening.</p></div><div className="guide-cta-actions"><button className="primary" type="button" onClick={onApply}>Apply <ArrowRight size={15}/></button><button className="secondary" type="button" onClick={onTrack}>Track application <ArrowRight size={15}/></button></div></div>
   </section>;
 }
 

@@ -317,3 +317,38 @@
   .admin-page .tools{margin-top:16px}
 }
 
+/* Applicant profile links and manual MGC verification */
+.admin-profile-links,.mgc-review{margin-top:18px;padding:clamp(16px,2.5vw,24px);border-color:#342d38;background:linear-gradient(145deg,#151318,#101014)}
+.admin-profile-links>div:first-child{margin-bottom:14px}
+.admin-profile-links h3{margin:5px 0 0;color:#f4eff5;font-size:16px;line-height:1.4}
+.admin-profile-link-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.admin-profile-link-grid>div{display:grid;gap:7px;min-width:0;padding:13px;border:1px solid #332d36;border-radius:7px;background:#0c0c10}
+.admin-profile-link-grid small{color:#98909d;font-size:10px;text-transform:uppercase;letter-spacing:.7px}
+.admin-profile-link-grid span{color:#d0c8d3;font-size:11px}
+.admin-profile-link-grid a{display:inline-flex;align-items:center;gap:7px;width:max-content;max-width:100%;color:#ff838d;font-size:11px;text-decoration:none;overflow-wrap:anywhere}
+.admin-profile-link-grid a:hover{color:#ffc0c5;text-decoration:underline}
+.mgc-review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}
+.mgc-review-head>div{min-width:0}
+.mgc-review-head h2{margin:7px 0;color:#f5eff6;font-size:clamp(19px,2.5vw,24px);line-height:1.25}
+.mgc-review-head p{max-width:650px;margin:0;color:#aaa2af;font-size:11px;line-height:1.7}
+.mgc-status-badge{display:inline-flex;align-items:center;justify-content:center;flex:none;max-width:100%;padding:8px 11px;border:1px solid #443c48;border-radius:999px;background:#19171d;color:#c9c1cf;font-size:10px;font-weight:800;line-height:1.5;text-align:center}
+.mgc-status-badge.not_checked{border-color:#443c48;background:#19171d;color:#c9c1cf}
+.mgc-status-badge.contact_needed{border-color:#72572d;background:#241b10;color:#ffd28f}
+.mgc-status-badge.issue_found{border-color:#78333d;background:#2a1217;color:#ff9aa5}
+.mgc-status-badge.verified{border-color:#286044;background:#10231a;color:#9ee7bc}
+.mgc-audit-line{margin:0 0 14px;color:#928996;font-size:10px;line-height:1.7;overflow-wrap:anywhere}
+.mgc-contact-check{margin:0 0 14px}
+.mgc-review .field{margin-bottom:14px}
+.mgc-review .field textarea{min-height:72px}
+.mgc-unavailable-note{display:block;margin:4px 0 12px;color:#c5a46d;font-size:10px;line-height:1.7}
+.mgc-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.mgc-actions>button{min-width:0;min-height:42px;justify-content:center;padding:10px;font-size:10px;line-height:1.5;white-space:normal}
+.mgc-actions>.danger{border:1px solid #77323d;background:#301419;color:#ff9ba4}
+.mgc-actions>.danger:hover{background:#481b22}
+@media(max-width:720px){
+  .admin-profile-link-grid{grid-template-columns:minmax(0,1fr)}
+  .mgc-review-head{flex-direction:column;align-items:flex-start;gap:10px}
+  .mgc-actions{grid-template-columns:minmax(0,1fr)}
+  .mgc-actions>button{width:100%}
+}
+
