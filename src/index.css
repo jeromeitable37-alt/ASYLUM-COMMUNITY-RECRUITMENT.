@@ -55,3 +55,55 @@
 .chat-disclaimer{margin:0;padding:0 13px 10px;background:#121015;color:#847781;font-size:9px;line-height:1.5}
 @media(max-width:760px){.chat-support{right:12px;bottom:12px}.chat-panel{width:min(390px,calc(100vw - 24px));height:min(570px,calc(100dvh - 92px));min-height:340px}.chat-launcher{min-height:48px;padding:0 15px}}
 @media(prefers-reduced-motion:reduce){.chat-launcher{transition:none}}
+
+
+/* One-stop, stepwise recruitment workflow */
+.form-helper{margin:-6px 0 20px;font-size:12px;line-height:1.7}
+.eligibility-check{margin:12px 0 18px}
+.applicant-progress{margin-top:20px}
+.applicant-progress-head h2{font-size:clamp(21px,3vw,30px);margin:8px 0}
+.applicant-progress-head p{color:#bdb4be;font-size:12px;line-height:1.8;max-width:720px}
+.applicant-evidence-list{display:grid;gap:10px;margin-top:18px}
+.applicant-evidence-item{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:14px;border:1px solid #2c262f;border-radius:12px;background:#111014}
+.applicant-evidence-item.locked{opacity:.65;background:#0e0d10}
+.applicant-evidence-copy{display:grid;gap:6px;min-width:0}
+.applicant-evidence-copy strong{font-size:12px;line-height:1.6}
+.applicant-evidence-copy small{color:#9a909d;font-size:10px;overflow-wrap:anywhere}
+.evidence-status{display:inline-flex;width:max-content;max-width:100%;padding:4px 7px;border-radius:999px;border:1px solid #413842;color:#c9bdcb;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+.evidence-status.pending{border-color:#75572a;color:#ffd18d;background:#241b10}
+.evidence-status.approved{border-color:#215c42;color:#90e0b5;background:#10231b}
+.evidence-status.needs_correction{border-color:#823e49;color:#ff9aa5;background:#2b1218}
+.evidence-status.locked{color:#a59ca8;background:#151318}
+.upload-control{position:relative;display:flex;align-items:center;justify-content:center;flex:none;min-height:38px;padding:0 12px;border:1px solid #a93543;border-radius:9px;background:#2b1118;color:#ff9aa5;font-size:10px;font-weight:850;cursor:pointer;overflow:hidden}
+.upload-control input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.upload-control:has(input:disabled){opacity:.55;cursor:wait}
+.correction-note{color:#ffacb4;font-size:11px;line-height:1.7;margin:0}
+.admin-evidence{margin:20px 0;padding:16px;background:#100e12;border-color:#3d2934}
+.admin-evidence h2{margin:8px 0;font-size:23px}
+.admin-evidence-item{display:grid;gap:11px;padding:14px 0;border-top:1px solid #2e242d}
+.admin-evidence-title{display:flex;justify-content:space-between;align-items:center;gap:14px}
+.admin-evidence-title>div{display:grid;gap:5px;min-width:0}
+.admin-evidence-title strong{font-size:12px;line-height:1.6}
+.admin-evidence-title small{font-size:10px;color:#a79aa8;overflow-wrap:anywhere}
+.compact-button{flex:none;padding:9px 10px;font-size:10px}
+.admin-evidence .action-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.success-note{border:1px solid #285b43;border-radius:9px;background:#102218;color:#98e0b6;padding:12px;font-size:11px;line-height:1.7}
+.community-tools{margin:44px 0}
+.community-tools-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin-top:20px}
+.community-tool{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:18px;border:1px solid #30262f;border-radius:13px;background:linear-gradient(145deg,#151116,#0d0c0f)}
+.community-tool.active{border-color:#84313e;box-shadow:inset 0 1px 0 #ff596416}
+.community-tool-icon{display:grid;place-items:center;width:38px;height:38px;border:1px solid #45252d;border-radius:10px;background:#1f1016;color:#fa5664}
+.tool-state{font-size:8px;font-weight:900;letter-spacing:1px;color:#ff929b}
+.tool-state.planned{color:#aaa0aa}
+.community-tool h3{margin:0;font-size:16px;line-height:1.35}
+.community-tool p{margin:0;min-height:74px;color:#b9b0bb;font-size:11px;line-height:1.7}
+.community-tool .text-link{margin-top:auto}
+.tool-note{font-size:10px;color:#8e8491;line-height:1.6}
+.intake-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:20px 0;padding:16px;border:1px solid #2a5c42;background:#102118}
+.intake-banner.closed{border-color:#853541;background:#281116}
+.intake-banner strong{font-size:12px}
+.intake-banner p{margin:6px 0 0;font-size:11px;line-height:1.6;color:#bdb3bd}
+.intake-dot{width:9px;height:9px;border-radius:50%;flex:none;background:#4ad389;box-shadow:0 0 12px #4ad38980}
+.intake-banner.closed .intake-dot{background:#f14b5b;box-shadow:0 0 12px #f14b5b80}
+@media(max-width:1000px){.community-tools-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.applicant-evidence-item,.admin-evidence-title{align-items:flex-start;flex-direction:column}.upload-control{min-height:42px;width:100%}.community-tools-grid{grid-template-columns:1fr}.community-tool p{min-height:0}.admin-evidence .action-row>*{flex:1}.compact-button{width:100%}}
