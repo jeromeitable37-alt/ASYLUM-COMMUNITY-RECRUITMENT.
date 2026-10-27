@@ -128,15 +128,15 @@ export default function App() {
   }
   async function reviewEvidence(item:Evidence,status:'approved'|'needs_correction'){
     if(!selected||!item.id)return;
-    setBusy(true);
     const reviewerNotes=evidenceNotes[item.id]?.trim()||null;
-    if(status==='needs_correction'&&!reviewerNotes){notify('Add a short correction note so the applicant knows what to fix.',true);return;}
+    if(status==='needs_correction'&&!reviewerNotes){notify('Add a correction note first so the applicant knows exactly what to fix.',true);return;}
+    setBusy(true);
     const {error}=await supabase.from('asy_recruitment_evidence').update({status,reviewer_notes:reviewerNotes,reviewed_by_email:session?.user.email||null,reviewed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',item.id);
     setBusy(false);
-    if(error){notify('Could not update this requirement. Check recruiter access.',true);return;}
+    if(error){notify('Could not update this requirement. Check recruiter permissions.',true);return;}
     await loadSelectedEvidence(selected.id);
     await loadApplications();
-    notify(status==='approved'?'Requirement approved. The next step unlocks when all required items in this step are approved.':'Correction requested. The applicant can upload a replacement screenshot.');
+    notify(status==='approved'?'Proof approved. The next stage opens only when all required proofs in this stage are approved.':'Correction requested. The applicant can upload a replacement screenshot.');
   }
   async function openEvidence(path:string){
     const {data,error}=await supabase.storage.from('asy-recruitment-private').createSignedUrl(path,300);
@@ -232,7 +232,7 @@ export default function App() {
             const canUpload=currentStage===item.stage_number&&(item.status==='not_submitted'||item.status==='needs_correction');
             const statusLabel=({locked:'Locked',not_submitted:'Awaiting upload',pending:'Pending recruiter review',approved:'Approved',needs_correction:'Needs correction'} as Record<string,string>)[item.status]||item.status;
             return <article className={'applicant-evidence-item '+item.status} key={item.requirement_key}>
-              <div className="applicant-evidence-copy"><strong>{item.requirement_label}</strong><span className={'evidence-status '+item.status}>{statusLabel}</span>{item.file_name&&<small>Uploaded file: {item.file_name}</small>}{item.reviewer_notes&&item.status==='needs_correction'&&<p className="correction-note">Recruiter note: {item.reviewer_notes}</p>}</div>
+              <div className="applicant-evidence-copy"><strong>{item.requirement_label}</strong><span className={'evidence-status '+item.status}>{statusLabel}</span>{item.file_name&&<small>Uploaded file: {item.file_name}</small>}{item.submitted_at&&<small>Submitted: {new Date(item.submitted_at).toLocaleString()}</small>}{item.reviewed_at&&<small>Reviewed: {new Date(item.reviewed_at).toLocaleString()}</small>}{item.reviewer_notes&&item.status==='needs_correction'&&<p className="correction-note">Recruiter feedback: {item.reviewer_notes}</p>}</div>
               {canUpload&&<><Field label="Optional note for recruiter"><textarea rows={2} maxLength={500} value={applicantEvidenceNotes[item.requirement_key]??item.applicant_note??''} onChange={e=>setApplicantEvidenceNotes(old=>({...old,[item.requirement_key]:e.target.value}))} placeholder="Add context for this proof, if needed…"/></Field><label className="upload-control"><span>{evidenceUploadKey===item.requirement_key?'Uploading…':item.status==='needs_correction'?'Upload replacement':'Choose screenshot'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadRequirement(item.requirement_key,file);e.currentTarget.value='';}}/></label></>}
             </article>;
           })}</div>
@@ -261,9 +261,9 @@ export default function App() {
             <div className="details">{[['Application type',selected.application_type==='referral'?'Referral':'Casual'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank],['Main role',selected.main_role],['Mode',selected.preferred_mode],['Availability',selected.availability],['Community / team experience',selected.clan_experience||'Not provided']].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
             <div className="reason"><b>Why they want to join</b><p>{selected.reason}</p></div>
             <section className="panel admin-evidence">
-              <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each submitted screenshot. The database unlocks the next step only when every required item in this step is approved.</p>
+              <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each submitted screenshot or request a correction with a clear note. Only database-verified approval of every required proof unlocks the next stage. For the Membership Form, manually verify the form record when needed because of the reported MGC form issue. Before marking an applicant eligible for the Screening GC, confirm the CODM proof visibly shows the ASY tag after the IGN. The invite itself remains a manual staff action.</p>
               {selectedEvidence.map(item=><article className="admin-evidence-item" key={item.requirement_key}>
-                <div className="admin-evidence-title"><div><strong>{item.requirement_label}</strong><small>Stage {item.stage_number} · {item.status.replace('_',' ')}</small>{item.file_name&&<small>{item.file_name} · {item.file_size_bytes?Math.round(item.file_size_bytes/1024)+' KB':''}</small>}{item.applicant_note&&<small>Applicant note: {item.applicant_note}</small>}</div>
+                <div className="admin-evidence-title"><div><strong>{item.requirement_label}</strong><small>Stage {item.stage_number} · {({locked:'Locked',not_submitted:'Awaiting upload',pending:'Pending review',approved:'Approved',needs_correction:'Needs correction'} as Record<string,string>)[item.status]||item.status}</small>{item.file_name&&<small>{item.file_name} · {item.file_size_bytes?Math.round(item.file_size_bytes/1024)+' KB':''}</small>}{item.submitted_at&&<small>Submitted: {new Date(item.submitted_at).toLocaleString()}</small>}{item.reviewed_at&&<small>Reviewed: {new Date(item.reviewed_at).toLocaleString()}{item.reviewed_by_email?' · '+item.reviewed_by_email:''}</small>}{item.applicant_note&&<small>Applicant note: {item.applicant_note}</small>}</div>
                   {item.storage_path&&<button type="button" className="secondary compact-button" onClick={()=>void openEvidence(item.storage_path!)}>View private proof</button>}
                 </div>
                 {item.status==='pending'&&<><Field label="Feedback for applicant"><textarea rows={2} value={evidenceNotes[item.id||'']??item.reviewer_notes??''} onChange={e=>setEvidenceNotes(old=>({...old,[item.id||'']:e.target.value}))} placeholder="Optional note; add one if requesting correction"/></Field><div className="action-row"><button type="button" className="secondary" disabled={busy} onClick={()=>void reviewEvidence(item,'needs_correction')}>Request correction</button><button type="button" className="primary" disabled={busy} onClick={()=>void reviewEvidence(item,'approved')}>Approve proof <CheckCircle2 size={15}/></button></div></>}
@@ -369,6 +369,14 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
         </ul>
         <div className="guide-stage-foot">Unlocks after all Stage 2 proofs are approved.</div>
       </article>
+    <section className="panel discord-howto">
+      <div className="guide-section-heading"><small className="kicker">DISCORD QUICK GUIDE</small><h2>Set your nickname and ask for the right role</h2><p>Use your server nickname so recruiters can match your Discord account with your application.</p></div>
+      <ol className="discord-steps">
+        <li><span>01</span><div><strong>Join the official ASY Discord</strong><p>Use the official invite below, then open the server.</p></div></li>
+        <li><span>02</span><div><strong>Set your server nickname</strong><p>Open your server profile or member menu and change the nickname to <b>IGN ASY</b> using your exact in-game name.</p></div></li>
+        <li><span>03</span><div><strong>Follow staff role instructions</strong><p>Check the pinned instructions in the recruitment or verification channel. If the required role does not appear, ask an authorized staff member. Never share your password or login code.</p></div></li>
+      </ol>
+    </section>
     </div>
     <section className="panel guide-links">
       <div className="guide-section-heading">
