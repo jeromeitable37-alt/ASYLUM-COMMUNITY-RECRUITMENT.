@@ -544,91 +544,82 @@ function Home({intakeSettings,onApply,onRoster,onTrack,onGuide}:{intakeSettings:
 function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeSettings|null;onApply:()=>void;onTrack:()=>void}) {
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   return <section className="page screening-page">
-    <Heading kicker="04 / ONE-STOP RECRUITMENT GUIDE" title={<>THE ASY <em>SCREENING ROADMAP.</em></>} desc="Check the eligibility requirements, then follow each evidence stage in Track application. The guide below explains what each stage asks for."/>
+    <Heading kicker="ASY RECRUITMENT" title={<>YOUR <em>CHECKLIST.</em></>} desc="Three stages. Short checklist. Upload proofs in Track application."/>
     <div className={'panel guide-intake '+(intakeFull?'closed':'open')}>
       <span className="intake-dot"/>
       <div>
-        <small className="kicker">CURRENT RECRUITMENT STATUS</small>
-        <strong>{!intakeSettings?'Checking intake status…':!intakeSettings.intake_open?'Applications are temporarily closed':intakeSettings.application_limit!==null&&intakeSettings.application_count>=intakeSettings.application_limit?'Application limit reached':'Recruitment intake is open'}</strong>
-        <p>{intakeSettings?.application_limit!==null&&intakeSettings? `${intakeSettings.application_count} of ${intakeSettings.application_limit} application slots used in this intake.`:'Review the requirements before applying. Submitting an application does not guarantee acceptance.'}</p>
+        <small className="kicker">RECRUITMENT STATUS</small>
+        <strong>{!intakeSettings?'Checking status…':!intakeSettings.intake_open?'Applications are closed':intakeSettings.application_limit!==null&&intakeSettings.application_count>=intakeSettings.application_limit?'Application limit reached':'Applications are open'}</strong>
+        <p>Submit once. Recruiters review every application.</p>
       </div>
     </div>
     <section className="panel guide-eligibility">
       <div className="guide-section-heading">
-        <small className="kicker">STEP 01 / BEFORE APPLYING</small>
-        <h2>Eligibility requirements</h2>
-        <p>These are the minimum requirements confirmed in the application form. This guide is informational; your application form records your confirmations.</p>
+        <small className="kicker">BEFORE YOU APPLY</small>
+        <h2>Check eligibility</h2>
       </div>
       <div className="eligibility-grid">
-        <article className="eligibility-item"><span>01</span><div><strong>Age</strong><p>You must be at least 16 years old.</p></div></article>
-        <article className="eligibility-item"><span>02</span><div><strong>Legendary Series</strong><p>At least 6 Legendary Series in Battle Royale (BR) or Multiplayer (MP).</p></div></article>
-        <article className="eligibility-item"><span>03</span><div><strong>Facebook name</strong><p>Use an appropriate Facebook name; random or inappropriate names are not accepted.</p></div></article>
-        <article className="eligibility-item"><span>04</span><div><strong>ASY tag</strong><p>Agree to add the ASY tag after your IGN on your main CODM and TikTok accounts.</p></div></article>
-        <article className="eligibility-item"><span>05</span><div><strong>Roster photo</strong><p>Be ready to submit a roster photo using the admin's reference if requested.</p></div></article>
+        <article className="eligibility-item"><span>01</span><div><strong>Age 16+</strong><p>Confirm you meet the minimum age.</p></div></article>
+        <article className="eligibility-item"><span>02</span><div><strong>6 Legendary Series</strong><p>In BR or MP.</p></div></article>
+        <article className="eligibility-item"><span>03</span><div><strong>Facebook name</strong><p>Use an appropriate name.</p></div></article>
+        <article className="eligibility-item"><span>04</span><div><strong>ASY tag</strong><p>After your IGN on CODM and TikTok.</p></div></article>
+        <article className="eligibility-item"><span>05</span><div><strong>Roster photo</strong><p>Use the admin reference.</p></div></article>
       </div>
-      <div className="guide-action-row"><span>Ready to apply?</span><p>Submit these details in the application form, then save your tracking code and email.</p></div>
     </section>
     <div className="guide-screening-heading">
-      <small className="kicker">STEP 02 / SCREENING WORKFLOW</small>
-      <h2>Proof uploads, <em>one stage at a time.</em></h2>
-      <p>You do not tick these items off here. After you apply, go to <strong>Track application</strong>, enter your tracking code and application email, and upload the requested proofs when each stage unlocks.</p>
+      <small className="kicker">SCREENING / 3 STEPS</small>
+      <h2>What to <em>submit.</em></h2>
+      <p>Apply first. Open Track application with your tracking code and the same email. Upload when a stage unlocks.</p>
     </div>
     <div className="guide-stage-grid">
       <article className="guide-stage">
-        <div className="guide-stage-top"><span>STAGE 01</span><small>TAG VERIFICATION</small></div>
+        <div className="guide-stage-top"><span>01</span><small>CASUAL + REFERRAL</small></div>
         <h3>CODM &amp; TikTok tags</h3>
-        <p>Upload screenshots showing the ASY tag after your IGN on both accounts:</p>
         <ul className="guide-list">
-          <li>Main CODM account with ASY after IGN</li>
-          <li>TikTok account with ASY after IGN</li>
-          <li>Referral applicants: upload a screenshot of the conversation with the member who referred you</li>
+          <li>Screenshot of CODM with ASY after IGN</li>
+          <li>Screenshot of TikTok with ASY after IGN</li>
+          <li><strong>Referral only:</strong> screenshot of your conversation with the referring member</li>
         </ul>
-        <div className="guide-stage-foot">Unlocks after recruiter eligibility review.</div>
+        <div className="guide-stage-foot">Recruiter approval unlocks Step 2.</div>
       </article>
       <article className="guide-stage">
-        <div className="guide-stage-top"><span>STAGE 02</span><small>COMMUNITY FOLLOW</small></div>
-        <h3>Follow &amp; membership form</h3>
-        <p>When Stage 2 unlocks, submit these proofs:</p>
+        <div className="guide-stage-top"><span>02</span><small>CASUAL + REFERRAL</small></div>
+        <h3>Follow &amp; form</h3>
         <ul className="guide-list">
-          <li>Screenshot showing you follow the official ASY Community TikTok</li>
-          <li>Screenshot of the completed Membership Form with your IGN visible</li>
+          <li>Screenshot showing you follow the official ASY TikTok</li>
+          <li>Completed Membership Form screenshot with your IGN visible</li>
         </ul>
-        <div className="guide-stage-foot">Unlocks after all Stage 1 proofs are approved.</div>
+        <div className="guide-stage-foot">Recruiter approval unlocks Step 3.</div>
       </article>
       <article className="guide-stage">
-        <div className="guide-stage-top"><span>STAGE 03</span><small>DISCORD &amp; ROSTER</small></div>
-        <h3>Nickname &amp; roster photo</h3>
-        <p>When Stage 3 unlocks, complete the final profile proofs:</p>
+        <div className="guide-stage-top"><span>03</span><small>CASUAL + REFERRAL</small></div>
+        <h3>Discord &amp; roster photo</h3>
         <ul className="guide-list">
-          <li>Set your official ASY Discord server nickname to <strong>IGN ASY</strong></li>
-          <li>Upload your roster photo using the admin reference</li>
-          <li>Include your Facebook name in the photo caption</li>
+          <li>Set your Discord server nickname to <strong>IGN ASY</strong></li>
+          <li>Post your roster photo in the Discord channel named by staff</li>
+          <li>Put your Facebook name in the caption, then upload the requested proof in Track application</li>
         </ul>
-        <div className="guide-stage-foot">Unlocks after all Stage 2 proofs are approved.</div>
+        <div className="guide-stage-foot">Final MGC check and applicant contact are manual.</div>
       </article>
     </div>
     <section className="panel discord-howto">
-      <div className="guide-section-heading"><small className="kicker">DISCORD QUICK GUIDE</small><h2>Set your nickname and ask for the right role</h2><p>Use your server nickname so recruiters can match your Discord account with your application.</p></div>
+      <div className="guide-section-heading"><small className="kicker">DISCORD QUICK GUIDE</small><h2>Username &amp; role</h2></div>
       <ol className="discord-steps">
-        <li><span>01</span><div><strong>Join the official ASY Discord</strong><p>Use the official invite below, then open the server.</p></div></li>
-        <li><span>02</span><div><strong>Set your server nickname</strong><p>Open your server profile or member menu and change the nickname to <b>IGN ASY</b> using your exact in-game name.</p></div></li>
-        <li><span>03</span><div><strong>Follow staff role instructions</strong><p>Check the pinned instructions in the recruitment or verification channel. If the required role does not appear, ask an authorized staff member. Never share your password or login code.</p></div></li>
+        <li><span>01</span><div><strong>Join ASY Discord</strong><p>Use the official invite below.</p></div></li>
+        <li><span>02</span><div><strong>Set your nickname</strong><p>Open the server profile/menu and use <b>IGN ASY</b>.</p></div></li>
+        <li><span>03</span><div><strong>Get your role</strong><p>Follow the pinned staff instructions or ask a recruiter if you cannot see the right role.</p></div></li>
       </ol>
     </section>
     <section className="panel guide-links">
-      <div className="guide-section-heading">
-        <small className="kicker">STEP 03 / OFFICIAL RESOURCES</small>
-        <h2>Official links</h2>
-        <p>Use these links for the official community accounts and forms.</p>
-      </div>
+      <div className="guide-section-heading"><small className="kicker">OFFICIAL LINKS</small><h2>Open a resource</h2></div>
       <div className="guide-link-grid">
-        <a href="https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1" target="_blank" rel="noreferrer"><b>ASY Community TikTok</b><span>Follow the official account <ArrowRight size={14}/></span></a>
-        <a href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer"><b>Membership Form</b><span>Complete the membership form <ArrowRight size={14}/></span></a>
-        <a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer"><b>Official ASY Discord</b><span>Nickname, roster photo, and staff guidance <ArrowRight size={14}/></span></a>
+        <a href="https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1" target="_blank" rel="noreferrer"><b>ASY Community TikTok</b><span>Follow account <ArrowRight size={14}/></span></a>
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer"><b>Membership Form</b><span>Complete the form <ArrowRight size={14}/></span></a>
+        <a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer"><b>Official ASY Discord</b><span>Nickname &amp; role guide <ArrowRight size={14}/></span></a>
       </div>
     </section>
-    <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Important: follow the live status page</strong><p>This guide explains the process but does not approve or submit evidence. Your actual upload controls, recruiter feedback, and current stage appear in Track application. Upload privately only when a stage unlocks, wait for review, and keep your tracking code and application email private. Final acceptance remains a recruiter decision. The Screening GC invite is sent only when your CODM account already shows the ASY tag.</p></div></section>
-    <div className="guide-cta-row"><div><strong>Ready for your next step?</strong><p>Start a new application or return to your live screening progress.</p></div><div className="guide-cta-actions"><button className="primary" type="button" onClick={onApply}>Apply to join <ArrowRight size={15}/></button><button className="secondary" type="button" onClick={onTrack}>Track application <ArrowRight size={15}/></button></div></div>
+    <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Final check</strong><p>Recruiters will contact you to double-check the Membership Form/MGC because of the reported form bug. No GC invite or acceptance is automatic.</p></div></section>
+    <div className="guide-cta-row"><div><strong>Ready?</strong><p>Apply or track your current screening.</p></div><div className="guide-cta-actions"><button className="primary" type="button" onClick={onApply}>Apply <ArrowRight size={15}/></button><button className="secondary" type="button" onClick={onTrack}>Track application <ArrowRight size={15}/></button></div></div>
   </section>;
 }
 
