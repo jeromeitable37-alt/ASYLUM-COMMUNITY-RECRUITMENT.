@@ -2,7 +2,10 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createClient, Session } from '@supabase/supabase-js';
 import { ArrowRight, BadgeCheck, Bot, CalendarClock, CheckCircle2, ClipboardList, Copy, Mail, Crosshair, Gamepad2, LogIn, LogOut, MessageCircle, Search, Send, ShieldCheck, Swords, Trophy, Users, X, Zap } from 'lucide-react';
 
-const supabase = createClient('https://tyhszzztltamrohhyykh.supabase.co', 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn');
+const SUPABASE_URL = 'https://tyhszzztltamrohhyykh.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn';
+const EVIDENCE_API_URL = SUPABASE_URL + '/functions/v1/asy-recruitment-evidence';
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
 type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
@@ -92,7 +95,7 @@ export default function App() {
   }
   async function loadApplicantProgress(code:string,emailValue:string){
     try{
-      const response=await fetch('/api/evidence?application_code='+encodeURIComponent(code)+'&contact_email='+encodeURIComponent(emailValue),{cache:'no-store'});
+      const response=await fetch(EVIDENCE_API_URL+'?application_code='+encodeURIComponent(code)+'&contact_email='+encodeURIComponent(emailValue),{headers:{apikey:SUPABASE_PUBLISHABLE_KEY},cache:'no-store'});
       const data=await response.json();
       if(!response.ok){setEvidenceServiceConfigured(response.status!==503);setApplicantProgress(null);return;}
       setEvidenceServiceConfigured(true);setApplicantProgress(data as ApplicantProgress);
@@ -104,12 +107,12 @@ export default function App() {
     if(file.size>8*1024*1024){notify('Each screenshot must be 8 MB or smaller.',true);return;}
     setEvidenceUploadKey(key);
     try{
-      const createResponse=await fetch('/api/evidence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create-upload',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),requirement_key:key,content_type:file.type,file_size_bytes:file.size})});
+      const createResponse=await fetch(EVIDENCE_API_URL,{method:'POST',headers:{apikey:SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({action:'create-upload',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),requirement_key:key,content_type:file.type,file_size_bytes:file.size})});
       const uploadInfo=await createResponse.json();
       if(!createResponse.ok)throw new Error(uploadInfo.error||'Could not start the upload.');
       const {error:uploadError}=await supabase.storage.from('asy-recruitment-private').uploadToSignedUrl(uploadInfo.path,uploadInfo.token,file,{contentType:file.type,cacheControl:'3600'});
       if(uploadError)throw new Error(uploadError.message||'The screenshot upload failed.');
-      const finalizeResponse=await fetch('/api/evidence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'finalize-upload',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),requirement_key:key,path:uploadInfo.path,file_name:file.name,content_type:file.type,file_size_bytes:file.size})});
+      const finalizeResponse=await fetch(EVIDENCE_API_URL,{method:'POST',headers:{apikey:SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({action:'finalize-upload',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),requirement_key:key,path:uploadInfo.path,file_name:file.name,content_type:file.type,file_size_bytes:file.size})});
       const finalInfo=await finalizeResponse.json();
       if(!finalizeResponse.ok)throw new Error(finalInfo.error||'Could not submit this screenshot for review.');
       await loadApplicantProgress(applicationCode.trim(),contactEmail.trim().toLowerCase());
