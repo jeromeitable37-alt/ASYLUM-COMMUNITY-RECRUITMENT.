@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createClient, Session } from '@supabase/supabase-js';
-import { ArrowRight, BadgeCheck, CalendarClock, CheckCircle2, ClipboardList, Copy, Mail, Crosshair, Gamepad2, LogIn, LogOut, Search, ShieldCheck, Swords, Trophy, Users, X, Zap } from 'lucide-react';
+import { ArrowRight, BadgeCheck, Bot, CalendarClock, CheckCircle2, ClipboardList, Copy, Mail, Crosshair, Gamepad2, LogIn, LogOut, MessageCircle, Search, Send, ShieldCheck, Swords, Trophy, Users, X, Zap } from 'lucide-react';
 
 const supabase = createClient('https://tyhszzztltamrohhyykh.supabase.co', 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn');
 type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; submitted_at:string; updated_at:string };
@@ -121,6 +121,7 @@ export default function App() {
       </section>}
     </main>
     <footer className="footer"><div className="brand"><b className="mark"><img src="https://asy-clan-recruitment-1h073y.v2.appdeploy.ai/resources/asylum-community-logo.png" alt="Asylum Community logo" onError={event=>{event.currentTarget.style.opacity='0';}}/></b><span><strong>ASYLUM<span>.</span></strong><small>OFFICIAL COMMUNITY RECRUITMENT</small></span></div><p>A gaming community built on teamwork and respect.</p><span>© {new Date().getFullYear()} ASYLUM COMMUNITY</span></footer>
+    <ChatSupport />
   </div>;
 }
 
@@ -145,3 +146,143 @@ function Field({label,children}:{label:string;children:React.ReactNode}){return 
 function Section({n,title,sub}:{n:string;title:string;sub:string}){return <div className="section-title"><b>{n}</b><div><strong>{title}</strong><small>{sub}</small></div></div>;}
 function Feature({icon,title,desc}:{icon:React.ReactNode;title:string;desc:string}){return <div className="feature"><span>{icon}</span><div><b>{title}</b><small>{desc}</small></div></div>;}
 function Stat({icon,label,value}:{icon:React.ReactNode;label:string;value:number}){return <div className="stat"><span>{icon}</span><div><small>{label}</small><b>{value}</b></div></div>;}
+
+type ChatLink = { label: string; href: string };
+type ChatEntry = { role: 'assistant' | 'user'; text: string; links?: ChatLink[] };
+
+const screeningLinks: ChatLink[] = [
+  { label: 'ASY Community TikTok', href: 'https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1' },
+  { label: 'Membership Form', href: 'https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform' },
+  { label: 'Official Discord', href: 'https://discord.gg/HbJ5Jvw8y8' },
+];
+
+function getRecruitmentReply(question: string): Omit<ChatEntry, 'role'> {
+  const q = question.toLowerCase();
+  if (/accepted|screening gc|screening group|requirements after|screenshot|roster photo|cooldown|cool down|gc nickname/.test(q)) {
+    return {
+      text: `If you've been accepted into the ASY Screening GC, follow these steps:
+
+1. If your CODM or TikTok name is still in cooldown, set your GC nickname to: IGN.DATE.CODM/TIKTOK.
+2. Send a screenshot of your main CODM account with the ASY tag AFTER your IGN.
+3. Send a screenshot of your TikTok account with the ASY tag AFTER your IGN.
+4. Send proof that you follow the official ASY Community TikTok account.
+5. Submit the Membership Form and provide a screenshot showing your IGN.
+6. In Discord, set your server nickname to: IGN ASY.
+7. Upload your proper roster photo in Discord. Put your Facebook name in the caption first, and follow the photo references from the admin.
+8. Submit the requested proofs in the Screening GC as instructed by the admins.
+
+Important: the Screening GC invite is sent only when your CODM account already shows the ASY tag. Never send passwords or account login codes.`,
+      links: screeningLinks,
+    };
+  }
+  if (/eligible|eligibility|age|16\+|leg series|legendary series|requirements to join|requirements before|before applying/.test(q)) {
+    return {
+      text: `Before applying, check that you meet the current ASY recruitment requirements:
+
+• At least 16 years old.
+• At least 6 Legendary Series in BR or MP.
+• Use an appropriate Facebook name (no inappropriate or random names).
+• Be willing to add the ASY tag AFTER your IGN on your main CODM and TikTok accounts.
+• Be willing to submit a proper roster photo for the welcome banner.
+
+The Screening GC invite is sent only after the ASY tag appears on your CODM account. Final screening decisions are made by the recruitment team.`,
+      links: screeningLinks,
+    };
+  }
+  if (/tiktok|follow/.test(q)) {
+    return {
+      text: 'Please follow the official Asylum Community TikTok account. If you are already accepted into the Screening GC, send a screenshot showing that you follow it with your other required proofs.',
+      links: [screeningLinks[0]],
+    };
+  }
+  if (/membership form|form link|member form/.test(q)) {
+    return {
+      text: 'Use the official Membership Form. After completing it, make sure your IGN is visible in the screenshot if you have been accepted into the Screening GC.',
+      links: [screeningLinks[1]],
+    };
+  }
+  if (/discord|server nickname|roster photo|banner photo/.test(q)) {
+    return {
+      text: 'Join the official ASY Discord. After you are accepted into the Screening GC, set your server nickname to IGN ASY and upload your roster photo using the admin-provided reference. Include your Facebook name in the caption.',
+      links: [screeningLinks[2]],
+    };
+  }
+  if (/apply|application|join|recruitment/.test(q)) {
+    return {
+      text: 'To join ASY, open “Apply to join” on this website and complete the application honestly. Save the ASYLUM tracking code shown after submission, then use “Track application” to check your status. Meeting the minimum requirements does not guarantee acceptance; recruiters review every application.',
+    };
+  }
+  if (/status|tracking|tracking code|pending|review/.test(q)) {
+    return {
+      text: 'Choose “Track application” on this website and enter the tracking code plus the same contact email you used when applying. The website shows the latest status saved by the recruitment team.',
+    };
+  }
+  if (/limit|slots|capacity|how many applicants/.test(q)) {
+    return {
+      text: 'The official application cap has not been configured in this chat guide. Please follow announcements from ASY Management and avoid sending duplicate applications. The recruitment team confirms intake limits.',
+    };
+  }
+  if (/human|admin|recruiter|staff|help|assist/.test(q)) {
+    return {
+      text: 'I can answer common recruitment questions here. For a case that needs a human decision, contact the recruitment team through the official Discord and follow the admins’ instructions.',
+      links: [screeningLinks[2]],
+    };
+  }
+  return {
+    text: 'I can help with ASY eligibility, how to apply, application tracking, or the requirements after you are accepted into the Screening GC. Try asking “What are the screening GC requirements?” or tap one of the quick questions below.',
+  };
+}
+
+function ChatSupport() {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [messages, setMessages] = useState<ChatEntry[]>([
+    { role: 'assistant', text: 'Hi! I’m the ASY Recruitment Assistant. I can answer common questions about applying, eligibility, application tracking, and the requirements after you are accepted into the Screening GC.' },
+  ]);
+
+  function ask(question: string) {
+    const answer = getRecruitmentReply(question);
+    setMessages(old => [...old, { role: 'user', text: question }, { role: 'assistant', ...answer }]);
+  }
+
+  function sendMessage(event: FormEvent) {
+    event.preventDefault();
+    const question = draft.trim();
+    if (!question) return;
+    setDraft('');
+    ask(question);
+  }
+
+  return (
+    <div className="chat-support">
+      {open && <section className="chat-panel" role="dialog" aria-label="ASY Recruitment Support">
+        <header className="chat-header">
+          <span className="chat-bot-icon"><Bot size={19}/></span>
+          <div><strong>ASY Recruitment Support</strong><small>Quick answers · Official recruitment guide</small></div>
+          <button type="button" aria-label="Close chat" onClick={() => setOpen(false)}><X size={18}/></button>
+        </header>
+        <div className="chat-messages" aria-live="polite">
+          {messages.map((message, index) => <div key={index} className={'chat-message ' + message.role}>
+            <p>{message.text}</p>
+            {message.links?.length ? <div className="chat-links">{message.links.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer">{link.label} <ArrowRight size={12}/></a>)}</div> : null}
+          </div>)}
+          {messages.length === 1 && <div className="chat-quick-questions">
+            <button type="button" onClick={() => ask('What are the eligibility requirements before applying?')}>Eligibility</button>
+            <button type="button" onClick={() => ask('What are the requirements after accepted into the Screening GC?')}>Screening GC requirements</button>
+            <button type="button" onClick={() => ask('How do I track my application?')}>Track application</button>
+          </div>}
+        </div>
+        <form className="chat-input-row" onSubmit={sendMessage}>
+          <input value={draft} onChange={event => setDraft(event.target.value)} placeholder="Ask about ASY recruitment…" aria-label="Ask about ASY recruitment" maxLength={500}/>
+          <button type="submit" disabled={!draft.trim()} aria-label="Send message"><Send size={17}/></button>
+        </form>
+        <p className="chat-disclaimer">Automated FAQ guidance. Recruiters make the final decisions.</p>
+      </section>}
+      <button type="button" className="chat-launcher" aria-label={open ? 'Close support chat' : 'Open support chat'} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+        {open ? <X size={23}/> : <MessageCircle size={24}/>}
+        {!open && <span>ASK ASY</span>}
+      </button>
+    </div>
+  );
+}
+
