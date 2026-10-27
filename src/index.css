@@ -173,3 +173,11 @@
 .guide-cta-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 @media(max-width:600px){.guide-cta-actions{width:100%;flex-direction:column;align-items:stretch}.guide-cta-actions button{width:100%}}
 
+.discord-howto{margin-top:22px;padding:clamp(20px,3vw,30px)}
+.discord-steps{display:grid;gap:12px;list-style:none;counter-reset:discord-step;margin:0;padding:0}
+.discord-steps>li{display:flex;align-items:flex-start;gap:13px;min-width:0;padding:14px 15px;border:1px solid #302b34;border-radius:7px;background:#101014}
+.discord-steps>li>span{display:grid;place-items:center;width:30px;height:30px;flex:none;border:1px solid #63303a;border-radius:5px;background:#291217;color:#ff6975;font:800 12px 'Barlow Condensed',sans-serif}
+.discord-steps>li>div{min-width:0}
+.discord-steps strong{display:block;color:#f3eef5;font-size:12px;line-height:1.5}
+.discord-steps p{margin:4px 0 0;color:#aaa3af;font-size:11px;line-height:1.8;overflow-wrap:anywhere}
+
