@@ -239,7 +239,7 @@ export default function App() {
           {!['tag_proofs','membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)&&<p className="muted">Uploads will unlock here when an authorized recruiter approves your current step.</p>}
         </section>}
       </section>}
-      {page==='screening'&&<ScreeningGuide intakeSettings={intakeSettings}/>}
+      {page==='screening'&&<ScreeningGuide intakeSettings={intakeSettings} onApply={()=>setPage('apply')} onTrack={()=>setPage('status')}/> }
       {page==='roster'&&<RosterPage roster={roster} onApply={()=>setPage('apply')}/>}
       {page==='admin'&&<section className="page admin-page">
         {!session?<div className="login-wrap"><div><small className="kicker">RESTRICTED AREA</small><h1>RECRUITER<br/><em>COMMAND.</em></h1><p className="muted">Sign in with an authorized Asylum Community recruitment account to review applications, schedule interviews and track tryouts.</p><div className="secure"><ShieldCheck/> ACCESS CONTROLLED BY SUPABASE AUTH</div></div><form className="panel login" onSubmit={signIn}><div className="login-icon"><ShieldCheck/></div><h2>Recruiter sign in</h2><p className="muted">Only approved recruiter emails can access applicant data.</p><Field label="Email"><input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="jeromeitable37@gmail.com"/></Field><Field label="Password"><input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Your password"/></Field><button className="primary full" disabled={busy}>{busy?'Signing in…':'Sign in securely'} <LogIn size={16}/></button><small className="muted">Account must exist in Supabase Auth and be added to the Asylum Community recruiter allowlist.</small></form></div>
@@ -304,7 +304,7 @@ function Home({intakeSettings,onApply,onRoster,onTrack,onGuide}:{intakeSettings:
   <section className="callout"><div><small>YOUR NEXT MOVE</small><h2>SHOW US WHAT YOU BRING.</h2><p>Tell us your role, your goals, and how you play.</p></div><button className="primary" onClick={onApply}>Start application <ArrowRight size={16}/></button></section>
  </>;
 }
-function ScreeningGuide({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
+function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeSettings|null;onApply:()=>void;onTrack:()=>void}) {
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   return <section className="page screening-page">
     <Heading kicker="04 / ONE-STOP RECRUITMENT GUIDE" title={<>THE ASY <em>SCREENING ROADMAP.</em></>} desc="Check the eligibility requirements, then follow each evidence stage in Track application. The guide below explains what each stage asks for."/>
@@ -344,7 +344,7 @@ function ScreeningGuide({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
         <ul className="guide-list">
           <li>Main CODM account with ASY after IGN</li>
           <li>TikTok account with ASY after IGN</li>
-          <li>Referral applicants: provide the referral proof requested by the recruiter</li>
+          <li>Referral applicants: upload a screenshot of the conversation with the member who referred you</li>
         </ul>
         <div className="guide-stage-foot">Unlocks after recruiter eligibility review.</div>
       </article>
@@ -382,7 +382,8 @@ function ScreeningGuide({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
         <a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer"><b>Official ASY Discord</b><span>Nickname, roster photo, and staff guidance <ArrowRight size={14}/></span></a>
       </div>
     </section>
-    <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Important: follow the live status page</strong><p>The checklist on this page does not approve or submit evidence. Your actual upload controls, recruiter feedback, and current stage appear in Track application. Upload privately only when a stage unlocks, wait for review, and keep your tracking code and application email private. Final acceptance remains a recruiter decision. The Screening GC invite is sent only when your CODM account already shows the ASY tag.</p></div></section>
+    <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Important: follow the live status page</strong><p>This guide explains the process but does not approve or submit evidence. Your actual upload controls, recruiter feedback, and current stage appear in Track application. Upload privately only when a stage unlocks, wait for review, and keep your tracking code and application email private. Final acceptance remains a recruiter decision. The Screening GC invite is sent only when your CODM account already shows the ASY tag.</p></div></section>
+    <div className="guide-cta-row"><div><strong>Ready for your next step?</strong><p>Start a new application or return to your live screening progress.</p></div><div className="guide-cta-actions"><button className="primary" type="button" onClick={onApply}>Apply to join <ArrowRight size={15}/></button><button className="secondary" type="button" onClick={onTrack}>Track application <ArrowRight size={15}/></button></div></div>
   </section>;
 }
 
