@@ -317,24 +317,24 @@ export default function App() {
       {page==='apply'&&<section className="page"><Heading kicker="01 / RECRUITMENT FORM" title={<>YOUR RUN <em>STARTS HERE.</em></>} desc="Complete the form honestly. Required fields are marked *. No account needed."/>
         <div className={'panel intake-banner '+(intakeFull?'closed':'open')}><div><strong>{intakeFull?(!intakeSettings?.intake_open?'Applications are temporarily closed':'Application limit reached'):'Recruitment intake is open'}</strong><p>{intakeSettings?.application_limit!==null&&intakeSettings?`${intakeSettings.application_count} of ${intakeSettings.application_limit} applications used this intake.`:'Check the eligibility requirements and complete the form once. Recruiters review applications individually.'}</p></div><span className="intake-dot"/></div>
         <form className="panel form" onSubmit={submitApplication}>
-          <Section n="00" title="Application route" sub="Choose the correct recruitment path so the team can verify the right proofs."/>
+          <Section n="00" title="Application route" sub="Choose Casual or Referral."/>
           <Field label="Application type *"><select value={form.applicationType} onChange={e=>updateForm('applicationType',e.target.value)}><option value="casual">Casual Recruitment</option><option value="referral">Referral Recruitment</option></select></Field>
           {form.applicationType==='referral'&&<div className="form-grid">
             <Field label="Referring member name *"><input required value={form.referrerName} onChange={e=>updateForm('referrerName',e.target.value)} placeholder="Member who referred you"/></Field>
             <Field label="Referring member Facebook profile link *"><input required type="url" value={form.referrerFacebookUrl} onChange={e=>updateForm('referrerFacebookUrl',e.target.value)} placeholder="https://facebook.com/…"/></Field>
           </div>}
-          <Section n="01" title="Eligibility confirmation" sub="Confirm the minimum requirements before submitting your application."/>
+          <Section n="01" title="Eligibility" sub="Check the minimum requirements."/>
           <label className="screening-check eligibility-check"><input type="checkbox" required checked={form.ageConfirmed==='yes'} onChange={e=>updateForm('ageConfirmed',e.target.checked?'yes':'')}/><span>I confirm that I am at least 16 years old.</span></label>
           <div className="form-grid">
             <Field label="Legendary Series achieved (BR or MP) *"><input type="number" min="6" max="100" required value={form.legendarySeriesCount} onChange={e=>updateForm('legendarySeriesCount',e.target.value)} placeholder="At least 6"/></Field>
           </div>
-          <p className="muted form-helper">You must have at least 6 Legendary Series in BR or MP and confirm the community rules below. Your social account logins are never requested.</p>
+          <p className="muted form-helper">At least 6 Legendary Series in BR or MP. We never ask for social account passwords.</p>
           <div className="eligibility-confirmations">
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.facebookNameAppropriate} onChange={e=>setForm(old=>({...old,facebookNameAppropriate:e.target.checked}))}/><span>I confirm that my Facebook name is appropriate and not random or inappropriate.</span></label>
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.willingToAddTag} onChange={e=>setForm(old=>({...old,willingToAddTag:e.target.checked}))}/><span>I agree to put the ASY tag AFTER my IGN on my main CODM and TikTok accounts.</span></label>
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.willingToSubmitPhoto} onChange={e=>setForm(old=>({...old,willingToSubmitPhoto:e.target.checked}))}/><span>I agree to submit the required roster photo and follow the admin reference if accepted.</span></label>
           </div>
-          <Section n="02" title="Player details" sub="How recruiters can identify and contact you."/>
+          <Section n="02" title="Player details" sub="Your game and contact information."/>
           <div className="form-grid">
             <Field label="In-game name (IGN) *"><input required minLength={2} maxLength={32} value={form.ign} onChange={e=>updateForm('ign',e.target.value)} placeholder="Your CODM name"/></Field>
             <Field label="CODM UID (19 digits) *"><><input required type="text" inputMode="numeric" autoComplete="off" pattern="[0-9]{19}" title="Enter exactly 19 digits for your CODM UID." minLength={19} maxLength={19} value={form.uid} onChange={e=>updateForm('uid',e.target.value.replace(/[^0-9]/g,'').slice(0,19))} placeholder="Enter your 19-digit UID"/><small className="field-hint">Required · Numbers only · {form.uid.length}/19 digits</small></></Field>
@@ -344,8 +344,14 @@ export default function App() {
             <Field label="Current rank *"><select value={form.rank} onChange={e=>updateForm('rank',e.target.value)}>{['Rookie','Veteran','Elite','Pro','Master','Grand Master','Legendary'].map(v=><option key={v}>{v}</option>)}</select></Field>
             <Field label="Current level"><input type="number" min="1" max="500" value={form.level} onChange={e=>updateForm('level',e.target.value)} placeholder="e.g. 220"/></Field>
           </div>
+          <Section n="03" title="Social profiles" sub="Optional links for cross-checking your details."/>
+          <div className="form-grid">
+            <Field label="Facebook profile link"><input type="url" value={form.applicantFacebookUrl} onChange={e=>updateForm('applicantFacebookUrl',e.target.value)} placeholder="https://facebook.com/…"/><small className="field-hint">Optional · Profile link only.</small></Field>
+            <Field label="TikTok profile link"><input type="url" value={form.applicantTikTokUrl} onChange={e=>updateForm('applicantTikTokUrl',e.target.value)} placeholder="https://tiktok.com/@…"/><small className="field-hint">Optional · Profile link only.</small></Field>
+            <Field label="Streamer Mode ID"><input value={form.streamerModeId} maxLength={100} onChange={e=>updateForm('streamerModeId',e.target.value)} placeholder="Optional ID"/></Field>
+          </div>
           {form.applicationType==='referral'&&<>
-            <Section n="03" title="Player profile" sub="Optional context for recruiters reviewing a referral."/>
+            <Section n="04" title="Player profile" sub="Optional referral details."/>
             <div className="form-grid">
               <Field label="Main role"><select value={form.role} onChange={e=>updateForm('role',e.target.value)}>{['Slayer','Support','Sniper','Objective','Flex','Entry Fragger','IGL / Shot-caller'].map(v=><option key={v}>{v}</option>)}</select></Field>
               <Field label="Preferred mode"><select value={form.mode} onChange={e=>updateForm('mode',e.target.value)}>{['Ranked Multiplayer','Search & Destroy','Hardpoint','Domination','Battle Royale','Scrims / Competitive','Casual / Mixed'].map(v=><option key={v}>{v}</option>)}</select></Field>
@@ -353,7 +359,7 @@ export default function App() {
               <Field label="Previous community / team experience"><input value={form.experience} onChange={e=>updateForm('experience',e.target.value)} placeholder="Optional"/></Field>
             </div>
           </>}
-          <Field label="Why do you want to join Asylum Community? *"><textarea required minLength={10} maxLength={1000} rows={5} value={form.reason} onChange={e=>updateForm('reason',e.target.value)} placeholder="Tell us about your goals, teamwork, and what you can bring…"/></Field>
+          <Field label="Why do you want to join ASY? *"><textarea required minLength={10} maxLength={1000} rows={3} value={form.reason} onChange={e=>updateForm('reason',e.target.value)} placeholder="A few sentences are enough…"/></Field>
           <div className="privacy"><ShieldCheck size={17}/> Your email and UID are for recruitment review only. Email is not shown on the public roster.</div>
           <button className="primary" disabled={busy||intakeFull}>{busy?'Submitting…':intakeFull?'Applications closed':'Submit application'} <ArrowRight size={16}/></button>
         </form></section>}
