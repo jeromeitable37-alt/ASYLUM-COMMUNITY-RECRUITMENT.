@@ -729,7 +729,7 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
   const [draft,setDraft]=useState('');
   const [chatBusy,setChatBusy]=useState(false);
   const [messages,setMessages]=useState<ChatEntry[]>([
-    {role:'assistant',text:'Hi! I’m the ASY Recruitment Assistant. Ask me about eligibility, applying, tracking, or what to prepare at each screening step. Recruiters make all final decisions.'},
+    {role:'assistant',text:'Hi! Need help with ASY recruitment? Pick a topic or ask a short question. For personal decisions, contact a recruiter in the official Discord.'},
   ]);
 
   async function ask(question:string) {
@@ -778,11 +778,12 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
           </div>)}
           {chatBusy&&<div className="chat-message assistant"><p>Checking the ASY guide…</p></div>}
           {messages.length===1&&<div className="chat-quick-questions">
-            <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the eligibility requirements before applying?')}>Eligibility</button>
-            <button type="button" disabled={chatBusy} onClick={()=>void ask('What proofs do I need to upload?')}>Screening proof checklist</button>
-            <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the Referral Recruitment requirements?')}>Referral requirements</button>
-            <button type="button" disabled={chatBusy} onClick={()=>void ask('How do I track my application?')}>Track application</button>
-            <button type="button" disabled={chatBusy} onClick={()=>void ask('Is there a limit on applications?')}>Application limit</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the eligibility requirements?')}>Eligibility</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('What proofs do I need to upload?')}>Proof checklist</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the Referral Recruitment requirements?')}>Referral</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('How do I track my application?')}>Track status</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('How does the MGC manual check work?')}>MGC check</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('I need to talk to a recruiter.')}>Contact recruiter</button>
           </div>}
         </div>
         <form className="chat-input-row" onSubmit={sendMessage}>
