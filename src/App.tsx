@@ -430,55 +430,75 @@ The Screening GC invite is sent only after the ASY tag appears on your CODM acco
 }
 
 function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [messages, setMessages] = useState<ChatEntry[]>([
-    { role: 'assistant', text: 'Hi! I’m the ASY Recruitment Assistant. I can answer common questions about applying, eligibility, application tracking, and the requirements after you are accepted into the Screening GC.' },
+  const [open,setOpen]=useState(false);
+  const [draft,setDraft]=useState('');
+  const [chatBusy,setChatBusy]=useState(false);
+  const [messages,setMessages]=useState<ChatEntry[]>([
+    {role:'assistant',text:'Hi! I’m the ASY Recruitment Assistant. Ask me about eligibility, applying, tracking, or what to prepare at each screening step. Recruiters make all final decisions.'},
   ]);
 
-  function ask(question: string) {
-    const answer = getRecruitmentReply(question, intakeSettings);
-    setMessages(old => [...old, { role: 'user', text: question }, { role: 'assistant', ...answer }]);
+  async function ask(question:string) {
+    const cleanQuestion=question.trim().slice(0,500);
+    if(!cleanQuestion||chatBusy)return;
+    const fallback=getRecruitmentReply(cleanQuestion,intakeSettings);
+    const history=messages.slice(-8).map(item=>({role:item.role,text:item.text.slice(0,500)}));
+    setMessages(old=>[...old,{role:'user',text:cleanQuestion}]);
+    setChatBusy(true);
+    let answerText='';
+    try {
+      const response=await fetch('/api/support-chat',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({question:cleanQuestion,history}),
+      });
+      const data=await response.json().catch(()=>({}));
+      if(response.ok&&data.configured===true&&typeof data.answer==='string'&&data.answer.trim()) answerText=data.answer.trim();
+    } catch {
+      // Keep the curated FAQ available if the AI route is not configured or temporarily unavailable.
+    }
+    setChatBusy(false);
+    setMessages(old=>[...old,{role:'assistant',...(answerText?{text:answerText,links:fallback.links}:{...fallback})}]);
   }
 
-  function sendMessage(event: FormEvent) {
+  function sendMessage(event:FormEvent) {
     event.preventDefault();
-    const question = draft.trim();
-    if (!question) return;
+    const question=draft.trim();
+    if(!question)return;
     setDraft('');
-    ask(question);
+    void ask(question);
   }
 
   return (
     <div className="chat-support">
-      {open && <section className="chat-panel" role="dialog" aria-label="ASY Recruitment Support">
+      {open&&<section className="chat-panel" role="dialog" aria-label="ASY Recruitment Support">
         <header className="chat-header">
           <span className="chat-bot-icon"><Bot size={19}/></span>
-          <div><strong>ASY Recruitment Support</strong><small>Quick answers · Official recruitment guide</small></div>
-          <button type="button" aria-label="Close chat" onClick={() => setOpen(false)}><X size={18}/></button>
+          <div><strong>ASY Recruitment Support</strong><small>AI assistant + official recruitment guide</small></div>
+          <button type="button" aria-label="Close chat" onClick={()=>setOpen(false)}><X size={18}/></button>
         </header>
         <div className="chat-messages" aria-live="polite">
-          {messages.map((message, index) => <div key={index} className={'chat-message ' + message.role}>
+          {messages.map((message,index)=><div key={index} className={'chat-message '+message.role}>
             <p>{message.text}</p>
-            {message.links?.length ? <div className="chat-links">{message.links.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer">{link.label} <ArrowRight size={12}/></a>)}</div> : null}
+            {message.links?.length?<div className="chat-links">{message.links.map(link=><a key={link.href} href={link.href} target="_blank" rel="noreferrer">{link.label} <ArrowRight size={12}/></a>)}</div>:null}
           </div>)}
-          {messages.length === 1 && <div className="chat-quick-questions">
-            <button type="button" onClick={() => ask('What are the eligibility requirements before applying?')}>Eligibility</button>
-            <button type="button" onClick={() => ask('What are the requirements after accepted into the Screening GC?')}>Screening GC requirements</button>
-            <button type="button" onClick={() => ask('How do I track my application?')}>Track application</button>
+          {chatBusy&&<div className="chat-message assistant"><p>Checking the ASY guide…</p></div>}
+          {messages.length===1&&<div className="chat-quick-questions">
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the eligibility requirements before applying?')}>Eligibility</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the requirements after accepted into the Screening GC?')}>Screening GC requirements</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('How do I track my application?')}>Track application</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('Is there a limit on applications?')}>Application limit</button>
           </div>}
         </div>
         <form className="chat-input-row" onSubmit={sendMessage}>
-          <input value={draft} onChange={event => setDraft(event.target.value)} placeholder="Ask about ASY recruitment…" aria-label="Ask about ASY recruitment" maxLength={500}/>
-          <button type="submit" disabled={!draft.trim()} aria-label="Send message"><Send size={17}/></button>
+          <input value={draft} onChange={event=>setDraft(event.target.value)} placeholder="Ask about ASY recruitment…" aria-label="Ask about ASY recruitment" maxLength={500} disabled={chatBusy}/>
+          <button type="submit" disabled={!draft.trim()||chatBusy} aria-label="Send message"><Send size={17}/></button>
         </form>
-        <p className="chat-disclaimer">Automated FAQ guidance. Recruiters make the final decisions.</p>
+        <p className="chat-disclaimer">AI replies use a private server key; official FAQ answers remain the fallback. Recruiters make final decisions.</p>
       </section>}
-      <button type="button" className="chat-launcher" aria-label={open ? 'Close support chat' : 'Open support chat'} aria-expanded={open} onClick={() => setOpen(value => !value)}>
-        {open ? <X size={23}/> : <MessageCircle size={24}/>}
-        {!open && <span>ASK ASY</span>}
+      <button type="button" className="chat-launcher" aria-label={open?'Close support chat':'Open support chat'} aria-expanded={open} onClick={()=>setOpen(value=>!value)}>
+        {open?<X size={23}/>:<MessageCircle size={24}/>}
+        {!open&&<span>ASK ASY</span>}
       </button>
     </div>
   );
 }
-
