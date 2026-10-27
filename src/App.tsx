@@ -89,11 +89,29 @@ export default function App() {
   const intakeUsagePercent=intakeSettings?.application_limit ? Math.min(100,Math.round((intakeSettings.application_count/intakeSettings.application_limit)*100)) : 0;
   const updateForm=(key:keyof typeof form,value:string)=>setForm(old=>({...old,[key]:value}));
 
-  useEffect(()=>{void loadIntakeSettings();},[]);
+  useEffect(()=>{void loadIntakeSettings();void loadAnnouncements();},[]);
   useEffect(()=>{try{const raw=localStorage.getItem('asy-recruitment:last-application');if(raw){const saved=JSON.parse(raw) as SavedApplication;if(saved.application_code&&saved.contact_email){setSavedApplication(saved);setApplicationCode(saved.application_code);setContactEmail(saved.contact_email);}}}catch{}},[]);
   useEffect(()=>{supabase.auth.getSession().then(({data})=>setSession(data.session));const {data:listener}=supabase.auth.onAuthStateChange((_event,next)=>setSession(next));return()=>listener.subscription.unsubscribe();},[]);
   useEffect(()=>{if(session?.user.email) void checkAdmin(session.user.email);else setAuthorized(false);},[session]);
-  useEffect(()=>{if(page==='roster')void loadRoster();if(page==='admin'&&session&&authorized)void loadApplications();},[page,session,authorized]);
+  useEffect(()=>{if(page==='roster')void loadRoster();if(page==='admin'&&session&&authorized){void loadApplications();void loadAnnouncements();}},[page,session,authorized]);
+  useEffect(()=>{if(page==='community'){void loadAnnouncements();void loadCommunityMessages();}},[page,authorized,session?.access_token]);
+  useEffect(()=>{
+    if(page!=='community')return;
+    const timer=window.setInterval(()=>{void loadAnnouncements();void loadCommunityMessages();},12000);
+    return()=>window.clearInterval(timer);
+  },[page,authorized,session?.access_token]);
+  useEffect(()=>{
+    if(page!=='status'||!tracked){setApplicantMessages([]);return;}
+    void loadApplicantMessages(applicationCode,contactEmail);
+    const timer=window.setInterval(()=>void loadApplicantMessages(applicationCode,contactEmail),12000);
+    return()=>window.clearInterval(timer);
+  },[page,tracked?.application_code,applicationCode,contactEmail]);
+  useEffect(()=>{
+    if(page!=='admin'||!selected||!authorized){setAdminApplicationMessages([]);return;}
+    void loadAdminApplicationMessages(selected.id);
+    const timer=window.setInterval(()=>void loadAdminApplicationMessages(selected.id),10000);
+    return()=>window.clearInterval(timer);
+  },[page,selected?.id,authorized,session?.access_token]);
   useEffect(()=>{if(selected&&authorized)void loadSelectedEvidence(selected.id);else setSelectedEvidence([]);},[selected?.id,authorized]);
   useEffect(()=>{setMgcNotes(selected?.mgc_verification_notes||'');setMgcContactConfirmed(Boolean(selected?.mgc_applicant_contacted));},[selected?.id]);
 
