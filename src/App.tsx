@@ -498,7 +498,7 @@ export default function App() {
   async function saveTryout(event:FormEvent){event.preventDefault();if(!selected)return;setBusy(true);const {error}=await supabase.from('asy_recruitment_tryouts').insert({application_id:selected.id,scheduled_at:tryoutAt?new Date(tryoutAt).toISOString():null,mode:tryoutMode,score:tryoutScore?Number(tryoutScore):null,result:tryoutResult,notes:tryoutNotes.trim()||null});setBusy(false);if(error)notify('Tryout result could not be saved.',true);else{await updateApplication(selected,tryoutResult==='fail'?'rejected':'tryout');setTryoutScore('');setTryoutNotes('');notify('Tryout record saved.');}}
   const filtered=useMemo(()=>applications.filter(app=>(filter==='all'||app.status===filter)&&[app.ign,app.codm_uid,app.contact_email,app.application_code].some(v=>v.toLowerCase().includes(query.toLowerCase()))),[applications,filter,query]);
   const count=(status:string)=>applications.filter(app=>app.status===status).length;
-  const navigation=[['home','Overview'],['apply','Apply to join'],['status','Track application'],['screening','Screening guide'],['roster','Community members']];
+  const navigation=[['home','Overview'],['community','Community'],['apply','Apply to join'],['status','Track application'],['screening','Screening guide'],['roster','Community members']];
 
   return <div className="shell">
     <div className="topline"><i/> ASYLUM COMMUNITY <span>/</span> GAMING COMMUNITY</div>
@@ -509,7 +509,43 @@ export default function App() {
     </header>
     {notice&&<div className={'notice '+(hasError?'bad':'')}><BadgeCheck size={17}/><span>{notice}</span><button onClick={()=>setNotice('')} aria-label="Dismiss"><X size={15}/></button></div>}
     <main>
-      {page==='home'&&<Home intakeSettings={intakeSettings} onApply={()=>setPage('apply')} onRoster={()=>setPage('roster')} onTrack={()=>setPage('status')} onGuide={()=>setPage('screening')}/>}
+      {page==='home'&&<>
+        <Home intakeSettings={intakeSettings} onApply={()=>setPage('apply')} onRoster={()=>setPage('roster')} onTrack={()=>setPage('status')} onGuide={()=>setPage('screening')}/>
+        {announcements.some(item=>item.is_published)&&<section className="page announcement-preview">
+          <div className="announcement-preview-head"><div><small className="kicker">LATEST UPDATES</small><h2>From the <em>ASY community.</em></h2></div><button type="button" className="secondary" onClick={()=>setPage('community')}>All updates &amp; chat <ArrowRight size={14}/></button></div>
+          <div className="announcement-preview-grid">{announcements.filter(item=>item.is_published).slice(0,3).map(item=><article className="announcement-card" key={item.id}><span className={'announcement-category '+item.category}>{item.category}</span><h3>{item.title}</h3><p>{item.body}</p><small>{new Date(item.published_at||item.created_at).toLocaleDateString()}</small></article>)}</div>
+        </section>}
+      </>}
+      {page==='community'&&<section className="page community-page">
+        <Heading kicker="ASY COMMUNITY" title={<>NEWS &amp; <em>CHAT.</em></>} desc="Read official updates or talk in the public chat. Keep personal application details private."/>
+        <div className="community-layout">
+          <section className="panel community-announcements">
+            <div className="community-panel-heading"><div><small className="kicker">OFFICIAL UPDATES</small><h2>Announcements</h2></div><button type="button" className="secondary compact-button" onClick={()=>void loadAnnouncements()}>Refresh</button></div>
+            {(authorized?announcements:announcements.filter(item=>item.is_published)).length===0&&<p className="message-empty">No announcements yet. Check back for updates from ASY staff.</p>}
+            {(authorized?announcements:announcements.filter(item=>item.is_published)).map(item=><article className="announcement-card" key={item.id}>
+              <div className="announcement-card-meta"><span className={'announcement-category '+item.category}>{item.category}</span><small>{item.is_published?new Date(item.published_at||item.created_at).toLocaleString():'Draft · staff only'}</small></div>
+              <h3>{item.title}</h3><p>{item.body}</p>
+            </article>)}
+          </section>
+          <section className="panel community-chat-panel">
+            <div className="community-panel-heading"><div><small className="kicker">PUBLIC ROOM</small><h2>General chat</h2><p>Messages are visible to everyone. Names are not verified.</p></div><button type="button" className="secondary compact-button" onClick={()=>void loadCommunityMessages()}>Refresh</button></div>
+            <div className="public-chat-thread" aria-live="polite">
+              {communityMessages.length===0&&<p className="message-empty">No messages yet. Start the conversation respectfully.</p>}
+              {communityMessages.map(message=><article className="public-chat-message" key={message.id}>
+                <div className="thread-message-meta"><strong>{message.display_name}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
+                <p>{message.body}</p>
+                {authorized&&<button type="button" className="moderate-message" onClick={()=>void hideCommunityMessage(message)}>Hide message</button>}
+              </article>)}
+            </div>
+            <form className="community-chat-compose" onSubmit={sendCommunityMessage}>
+              <Field label="Display name"><input required minLength={2} maxLength={32} value={communityDisplayName} onChange={event=>setCommunityDisplayName(event.target.value)} placeholder="Choose a nickname"/></Field>
+              <Field label="Message"><textarea required rows={2} maxLength={500} value={communityDraft} onChange={event=>setCommunityDraft(event.target.value)} placeholder="Say hi to the community…"/></Field>
+              <button type="submit" className="primary" disabled={communityChatBusy||!communityDisplayName.trim()||!communityDraft.trim()}>{communityChatBusy?'Sending…':'Send message'} <Send size={15}/></button>
+            </form>
+            <small className="message-privacy-note">Do not share emails, UIDs, screenshots, passwords, or login codes in public chat. Staff can hide inappropriate messages.</small>
+          </section>
+        </div>
+      </section>}
       {page==='apply'&&<section className="page"><Heading kicker="01 / RECRUITMENT FORM" title={<>YOUR RUN <em>STARTS HERE.</em></>} desc="Complete the form honestly. Required fields are marked *. No account needed."/>
         <div className={'panel intake-banner '+(intakeFull?'closed':'open')}><div><strong>{intakeFull?(!intakeSettings?.intake_open?'Applications are temporarily closed':'Application limit reached'):'Recruitment intake is open'}</strong><p>{intakeSettings?.application_limit!==null&&intakeSettings?`${intakeSettings.application_count} of ${intakeSettings.application_limit} applications used this intake.`:'Check the eligibility requirements and complete the form once. Recruiters review applications individually.'}</p></div><span className="intake-dot"/></div>
         <form className="panel form" onSubmit={submitApplication}>
