@@ -28,6 +28,26 @@ export default async function handler(req:ApiRequest,res:ApiResponse){
   const runtime=globalThis as typeof globalThis & {process?:{env?:Record<string,string|undefined>}};
   const apiKey=runtime.process?.env?.OPENAI_API_KEY;
   if(!apiKey)return res.status(200).json({configured:false});
+
+  let intakeSummary = 'Intake status is currently unavailable; do not guess the current application capacity.';
+  try {
+    const supabaseUrl = runtime.process?.env?.SUPABASE_URL || 'https://tyhszzztltamrohhyykh.supabase.co';
+    const publishableKey = runtime.process?.env?.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn';
+    const intakeResponse = await fetch(supabaseUrl + '/rest/v1/asy_recruitment_settings?id=eq.1&select=intake_open,application_limit,application_count', {
+      headers: { apikey: publishableKey },
+      cache: 'no-store'
+    });
+    const intakeRows = intakeResponse.ok ? await intakeResponse.json() : [];
+    const intake = Array.isArray(intakeRows) ? intakeRows[0] : null;
+    if (intake) {
+      if (!intake.intake_open) intakeSummary = 'Recruitment intake is CLOSED.';
+      else if (intake.application_limit === null) intakeSummary = 'Recruitment intake is OPEN with no numeric application cap configured.';
+      else if (Number(intake.application_count) >= Number(intake.application_limit)) intakeSummary = 'Recruitment intake is OPEN in settings but the application cap has been REACHED; new submissions are blocked.';
+      else intakeSummary = 'Recruitment intake is OPEN. ' + intake.application_count + ' of ' + intake.application_limit + ' application slots are used.';
+    }
+  } catch {
+    // Keep the conservative fallback: never invent intake capacity.
+  }
   const history=Array.isArray(body.history)?(body.history as ChatMessage[]).slice(-8).map(item=>{
     const role=item.role==='assistant'?'Assistant':'Applicant';
     const text=typeof item.text==='string'?item.text.trim().slice(0,500):'';
@@ -55,7 +75,7 @@ Privacy: the site never needs social-account passwords or login codes. Do not as
       body:JSON.stringify({
         model:'gpt-6-luna',
         instructions,
-        input:(history?'Recent conversation:\n'+history+'\n\n':'')+'Applicant question: '+body.question.trim(),
+        input:'Verified current intake status: '+intakeSummary+'\n\n'+(history?'Recent conversation:\n'+history+'\n\n':'')+'Applicant question: '+body.question.trim(),
         max_output_tokens:260,
         store:false
       })
