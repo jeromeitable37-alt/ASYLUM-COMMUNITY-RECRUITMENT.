@@ -295,7 +295,7 @@ function Home({intakeSettings,onApply,onRoster,onTrack,onGuide}:{intakeSettings:
   </section>
   <section className="features"><Feature icon={<Crosshair/>} title="Competitive play" desc="Improve together through ranked and scrims."/><Feature icon={<Users/>} title="Team-first culture" desc="Respect, communication, and consistency."/><Feature icon={<Trophy/>} title="Earn your spot" desc="Every application gets a fair review."/></section>
   <section className="community-tools"><div className="journey-heading"><small>MORE FROM ASYLUM</small><h2>ONE COMMUNITY. <em>MORE IN ONE PLACE.</em></h2><p>Follow one clear roadmap instead of searching through old chats for each instruction.</p></div><div className="community-tools-grid">
-    <article className="community-tool active"><span className="community-tool-icon"><ClipboardList size={20}/></span><small className="tool-state">AVAILABLE NOW</small><h3>Screening guide</h3><p>Eligibility, post-acceptance requirements, official links, and the full checklist in one place.</p><button className="text-link" onClick={onGuide}>Open screening guide <ArrowRight size={14}/></button></article>
+    <article className="community-tool active"><span className="community-tool-icon"><ClipboardList size={20}/></span><small className="tool-state">AVAILABLE NOW</small><h3>Screening guide</h3><p>Eligibility checks, step-by-step proof uploads, official links, and the full checklist in one place.</p><button className="text-link" onClick={onGuide}>Open screening guide <ArrowRight size={14}/></button></article>
     <article className="community-tool"><span className="community-tool-icon"><Users size={20}/></span><small className="tool-state planned">PLANNED</small><h3>Teams & referrals</h3><p>A single place for team interest, referral details, and recruitment follow-up.</p><span className="tool-note">Needs management workflow and database fields.</span></article>
     <article className="community-tool"><span className="community-tool-icon"><Swords size={20}/></span><small className="tool-state planned">PLANNED</small><h3>Scrim hub</h3><p>Centralize scrim schedules, team requests, and match results when management is ready.</p><span className="tool-note">Scheduling and match records are not enabled yet.</span></article>
     <article className="community-tool"><span className="community-tool-icon"><ShieldCheck size={20}/></span><small className="tool-state planned">PLANNED</small><h3>Player reports</h3><p>A structured report form with evidence, context, and private management review.</p><span className="tool-note">Use the current official staff channel until this tool is enabled.</span></article>
@@ -313,30 +313,30 @@ function ScreeningGuide({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
     ['tag','I am willing to add the ASY tag after my IGN on my main CODM and TikTok accounts.'],
     ['photo','I am willing to submit a proper roster photo for the welcome banner.'],
   ];
-  const postAccept=[
+  const screeningProofs=[
     ['codm','Screenshot of my main CODM account with the ASY tag after my IGN.'],
     ['tiktok','Screenshot of my TikTok account with the ASY tag after my IGN.'],
     ['follow','Screenshot proving I follow the official ASY Community TikTok account.'],
     ['form','Screenshot of my completed Membership Form showing my IGN.'],
     ['discord','My Discord server nickname is set to IGN ASY.'],
-    ['roster','I have my roster photo ready; my Facebook name goes in the caption and I follow the admin reference.'],
+    ['roster','I will submit my roster photo during screening, include my Facebook name in the caption, and follow the admin reference.'],
   ];
   const toggle=(key:string)=>setChecked(old=>({...old,[key]:!old[key]}));
   return <section className="page screening-page">
-    <Heading kicker="04 / ONE-STOP RECRUITMENT GUIDE" title={<>YOUR ASY <em>CHECKLIST.</em></>} desc="Use this step-by-step roadmap from eligibility to the requirements after Screening GC acceptance."/>
+    <Heading kicker="04 / ONE-STOP RECRUITMENT GUIDE" title={<>YOUR ASY <em>CHECKLIST.</em></>} desc="Use this guide from eligibility through the step-by-step evidence review. Follow the instructions shown in Track application."/>
     <div className={'panel guide-intake '+(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit))?'closed':'open')}><span className="intake-dot"/><div><strong>{!intakeSettings?'Checking intake status…':!intakeSettings.intake_open?'Applications are temporarily closed':intakeSettings.application_limit!==null&&intakeSettings.application_count>=intakeSettings.application_limit?'Application limit reached':'Recruitment intake is open'}</strong><p>{intakeSettings?.application_limit!==null&&intakeSettings?`${intakeSettings.application_count} of ${intakeSettings.application_limit} applications used in this intake.`:'Review the requirements below before applying. Submitting an application does not guarantee acceptance.'}</p></div></div>
     <div className="guide-grid">
       <section className="panel guide-card"><small className="kicker">STEP 01 / BEFORE APPLYING</small><h2>Check eligibility</h2><p>Tick each item as you verify it. This checklist stays in this browser session and is not sent to recruiters.</p>
         <div className="screening-checks">{preApply.map(([key,label])=><label className="screening-check" key={key}><input type="checkbox" checked={!!checked[key]} onChange={()=>toggle(key)}/><span>{label}</span></label>)}</div>
       </section>
-      <section className="panel guide-card"><small className="kicker">STEP 02 / AFTER ACCEPTANCE</small><h2>Screening requirements</h2><p>These items are required after recruiters accept you into the Screening GC. They are not all required at initial application.</p>
-        <div className="screening-checks">{postAccept.map(([key,label])=><label className="screening-check" key={key}><input type="checkbox" checked={!!checked[key]} onChange={()=>toggle(key)}/><span>{label}</span></label>)}</div>
+      <section className="panel guide-card"><small className="kicker">STEP 02 / DURING SCREENING</small><h2>Required proof uploads</h2><p>After you submit your application, each proof stage unlocks as recruiters approve the previous stage. Upload only the items requested in your current step.</p>
+        <div className="screening-checks">{screeningProofs.map(([key,label])=><label className="screening-check" key={key}><input type="checkbox" checked={!!checked[key]} onChange={()=>toggle(key)}/><span>{label}</span></label>)}</div>
       </section>
     </div>
     <section className="panel guide-links"><small className="kicker">STEP 03 / OFFICIAL RESOURCES</small><h2>Keep the official links together</h2><p>Open the right resource from here instead of searching old messages.</p>
       <div className="guide-link-grid"><a href="https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1" target="_blank" rel="noreferrer"><b>ASY Community TikTok</b><span>Follow the official account <ArrowRight size={14}/></span></a><a href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer"><b>Membership Form</b><span>Complete the membership form <ArrowRight size={14}/></span></a><a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer"><b>Official ASY Discord</b><span>Nickname, roster photo, and staff guidance <ArrowRight size={14}/></span></a></div>
     </section>
-    <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Submission note</strong><p>This page centralizes the instructions and links. Secure screenshot uploads are not enabled yet, so until the private upload portal is configured, follow the recruitment admins’ latest submission instructions. Never post private screenshots, email addresses, passwords, or account codes in public channels.</p></div></section>
+    <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Submission note</strong><p>This page keeps the instructions and official links together. After applying, open Track application and use your tracking code plus the same email you registered with. Upload each requested screenshot through the private uploader when that step unlocks, then wait for recruiter review before moving on. Submitting proofs does not guarantee acceptance. Never post private screenshots, email addresses, passwords, or account codes in public channels.</p></div></section>
   </section>;
 }
 
@@ -364,18 +364,13 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
   const q = question.toLowerCase();
   if (/accepted|screening gc|screening group|requirements after|screenshot|roster photo|cooldown|cool down|gc nickname/.test(q)) {
     return {
-      text: `If you've been accepted into the ASY Screening GC, follow these steps:
+      text: `For recruitment screening, use the website's Track application page and enter your tracking code plus the same email used in your application. The website unlocks proof uploads in stages:
 
-1. If your CODM or TikTok name is still in cooldown, set your GC nickname to: IGN.DATE.CODM/TIKTOK.
-2. Send a screenshot of your main CODM account with the ASY tag AFTER your IGN.
-3. Send a screenshot of your TikTok account with the ASY tag AFTER your IGN.
-4. Send proof that you follow the official ASY Community TikTok account.
-5. Submit the Membership Form and provide a screenshot showing your IGN.
-6. In Discord, set your server nickname to: IGN ASY.
-7. Upload your proper roster photo in Discord. Put your Facebook name in the caption first, and follow the photo references from the admin.
-8. Submit the requested proofs in the Screening GC as instructed by the admins.
+1. Step 1: Upload screenshots of your main CODM and TikTok accounts with the ASY tag AFTER your IGN. Referral applicants must also provide the requested referral proof.
+2. Step 2: Upload proof that you follow the official ASY Community TikTok account and a screenshot of the completed Membership Form showing your IGN.
+3. Step 3: Set your Discord server nickname to IGN ASY and upload your roster photo following the admin reference. Put your Facebook name in the photo caption.
 
-Important: the Screening GC invite is sent only when your CODM account already shows the ASY tag. Never send passwords or account login codes.`,
+Wait for a recruiter to review each stage before continuing. The final recruitment decision is made by the team, and the Screening GC invite is sent only when your CODM account already shows the ASY tag. Never send passwords or account login codes.`,
       links: screeningLinks,
     };
   }
@@ -389,25 +384,25 @@ Important: the Screening GC invite is sent only when your CODM account already s
 • Be willing to add the ASY tag AFTER your IGN on your main CODM and TikTok accounts.
 • Be willing to submit a proper roster photo for the welcome banner.
 
-The Screening GC invite is sent only after the ASY tag appears on your CODM account. Final screening decisions are made by the recruitment team.`,
+After submitting, use Track application to upload the requested proofs as each stage unlocks. The Screening GC invite is sent only after the ASY tag appears on your CODM account, and final decisions are made by the recruitment team.`,
       links: screeningLinks,
     };
   }
   if (/tiktok|follow/.test(q)) {
     return {
-      text: 'Please follow the official Asylum Community TikTok account. If you are already accepted into the Screening GC, send a screenshot showing that you follow it with your other required proofs.',
+      text: 'Follow the official Asylum Community TikTok account. When the follow-proof step unlocks in Track application, upload a screenshot there for recruiter review. Keep your evidence private and do not post it in public channels.',
       links: [screeningLinks[0]],
     };
   }
   if (/membership form|form link|member form/.test(q)) {
     return {
-      text: 'Use the official Membership Form. After completing it, make sure your IGN is visible in the screenshot if you have been accepted into the Screening GC.',
+      text: 'Complete the official Membership Form and make sure your IGN is visible in the screenshot. Upload the screenshot through Track application when that step unlocks.',
       links: [screeningLinks[1]],
     };
   }
   if (/discord|server nickname|roster photo|banner photo/.test(q)) {
     return {
-      text: 'Join the official ASY Discord. After you are accepted into the Screening GC, set your server nickname to IGN ASY and upload your roster photo using the admin-provided reference. Include your Facebook name in the caption.',
+      text: 'Join the official ASY Discord. When Step 3 unlocks in Track application, set your server nickname to IGN ASY and upload your roster photo following the admin reference. Include your Facebook name in the caption and keep the proof private.',
       links: [screeningLinks[2]],
     };
   }
@@ -435,7 +430,7 @@ The Screening GC invite is sent only after the ASY tag appears on your CODM acco
     };
   }
   return {
-    text: 'I can help with ASY eligibility, how to apply, application tracking, or the requirements after you are accepted into the Screening GC. Try asking “What are the screening GC requirements?” or tap one of the quick questions below.',
+    text: 'I can help with ASY eligibility, how to apply, tracking your application, and the step-by-step screening proofs. Try asking “What proofs do I need to upload?” or tap one of the quick questions below.',
   };
 }
 
@@ -494,7 +489,7 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
           {chatBusy&&<div className="chat-message assistant"><p>Checking the ASY guide…</p></div>}
           {messages.length===1&&<div className="chat-quick-questions">
             <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the eligibility requirements before applying?')}>Eligibility</button>
-            <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the requirements after accepted into the Screening GC?')}>Screening GC requirements</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('What proofs do I need to upload?')}>Screening proof checklist</button>
             <button type="button" disabled={chatBusy} onClick={()=>void ask('How do I track my application?')}>Track application</button>
             <button type="button" disabled={chatBusy} onClick={()=>void ask('Is there a limit on applications?')}>Application limit</button>
           </div>}
