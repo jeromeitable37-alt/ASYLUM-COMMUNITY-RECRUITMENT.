@@ -577,6 +577,21 @@ export default function App() {
           })}</div>
           {!['tag_proofs','membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)&&<p className="muted">Uploads will unlock here when an authorized recruiter approves your current step.</p>}
         </section>}
+        {tracked&&<section className="panel application-chat">
+          <div className="application-chat-heading"><div><small className="kicker">PRIVATE APPLICATION CHAT</small><h2>Message the recruitment team</h2><p>Ask about your application or reply to recruiter messages here.</p></div><span className="private-badge"><ShieldCheck size={13}/> Private</span></div>
+          <div className="message-thread" aria-live="polite">
+            {applicantMessages.length===0&&<p className="message-empty">No messages yet. Send a message if you need help with your application.</p>}
+            {applicantMessages.map(message=><article key={message.id} className={'thread-message '+message.sender_role}>
+              <div className="thread-message-meta"><strong>{message.sender_role==='recruiter'?'ASY Recruitment': 'You'}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
+              <p>{message.body}</p>
+            </article>)}
+          </div>
+          <form className="message-compose" onSubmit={sendApplicantMessage}>
+            <Field label="Your message"><textarea rows={2} maxLength={2000} value={applicantMessageDraft} onChange={event=>setApplicantMessageDraft(event.target.value)} placeholder="Type a question or reply…" /></Field>
+            <button type="submit" className="primary" disabled={applicantMessageBusy||!applicantMessageDraft.trim()}>{applicantMessageBusy?'Sending…':'Send message'} <Send size={15}/></button>
+          </form>
+          <small className="message-privacy-note">Only you and authorized recruiters can access this application conversation. Never send passwords or login codes.</small>
+        </section>}
       </section>}
       {page==='screening'&&<ScreeningGuide intakeSettings={intakeSettings} onApply={()=>setPage('apply')} onTrack={()=>setPage('status')}/> }
       {page==='roster'&&<RosterPage roster={roster} onApply={()=>setPage('apply')}/>}
