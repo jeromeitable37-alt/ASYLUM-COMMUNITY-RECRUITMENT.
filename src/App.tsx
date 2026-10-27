@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createClient, Session } from '@supabase/supabase-js';
-import { ArrowRight, BadgeCheck, Bot, CalendarClock, CheckCircle2, ClipboardList, Copy, Mail, Crosshair, Gamepad2, LogIn, LogOut, MessageCircle, Search, Send, ShieldCheck, Swords, Trophy, Users, X, Zap } from 'lucide-react';
+import { ArrowRight, BadgeCheck, Bot, CalendarClock, CheckCircle2, ClipboardList, Copy, Mail, Crosshair, Gamepad2, LogIn, LogOut, MessageCircle, Search, Send, ShieldCheck, Swords, Trophy, Upload, Users, X, Zap } from 'lucide-react';
 
 const SUPABASE_URL = 'https://tyhszzztltamrohhyykh.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn';
@@ -128,15 +128,15 @@ export default function App() {
   }
   async function reviewEvidence(item:Evidence,status:'approved'|'needs_correction'){
     if(!selected||!item.id)return;
-    setBusy(true);
     const reviewerNotes=evidenceNotes[item.id]?.trim()||null;
-    if(status==='needs_correction'&&!reviewerNotes){notify('Add a short correction note so the applicant knows what to fix.',true);return;}
+    if(status==='needs_correction'&&!reviewerNotes){notify('Add a correction note first so the applicant knows exactly what to fix.',true);return;}
+    setBusy(true);
     const {error}=await supabase.from('asy_recruitment_evidence').update({status,reviewer_notes:reviewerNotes,reviewed_by_email:session?.user.email||null,reviewed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',item.id);
     setBusy(false);
-    if(error){notify('Could not update this requirement. Check recruiter access.',true);return;}
+    if(error){notify('Could not update this requirement. Check recruiter permissions.',true);return;}
     await loadSelectedEvidence(selected.id);
     await loadApplications();
-    notify(status==='approved'?'Requirement approved. The next step unlocks when all required items in this step are approved.':'Correction requested. The applicant can upload a replacement screenshot.');
+    notify(status==='approved'?'Proof approved. The next stage opens only when all required proofs in this stage are approved.':'Correction requested. The applicant can upload a replacement screenshot.');
   }
   async function openEvidence(path:string){
     const {data,error}=await supabase.storage.from('asy-recruitment-private').createSignedUrl(path,300);
@@ -232,14 +232,14 @@ export default function App() {
             const canUpload=currentStage===item.stage_number&&(item.status==='not_submitted'||item.status==='needs_correction');
             const statusLabel=({locked:'Locked',not_submitted:'Awaiting upload',pending:'Pending recruiter review',approved:'Approved',needs_correction:'Needs correction'} as Record<string,string>)[item.status]||item.status;
             return <article className={'applicant-evidence-item '+item.status} key={item.requirement_key}>
-              <div className="applicant-evidence-copy"><strong>{item.requirement_label}</strong><span className={'evidence-status '+item.status}>{statusLabel}</span>{item.file_name&&<small>Uploaded file: {item.file_name}</small>}{item.reviewer_notes&&item.status==='needs_correction'&&<p className="correction-note">Recruiter note: {item.reviewer_notes}</p>}</div>
+              <div className="applicant-evidence-copy"><strong>{item.requirement_label}</strong><span className={'evidence-status '+item.status}>{statusLabel}</span>{item.file_name&&<small>Uploaded file: {item.file_name}</small>}{item.submitted_at&&<small>Submitted: {new Date(item.submitted_at).toLocaleString()}</small>}{item.reviewed_at&&<small>Reviewed: {new Date(item.reviewed_at).toLocaleString()}</small>}{item.reviewer_notes&&item.status==='needs_correction'&&<p className="correction-note">Recruiter feedback: {item.reviewer_notes}</p>}</div>
               {canUpload&&<><Field label="Optional note for recruiter"><textarea rows={2} maxLength={500} value={applicantEvidenceNotes[item.requirement_key]??item.applicant_note??''} onChange={e=>setApplicantEvidenceNotes(old=>({...old,[item.requirement_key]:e.target.value}))} placeholder="Add context for this proof, if needed…"/></Field><label className="upload-control"><span>{evidenceUploadKey===item.requirement_key?'Uploading…':item.status==='needs_correction'?'Upload replacement':'Choose screenshot'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadRequirement(item.requirement_key,file);e.currentTarget.value='';}}/></label></>}
             </article>;
           })}</div>
           {!['tag_proofs','membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)&&<p className="muted">Uploads will unlock here when an authorized recruiter approves your current step.</p>}
         </section>}
       </section>}
-      {page==='screening'&&<ScreeningGuide intakeSettings={intakeSettings}/>}
+      {page==='screening'&&<ScreeningGuide intakeSettings={intakeSettings} onApply={()=>setPage('apply')} onTrack={()=>setPage('status')}/> }
       {page==='roster'&&<RosterPage roster={roster} onApply={()=>setPage('apply')}/>}
       {page==='admin'&&<section className="page admin-page">
         {!session?<div className="login-wrap"><div><small className="kicker">RESTRICTED AREA</small><h1>RECRUITER<br/><em>COMMAND.</em></h1><p className="muted">Sign in with an authorized Asylum Community recruitment account to review applications, schedule interviews and track tryouts.</p><div className="secure"><ShieldCheck/> ACCESS CONTROLLED BY SUPABASE AUTH</div></div><form className="panel login" onSubmit={signIn}><div className="login-icon"><ShieldCheck/></div><h2>Recruiter sign in</h2><p className="muted">Only approved recruiter emails can access applicant data.</p><Field label="Email"><input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="jeromeitable37@gmail.com"/></Field><Field label="Password"><input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Your password"/></Field><button className="primary full" disabled={busy}>{busy?'Signing in…':'Sign in securely'} <LogIn size={16}/></button><small className="muted">Account must exist in Supabase Auth and be added to the Asylum Community recruiter allowlist.</small></form></div>
@@ -261,9 +261,9 @@ export default function App() {
             <div className="details">{[['Application type',selected.application_type==='referral'?'Referral':'Casual'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank],['Main role',selected.main_role],['Mode',selected.preferred_mode],['Availability',selected.availability],['Community / team experience',selected.clan_experience||'Not provided']].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
             <div className="reason"><b>Why they want to join</b><p>{selected.reason}</p></div>
             <section className="panel admin-evidence">
-              <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each submitted screenshot. The database unlocks the next step only when every required item in this step is approved.</p>
+              <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each submitted screenshot or request a correction with a clear note. Only database-verified approval of every required proof unlocks the next stage. For the Membership Form, manually verify the form record when needed because of the reported MGC form issue. Before marking an applicant eligible for the Screening GC, confirm the CODM proof visibly shows the ASY tag after the IGN. The invite itself remains a manual staff action.</p>
               {selectedEvidence.map(item=><article className="admin-evidence-item" key={item.requirement_key}>
-                <div className="admin-evidence-title"><div><strong>{item.requirement_label}</strong><small>Stage {item.stage_number} · {item.status.replace('_',' ')}</small>{item.file_name&&<small>{item.file_name} · {item.file_size_bytes?Math.round(item.file_size_bytes/1024)+' KB':''}</small>}{item.applicant_note&&<small>Applicant note: {item.applicant_note}</small>}</div>
+                <div className="admin-evidence-title"><div><strong>{item.requirement_label}</strong><small>Stage {item.stage_number} · {({locked:'Locked',not_submitted:'Awaiting upload',pending:'Pending review',approved:'Approved',needs_correction:'Needs correction'} as Record<string,string>)[item.status]||item.status}</small>{item.file_name&&<small>{item.file_name} · {item.file_size_bytes?Math.round(item.file_size_bytes/1024)+' KB':''}</small>}{item.submitted_at&&<small>Submitted: {new Date(item.submitted_at).toLocaleString()}</small>}{item.reviewed_at&&<small>Reviewed: {new Date(item.reviewed_at).toLocaleString()}{item.reviewed_by_email?' · '+item.reviewed_by_email:''}</small>}{item.applicant_note&&<small>Applicant note: {item.applicant_note}</small>}</div>
                   {item.storage_path&&<button type="button" className="secondary compact-button" onClick={()=>void openEvidence(item.storage_path!)}>View private proof</button>}
                 </div>
                 {item.status==='pending'&&<><Field label="Feedback for applicant"><textarea rows={2} value={evidenceNotes[item.id||'']??item.reviewer_notes??''} onChange={e=>setEvidenceNotes(old=>({...old,[item.id||'']:e.target.value}))} placeholder="Optional note; add one if requesting correction"/></Field><div className="action-row"><button type="button" className="secondary" disabled={busy} onClick={()=>void reviewEvidence(item,'needs_correction')}>Request correction</button><button type="button" className="primary" disabled={busy} onClick={()=>void reviewEvidence(item,'approved')}>Approve proof <CheckCircle2 size={15}/></button></div></>}
@@ -296,47 +296,102 @@ function Home({intakeSettings,onApply,onRoster,onTrack,onGuide}:{intakeSettings:
   <section className="features"><Feature icon={<Crosshair/>} title="Competitive play" desc="Improve together through ranked and scrims."/><Feature icon={<Users/>} title="Team-first culture" desc="Respect, communication, and consistency."/><Feature icon={<Trophy/>} title="Earn your spot" desc="Every application gets a fair review."/></section>
   <section className="community-tools"><div className="journey-heading"><small>MORE FROM ASYLUM</small><h2>ONE COMMUNITY. <em>MORE IN ONE PLACE.</em></h2><p>Follow one clear roadmap instead of searching through old chats for each instruction.</p></div><div className="community-tools-grid">
     <article className="community-tool active"><span className="community-tool-icon"><ClipboardList size={20}/></span><small className="tool-state">AVAILABLE NOW</small><h3>Screening guide</h3><p>Eligibility checks, step-by-step proof uploads, official links, and the full checklist in one place.</p><button className="text-link" onClick={onGuide}>Open screening guide <ArrowRight size={14}/></button></article>
-    <article className="community-tool"><span className="community-tool-icon"><Users size={20}/></span><small className="tool-state planned">PLANNED</small><h3>Teams & referrals</h3><p>A single place for team interest, referral details, and recruitment follow-up.</p><span className="tool-note">Needs management workflow and database fields.</span></article>
+    <article className="community-tool"><span className="community-tool-icon"><Users size={20}/></span><small className="tool-state planned">PLANNED</small><h3>Team screening</h3><p>A dedicated route for team applications and captain review after management confirms the team rules.</p><span className="tool-note">Waiting for the team-screening process from management.</span></article>
     <article className="community-tool"><span className="community-tool-icon"><Swords size={20}/></span><small className="tool-state planned">PLANNED</small><h3>Scrim hub</h3><p>Centralize scrim schedules, team requests, and match results when management is ready.</p><span className="tool-note">Scheduling and match records are not enabled yet.</span></article>
     <article className="community-tool"><span className="community-tool-icon"><ShieldCheck size={20}/></span><small className="tool-state planned">PLANNED</small><h3>Player reports</h3><p>A structured report form with evidence, context, and private management review.</p><span className="tool-note">Use the current official staff channel until this tool is enabled.</span></article>
   </div></section>
-  <section className="journey"><div className="journey-heading"><small>THE ASY RECRUITMENT ROADMAP</small><h2>ONE SQUAD. <em>THREE CLEAR STEPS.</em></h2><p>No guessing, no confusing process. Here is what happens after you apply.</p></div><div className="journey-grid"><article className="journey-card"><span className="journey-number">01</span><ClipboardList size={22}/><h3>Send your application</h3><p>Share your CODM details, playstyle, and the best email to reach you.</p></article><article className="journey-card"><span className="journey-number">02</span><CalendarClock size={22}/><h3>Recruiters review it</h3><p>The team checks your application and updates its status as the review moves forward.</p></article><article className="journey-card"><span className="journey-number">03</span><CheckCircle2 size={22}/><h3>Track every step</h3><p>Your reference code and application email let you check your latest status anytime.</p></article></div><div className="journey-footer"><p><ShieldCheck size={17}/> Your tracking code appears after submission and is saved on this browser for next time.</p><button className="text-link" onClick={onTrack}>Already applied? Track your application <ArrowRight size={15}/></button></div></section>
+  <section className="journey"><div className="journey-heading"><small>THE ASY RECRUITMENT ROADMAP</small><h2>FROM APPLICATION TO SCREENING GC. <em>SIX CLEAR STEPS.</em></h2><p>Everything is tracked in one place. Your next step unlocks only after the required review is complete.</p></div><div className="journey-grid"><article className="journey-card"><span className="journey-number">01</span><ClipboardList size={22}/><h3>Choose your route</h3><p>Select Casual or Referral Recruitment, then submit your player and contact details.</p></article><article className="journey-card"><span className="journey-number">02</span><ShieldCheck size={22}/><h3>Eligibility review</h3><p>A recruiter checks age, Legendary Series, Facebook name, ASY tag agreement, and roster-photo readiness.</p></article><article className="journey-card"><span className="journey-number">03</span><Upload size={22}/><h3>Upload private proofs</h3><p>Submit only the screenshots requested at each unlocked stage. Referral applicants also provide their referral conversation proof.</p></article><article className="journey-card"><span className="journey-number">04</span><CheckCircle2 size={22}/><h3>Review or correction</h3><p>Recruiters approve each proof or leave correction feedback. All required items must be approved before the next stage unlocks.</p></article><article className="journey-card"><span className="journey-number">05</span><ClipboardList size={22}/><h3>Final manual checks</h3><p>The team double-checks the Membership Form and manually verifies the MGC record when needed.</p></article><article className="journey-card"><span className="journey-number">06</span><ShieldCheck size={22}/><h3>Screening GC eligibility</h3><p>A recruiter confirms the CODM ASY tag and records eligibility. GC invitations and final decisions remain manual.</p></article></div><div className="journey-footer"><p><ShieldCheck size={17}/> Keep your tracking code and application email private. Submitting a form or screenshot does not guarantee acceptance.</p><button className="text-link" onClick={onTrack}>Already applied? Track your application <ArrowRight size={15}/></button></div></section>
   <section className="callout"><div><small>YOUR NEXT MOVE</small><h2>SHOW US WHAT YOU BRING.</h2><p>Tell us your role, your goals, and how you play.</p></div><button className="primary" onClick={onApply}>Start application <ArrowRight size={16}/></button></section>
  </>;
 }
-function ScreeningGuide({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
-  const [checked,setChecked]=useState<Record<string,boolean>>({});
-  const preApply=[
-    ['age','I am at least 16 years old.'],
-    ['series','I have at least 6 Legendary Series in BR or MP.'],
-    ['fb','My Facebook name is appropriate and not random/inappropriate.'],
-    ['tag','I am willing to add the ASY tag after my IGN on my main CODM and TikTok accounts.'],
-    ['photo','I am willing to submit a proper roster photo for the welcome banner.'],
-  ];
-  const screeningProofs=[
-    ['codm','Screenshot of my main CODM account with the ASY tag after my IGN.'],
-    ['tiktok','Screenshot of my TikTok account with the ASY tag after my IGN.'],
-    ['follow','Screenshot proving I follow the official ASY Community TikTok account.'],
-    ['form','Screenshot of my completed Membership Form showing my IGN.'],
-    ['discord','My Discord server nickname is set to IGN ASY.'],
-    ['roster','I will submit my roster photo during screening, include my Facebook name in the caption, and follow the admin reference.'],
-  ];
-  const toggle=(key:string)=>setChecked(old=>({...old,[key]:!old[key]}));
+function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeSettings|null;onApply:()=>void;onTrack:()=>void}) {
+  const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   return <section className="page screening-page">
-    <Heading kicker="04 / ONE-STOP RECRUITMENT GUIDE" title={<>YOUR ASY <em>CHECKLIST.</em></>} desc="Use this guide from eligibility through the step-by-step evidence review. Follow the instructions shown in Track application."/>
-    <div className={'panel guide-intake '+(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit))?'closed':'open')}><span className="intake-dot"/><div><strong>{!intakeSettings?'Checking intake status…':!intakeSettings.intake_open?'Applications are temporarily closed':intakeSettings.application_limit!==null&&intakeSettings.application_count>=intakeSettings.application_limit?'Application limit reached':'Recruitment intake is open'}</strong><p>{intakeSettings?.application_limit!==null&&intakeSettings?`${intakeSettings.application_count} of ${intakeSettings.application_limit} applications used in this intake.`:'Review the requirements below before applying. Submitting an application does not guarantee acceptance.'}</p></div></div>
-    <div className="guide-grid">
-      <section className="panel guide-card"><small className="kicker">STEP 01 / BEFORE APPLYING</small><h2>Check eligibility</h2><p>Tick each item as you verify it. This checklist stays in this browser session and is not sent to recruiters.</p>
-        <div className="screening-checks">{preApply.map(([key,label])=><label className="screening-check" key={key}><input type="checkbox" checked={!!checked[key]} onChange={()=>toggle(key)}/><span>{label}</span></label>)}</div>
-      </section>
-      <section className="panel guide-card"><small className="kicker">STEP 02 / DURING SCREENING</small><h2>Required proof uploads</h2><p>After you submit your application, each proof stage unlocks as recruiters approve the previous stage. Upload only the items requested in your current step.</p>
-        <div className="screening-checks">{screeningProofs.map(([key,label])=><label className="screening-check" key={key}><input type="checkbox" checked={!!checked[key]} onChange={()=>toggle(key)}/><span>{label}</span></label>)}</div>
-      </section>
+    <Heading kicker="04 / ONE-STOP RECRUITMENT GUIDE" title={<>THE ASY <em>SCREENING ROADMAP.</em></>} desc="Check the eligibility requirements, then follow each evidence stage in Track application. The guide below explains what each stage asks for."/>
+    <div className={'panel guide-intake '+(intakeFull?'closed':'open')}>
+      <span className="intake-dot"/>
+      <div>
+        <small className="kicker">CURRENT RECRUITMENT STATUS</small>
+        <strong>{!intakeSettings?'Checking intake status…':!intakeSettings.intake_open?'Applications are temporarily closed':intakeSettings.application_limit!==null&&intakeSettings.application_count>=intakeSettings.application_limit?'Application limit reached':'Recruitment intake is open'}</strong>
+        <p>{intakeSettings?.application_limit!==null&&intakeSettings? `${intakeSettings.application_count} of ${intakeSettings.application_limit} application slots used in this intake.`:'Review the requirements before applying. Submitting an application does not guarantee acceptance.'}</p>
+      </div>
     </div>
-    <section className="panel guide-links"><small className="kicker">STEP 03 / OFFICIAL RESOURCES</small><h2>Keep the official links together</h2><p>Open the right resource from here instead of searching old messages.</p>
-      <div className="guide-link-grid"><a href="https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1" target="_blank" rel="noreferrer"><b>ASY Community TikTok</b><span>Follow the official account <ArrowRight size={14}/></span></a><a href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer"><b>Membership Form</b><span>Complete the membership form <ArrowRight size={14}/></span></a><a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer"><b>Official ASY Discord</b><span>Nickname, roster photo, and staff guidance <ArrowRight size={14}/></span></a></div>
+    <section className="panel guide-eligibility">
+      <div className="guide-section-heading">
+        <small className="kicker">STEP 01 / BEFORE APPLYING</small>
+        <h2>Eligibility requirements</h2>
+        <p>These are the minimum requirements confirmed in the application form. This guide is informational; your application form records your confirmations.</p>
+      </div>
+      <div className="eligibility-grid">
+        <article className="eligibility-item"><span>01</span><div><strong>Age</strong><p>You must be at least 16 years old.</p></div></article>
+        <article className="eligibility-item"><span>02</span><div><strong>Legendary Series</strong><p>At least 6 Legendary Series in Battle Royale (BR) or Multiplayer (MP).</p></div></article>
+        <article className="eligibility-item"><span>03</span><div><strong>Facebook name</strong><p>Use an appropriate Facebook name; random or inappropriate names are not accepted.</p></div></article>
+        <article className="eligibility-item"><span>04</span><div><strong>ASY tag</strong><p>Agree to add the ASY tag after your IGN on your main CODM and TikTok accounts.</p></div></article>
+        <article className="eligibility-item"><span>05</span><div><strong>Roster photo</strong><p>Be ready to submit a roster photo using the admin's reference if requested.</p></div></article>
+      </div>
+      <div className="guide-action-row"><span>Ready to apply?</span><p>Submit these details in the application form, then save your tracking code and email.</p></div>
     </section>
-    <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Submission note</strong><p>This page keeps the instructions and official links together. After applying, open Track application and use your tracking code plus the same email you registered with. Upload each requested screenshot through the private uploader when that step unlocks, then wait for recruiter review before moving on. Submitting proofs does not guarantee acceptance. Never post private screenshots, email addresses, passwords, or account codes in public channels.</p></div></section>
+    <div className="guide-screening-heading">
+      <small className="kicker">STEP 02 / SCREENING WORKFLOW</small>
+      <h2>Proof uploads, <em>one stage at a time.</em></h2>
+      <p>You do not tick these items off here. After you apply, go to <strong>Track application</strong>, enter your tracking code and application email, and upload the requested proofs when each stage unlocks.</p>
+    </div>
+    <div className="guide-stage-grid">
+      <article className="guide-stage">
+        <div className="guide-stage-top"><span>STAGE 01</span><small>TAG VERIFICATION</small></div>
+        <h3>CODM &amp; TikTok tags</h3>
+        <p>Upload screenshots showing the ASY tag after your IGN on both accounts:</p>
+        <ul className="guide-list">
+          <li>Main CODM account with ASY after IGN</li>
+          <li>TikTok account with ASY after IGN</li>
+          <li>Referral applicants: upload a screenshot of the conversation with the member who referred you</li>
+        </ul>
+        <div className="guide-stage-foot">Unlocks after recruiter eligibility review.</div>
+      </article>
+      <article className="guide-stage">
+        <div className="guide-stage-top"><span>STAGE 02</span><small>COMMUNITY FOLLOW</small></div>
+        <h3>Follow &amp; membership form</h3>
+        <p>When Stage 2 unlocks, submit these proofs:</p>
+        <ul className="guide-list">
+          <li>Screenshot showing you follow the official ASY Community TikTok</li>
+          <li>Screenshot of the completed Membership Form with your IGN visible</li>
+        </ul>
+        <div className="guide-stage-foot">Unlocks after all Stage 1 proofs are approved.</div>
+      </article>
+      <article className="guide-stage">
+        <div className="guide-stage-top"><span>STAGE 03</span><small>DISCORD &amp; ROSTER</small></div>
+        <h3>Nickname &amp; roster photo</h3>
+        <p>When Stage 3 unlocks, complete the final profile proofs:</p>
+        <ul className="guide-list">
+          <li>Set your official ASY Discord server nickname to <strong>IGN ASY</strong></li>
+          <li>Upload your roster photo using the admin reference</li>
+          <li>Include your Facebook name in the photo caption</li>
+        </ul>
+        <div className="guide-stage-foot">Unlocks after all Stage 2 proofs are approved.</div>
+      </article>
+    </div>
+    <section className="panel discord-howto">
+      <div className="guide-section-heading"><small className="kicker">DISCORD QUICK GUIDE</small><h2>Set your nickname and ask for the right role</h2><p>Use your server nickname so recruiters can match your Discord account with your application.</p></div>
+      <ol className="discord-steps">
+        <li><span>01</span><div><strong>Join the official ASY Discord</strong><p>Use the official invite below, then open the server.</p></div></li>
+        <li><span>02</span><div><strong>Set your server nickname</strong><p>Open your server profile or member menu and change the nickname to <b>IGN ASY</b> using your exact in-game name.</p></div></li>
+        <li><span>03</span><div><strong>Follow staff role instructions</strong><p>Check the pinned instructions in the recruitment or verification channel. If the required role does not appear, ask an authorized staff member. Never share your password or login code.</p></div></li>
+      </ol>
+    </section>
+    <section className="panel guide-links">
+      <div className="guide-section-heading">
+        <small className="kicker">STEP 03 / OFFICIAL RESOURCES</small>
+        <h2>Official links</h2>
+        <p>Use these links for the official community accounts and forms.</p>
+      </div>
+      <div className="guide-link-grid">
+        <a href="https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1" target="_blank" rel="noreferrer"><b>ASY Community TikTok</b><span>Follow the official account <ArrowRight size={14}/></span></a>
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer"><b>Membership Form</b><span>Complete the membership form <ArrowRight size={14}/></span></a>
+        <a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer"><b>Official ASY Discord</b><span>Nickname, roster photo, and staff guidance <ArrowRight size={14}/></span></a>
+      </div>
+    </section>
+    <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Important: follow the live status page</strong><p>This guide explains the process but does not approve or submit evidence. Your actual upload controls, recruiter feedback, and current stage appear in Track application. Upload privately only when a stage unlocks, wait for review, and keep your tracking code and application email private. Final acceptance remains a recruiter decision. The Screening GC invite is sent only when your CODM account already shows the ASY tag.</p></div></section>
+    <div className="guide-cta-row"><div><strong>Ready for your next step?</strong><p>Start a new application or return to your live screening progress.</p></div><div className="guide-cta-actions"><button className="primary" type="button" onClick={onApply}>Apply to join <ArrowRight size={15}/></button><button className="secondary" type="button" onClick={onTrack}>Track application <ArrowRight size={15}/></button></div></div>
   </section>;
 }
 
@@ -362,6 +417,12 @@ const screeningLinks: ChatLink[] = [
 
 function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|null): Omit<ChatEntry, 'role'> {
   const q = question.toLowerCase();
+  if (/referral|referred|referrer/.test(q)) {
+    return {
+      text: `For Referral Recruitment, choose “Referral Recruitment” in the application form and enter your referrer's name plus Facebook profile link. Referral applicants complete the same eligibility checks and all Casual Recruitment proof stages, plus a screenshot of the conversation with the member who referred them. Upload that conversation screenshot in Stage 1 when it unlocks. Use Track application with your tracking code and the same email to submit proof privately and follow recruiter feedback. A referral does not guarantee acceptance.`,
+      links: screeningLinks,
+    };
+  }
   if (/accepted|screening gc|screening group|requirements after|screenshot|roster photo|cooldown|cool down|gc nickname/.test(q)) {
     return {
       text: `For recruitment screening, use the website's Track application page and enter your tracking code plus the same email used in your application. The website unlocks proof uploads in stages:
@@ -490,6 +551,7 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
           {messages.length===1&&<div className="chat-quick-questions">
             <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the eligibility requirements before applying?')}>Eligibility</button>
             <button type="button" disabled={chatBusy} onClick={()=>void ask('What proofs do I need to upload?')}>Screening proof checklist</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the Referral Recruitment requirements?')}>Referral requirements</button>
             <button type="button" disabled={chatBusy} onClick={()=>void ask('How do I track my application?')}>Track application</button>
             <button type="button" disabled={chatBusy} onClick={()=>void ask('Is there a limit on applications?')}>Application limit</button>
           </div>}
