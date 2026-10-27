@@ -181,3 +181,139 @@
 .discord-steps strong{display:block;color:#f3eef5;font-size:12px;line-height:1.5}
 .discord-steps p{margin:4px 0 0;color:#aaa3af;font-size:11px;line-height:1.8;overflow-wrap:anywhere}
 
+/* Recruiter intake controls — clear hierarchy, spacing, and responsive layout */
+.intake-admin{
+  display:grid;
+  gap:22px;
+  margin:0 0 22px;
+  padding:clamp(18px,2.5vw,28px);
+  background:linear-gradient(145deg,#151419 0%,#101014 72%);
+  border-color:#343039;
+  box-shadow:0 18px 45px #0003;
+}
+.intake-admin-heading{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px;
+  padding-bottom:20px;
+  border-bottom:1px solid #302b34;
+}
+.intake-admin-title{min-width:0;max-width:760px}
+.intake-admin-title>.kicker{display:block;margin-bottom:9px}
+.intake-admin-title h2{margin:0 0 9px;color:#f5f1f6;font:800 clamp(24px,3vw,32px)/1.15 'Barlow Condensed',sans-serif;letter-spacing:.1px}
+.intake-admin-title p{max-width:660px;margin:0;color:#aaa4af;font-size:12px;line-height:1.8}
+.intake-status-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  flex:none;
+  padding:9px 12px;
+  border:1px solid #285c42;
+  border-radius:999px;
+  background:#102319;
+  color:#a2e8be;
+  font-size:10px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.intake-status-badge i{width:7px;height:7px;border-radius:50%;background:#4bd68d;box-shadow:0 0 9px #4bd68d65}
+.intake-status-badge.closed{border-color:#77303a;background:#291217;color:#ffabb3}
+.intake-status-badge.closed i{background:#ff5362;box-shadow:0 0 9px #ff536265}
+.intake-status-badge.loading{border-color:#3d3942;background:#18171c;color:#b9b4be}
+.intake-status-badge.loading i{background:#96909d;box-shadow:none}
+.intake-admin-layout{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(18px,3vw,30px);align-items:start}
+.intake-admin-copy{display:grid;gap:15px;min-width:0}
+.intake-summary{
+  display:grid;
+  gap:10px;
+  padding:20px;
+  border:1px solid #3a3039;
+  border-radius:8px;
+  background:radial-gradient(ellipse at 5% 0%,#5a202b35,transparent 60%),#0d0d11;
+}
+.intake-summary-label{color:#a69ba9;font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;line-height:1.5}
+.intake-summary-value{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;color:#fff;font:900 clamp(30px,4vw,44px)/1 'Barlow Condensed',sans-serif;overflow-wrap:anywhere}
+.intake-summary-value>span{color:#b1a8b5;font:600 15px/1.5 'DM Sans',sans-serif;overflow-wrap:anywhere}
+.intake-summary-date{color:#7f7885;font-size:10px;line-height:1.6}
+.intake-meter{height:8px;overflow:hidden;border:1px solid #302a34;border-radius:999px;background:#08080b}
+.intake-meter>span{display:block;height:100%;max-width:100%;border-radius:inherit;background:linear-gradient(90deg,#b51d2b,#ff4b58);transition:width .25s ease}
+.intake-meter>span.closed{background:linear-gradient(90deg,#7f2731,#ff5966)}
+.intake-meter.unlimited>span{background:linear-gradient(90deg,#62242d,#b6303c)}
+.intake-capacity-note{margin:0;color:#928996;font-size:10px;line-height:1.8}
+.intake-admin-form{display:grid;gap:14px;min-width:0;padding:20px;border:1px solid #302b34;border-radius:8px;background:#0e0e12}
+.intake-admin-form .field{gap:9px;margin:0}
+.intake-admin-form .field>span{color:#eee7f0;font-size:11px;line-height:1.6}
+.intake-admin-form .field input{min-height:47px}
+.field-hint{display:block;color:#8d8492;font-size:10px;line-height:1.7}
+.toggle-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  min-width:0;
+  padding:14px;
+  border:1px solid #37303a;
+  border-radius:7px;
+  background:#151318;
+  cursor:pointer;
+}
+.toggle-copy{display:grid;gap:4px;min-width:0}
+.toggle-copy strong{color:#f0ebf3;font-size:12px;line-height:1.5}
+.toggle-copy small{color:#9e95a2;font-size:10px;line-height:1.6}
+.toggle-row>input[type="checkbox"]{
+  appearance:none;
+  position:relative;
+  flex:none;
+  width:42px;
+  height:24px;
+  margin:0;
+  border:1px solid #514752;
+  border-radius:999px;
+  background:#29242e;
+  cursor:pointer;
+  transition:background .18s,border-color .18s;
+}
+.toggle-row>input[type="checkbox"]::after{
+  content:'';
+  position:absolute;
+  top:3px;
+  left:3px;
+  width:16px;
+  height:16px;
+  border-radius:50%;
+  background:#c0b7c5;
+  transition:transform .18s,background .18s;
+}
+.toggle-row>input[type="checkbox"]:checked{border-color:#e63a49;background:#8f1825}
+.toggle-row>input[type="checkbox"]:checked::after{transform:translateX(18px);background:#fff}
+.toggle-row>input[type="checkbox"]:focus-visible{outline:2px solid #ff7882;outline-offset:3px}
+.intake-admin-actions{display:grid;grid-template-columns:1fr;gap:10px}
+.intake-admin-actions>button{width:100%;min-height:45px;justify-content:center;white-space:normal;line-height:1.5}
+.intake-admin-actions>.secondary{border-color:#4b3b48;background:#171319}
+.intake-admin-actions>.secondary:hover{border-color:#96505e;background:#21151d}
+.admin-page .tools{margin-top:20px}
+@media(max-width:900px){
+  .intake-admin-layout{grid-template-columns:minmax(0,1fr)}
+  .intake-admin-copy{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;column-gap:16px}
+  .intake-summary{grid-row:span 2}
+  .intake-admin-form{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:end}
+  .intake-admin-form>.field,.intake-admin-form>.toggle-row,.intake-admin-actions{grid-column:1/-1}
+}
+@media(max-width:600px){
+  .intake-admin{padding:16px;gap:17px}
+  .intake-admin-heading{flex-direction:column;align-items:flex-start;gap:13px;padding-bottom:17px}
+  .intake-admin-title h2{font-size:27px}
+  .intake-admin-title p{font-size:11px}
+  .intake-admin-copy{grid-template-columns:minmax(0,1fr);gap:12px}
+  .intake-summary{grid-row:auto;padding:17px}
+  .intake-summary-value{font-size:36px}
+  .intake-admin-form{grid-template-columns:minmax(0,1fr);padding:15px;gap:14px}
+  .intake-admin-form>.field,.intake-admin-form>.toggle-row,.intake-admin-actions{grid-column:auto}
+  .toggle-row{align-items:center;padding:12px}
+  .toggle-copy strong{font-size:11px}
+  .toggle-copy small{font-size:9px}
+  .admin-page .tools{margin-top:16px}
+}
+

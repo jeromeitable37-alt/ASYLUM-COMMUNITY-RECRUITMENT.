@@ -58,6 +58,7 @@ export default function App() {
   const [applicantEvidenceNotes,setApplicantEvidenceNotes]=useState<Record<string,string>>({});
   const notify=(message:string,isError=false)=>{setNotice(message);setHasError(isError);};
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
+  const intakeUsagePercent=intakeSettings?.application_limit ? Math.min(100,Math.round((intakeSettings.application_count/intakeSettings.application_limit)*100)) : 0;
   const updateForm=(key:keyof typeof form,value:string)=>setForm(old=>({...old,[key]:value}));
 
   useEffect(()=>{void loadIntakeSettings();},[]);
@@ -247,14 +248,42 @@ export default function App() {
         :<><div className="admin-head"><div><small className="kicker">ASYLUM COMMUNITY / RECRUITMENT CONTROL</small><h1>RECRUITER <em>DESK.</em></h1><p>{session.user.email}</p></div><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div>
           <div className="stats"><Stat icon={<ClipboardList/>} label="Total applicants" value={applications.length}/><Stat icon={<Zap/>} label="Pending review" value={count('pending')}/><Stat icon={<CalendarClock/>} label="In progress" value={count('reviewing')+count('interview')+count('tryout')}/><Stat icon={<Trophy/>} label="Accepted" value={count('accepted')}/></div>
            <section className="panel intake-admin">
-             <div className="intake-admin-copy"><small className="kicker">RECRUITMENT INTAKE CONTROL</small><h2>Application capacity</h2><p>Set a cap for this intake or close submissions temporarily. The database enforces the limit during submission.</p><div className="intake-meter"><span className={intakeFull?'closed':''}/></div><strong>{intakeSettings?.application_count??'—'} / {intakeSettings?.application_limit??'Unlimited'} applications</strong><small>{intakeSettings?.intake_open?'Intake toggle is open':'Intake is closed'} · Cycle started {intakeSettings?new Date(intakeSettings.cycle_started_at).toLocaleDateString():'—'}</small></div>
-             <form className="intake-admin-form" onSubmit={saveIntakeSettings}>
-               <Field label="Maximum applications (blank = unlimited)"><input type="number" min="1" max="10000" step="1" value={intakeLimitDraft} onChange={event=>setIntakeLimitDraft(event.target.value)} placeholder="Unlimited"/></Field>
-               <label className="toggle-row"><input type="checkbox" checked={intakeOpenDraft} onChange={event=>setIntakeOpenDraft(event.target.checked)}/> Accept new applications</label>
-               <button className="primary full" disabled={settingsBusy}>{settingsBusy?'Saving…':'Save intake settings'}</button>
-               <button className="secondary full" type="button" disabled={settingsBusy} onClick={()=>void resetIntakeCycle()}>Start a new intake count</button>
-             </form>
-           </section>
+              <div className="intake-admin-heading">
+                <div className="intake-admin-title">
+                  <small className="kicker">RECRUITMENT INTAKE CONTROL</small>
+                  <h2>Application capacity</h2>
+                  <p>Set an optional application limit or pause submissions. The database enforces these settings when an application is submitted.</p>
+                </div>
+                <span className={'intake-status-badge '+(!intakeSettings?'loading':intakeSettings.intake_open?'open':'closed')}><i/>{!intakeSettings?'Loading status':intakeSettings.intake_open?'Intake open':'Intake closed'}</span>
+              </div>
+              <div className="intake-admin-layout">
+                <div className="intake-admin-copy">
+                  <div className="intake-summary">
+                    <span className="intake-summary-label">Applications received this intake</span>
+                    <strong className="intake-summary-value">{intakeSettings?.application_count??'—'} <span>/ {intakeSettings?.application_limit??'Unlimited'}</span></strong>
+                    <span className="intake-summary-date">Cycle started {intakeSettings?new Date(intakeSettings.cycle_started_at).toLocaleDateString():'—'}</span>
+                  </div>
+                  <div className={'intake-meter '+(intakeSettings?.application_limit===null?'unlimited':'')} role="progressbar" aria-label="Application capacity used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={intakeSettings?.application_limit?intakeUsagePercent:0}>
+                    <span className={intakeFull?'closed':''} style={{width:intakeSettings?.application_limit?intakeUsagePercent+'%':'100%'}}/>
+                  </div>
+                  <p className="intake-capacity-note">{intakeSettings?.application_limit===null?'No numeric cap is set for this intake.':'Capacity usage is updated as applications are received.'} New submissions are blocked whenever intake is closed.</p>
+                </div>
+                <form className="intake-admin-form" onSubmit={saveIntakeSettings}>
+                  <Field label="Maximum number of applications">
+                    <input type="number" min="1" max="10000" step="1" value={intakeLimitDraft} onChange={event=>setIntakeLimitDraft(event.target.value)} placeholder="Unlimited"/>
+                    <small className="field-hint">Leave blank to allow applications without a numeric cap.</small>
+                  </Field>
+                  <label className="toggle-row">
+                    <span className="toggle-copy"><strong>Accept new applications</strong><small>Turn this off to temporarily close recruitment.</small></span>
+                    <input type="checkbox" checked={intakeOpenDraft} onChange={event=>setIntakeOpenDraft(event.target.checked)} aria-label="Accept new applications"/>
+                  </label>
+                  <div className="intake-admin-actions">
+                    <button className="primary" disabled={settingsBusy}>{settingsBusy?'Saving…':'Save intake settings'}</button>
+                    <button className="secondary" type="button" disabled={settingsBusy} onClick={()=>void resetIntakeCycle()}>Start a new intake count</button>
+                  </div>
+                </form>
+              </div>
+            </section>
           <div className="tools"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search IGN, UID, email, code…"/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All statuses</option>{statuses.map(stage=><option key={stage} value={stage}>{labels[stage]}</option>)}</select><button className="secondary" onClick={()=>void loadApplications()}>Refresh</button></div>
           <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'CASUAL'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
           {selected&&<div className="panel detail"><header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
