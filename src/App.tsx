@@ -417,6 +417,12 @@ const screeningLinks: ChatLink[] = [
 
 function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|null): Omit<ChatEntry, 'role'> {
   const q = question.toLowerCase();
+  if (/referral|referred|referrer/.test(q)) {
+    return {
+      text: `For Referral Recruitment, choose “Referral Recruitment” in the application form and enter your referrer's name plus Facebook profile link. Referral applicants complete the same eligibility checks and all Casual Recruitment proof stages, plus a screenshot of the conversation with the member who referred them. Upload that conversation screenshot in Stage 1 when it unlocks. Use Track application with your tracking code and the same email to submit proof privately and follow recruiter feedback. A referral does not guarantee acceptance.`,
+      links: screeningLinks,
+    };
+  }
   if (/accepted|screening gc|screening group|requirements after|screenshot|roster photo|cooldown|cool down|gc nickname/.test(q)) {
     return {
       text: `For recruitment screening, use the website's Track application page and enter your tracking code plus the same email used in your application. The website unlocks proof uploads in stages:
@@ -545,6 +551,7 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
           {messages.length===1&&<div className="chat-quick-questions">
             <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the eligibility requirements before applying?')}>Eligibility</button>
             <button type="button" disabled={chatBusy} onClick={()=>void ask('What proofs do I need to upload?')}>Screening proof checklist</button>
+            <button type="button" disabled={chatBusy} onClick={()=>void ask('What are the Referral Recruitment requirements?')}>Referral requirements</button>
             <button type="button" disabled={chatBusy} onClick={()=>void ask('How do I track my application?')}>Track application</button>
             <button type="button" disabled={chatBusy} onClick={()=>void ask('Is there a limit on applications?')}>Application limit</button>
           </div>}
