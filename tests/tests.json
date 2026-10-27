@@ -1,0 +1,96 @@
+[
+  {
+    "name": "Submit a CODM application and track its status",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "public application form",
+      "CODM validation",
+      "Supabase insert",
+      "application code and email status lookup",
+      "public access without login"
+    ],
+    "description": "Verifies an unauthenticated player can submit a complete application and use code plus email to retrieve status.",
+    "steps": [
+      "Open Apply to join without signing in",
+      "Complete IGN, UID, email, rank, role, mode, availability and reason",
+      "Submit the application and note its tracking code",
+      "Refresh and open Track application",
+      "Use the code and same email to check status"
+    ],
+    "expected": "The application is saved as Pending review and the tracking code can retrieve the matching IGN and status."
+  },
+  {
+    "name": "Reject incomplete application details",
+    "viewport": "mobile",
+    "covers": [
+      "required-field validation",
+      "minimum reason length",
+      "mobile form behavior",
+      "invalid-write guardrail"
+    ],
+    "description": "Confirms the public form prevents submission when required details or a meaningful reason are missing.",
+    "steps": [
+      "Open Apply to join on mobile",
+      "Leave UID or reason empty or enter a reason shorter than the minimum",
+      "Attempt to submit"
+    ],
+    "expected": "Browser validation prevents submission and no application is created."
+  },
+  {
+    "name": "Block unauthorized recruiter accounts",
+    "viewport": "desktop",
+    "covers": [
+      "Supabase Auth",
+      "recruiter email allowlist",
+      "private applicant data",
+      "unauthorized access denial"
+    ],
+    "description": "Checks that only authenticated allowlisted accounts can read applicant data.",
+    "steps": [
+      "Open Recruiter login signed out",
+      "Sign in with a valid Supabase Auth account not on the recruiter allowlist",
+      "Observe the result"
+    ],
+    "expected": "An account-not-authorized message appears and private application details remain hidden."
+  },
+  {
+    "name": "Schedule interview and save tryout results",
+    "viewport": "desktop",
+    "covers": [
+      "application search and filters",
+      "review notes and status",
+      "interview scheduling",
+      "tryout result tracking",
+      "durable state"
+    ],
+    "description": "Verifies an authorized recruiter can manage the application pipeline and persist interview and tryout records.",
+    "steps": [
+      "Sign in with an allowlisted recruiter",
+      "Open an application and mark it In review",
+      "Schedule an interview",
+      "Record tryout date, mode, score and result",
+      "Refresh recruiter desk"
+    ],
+    "expected": "Application state and interview/tryout records persist in Supabase."
+  },
+  {
+    "name": "Accept applicant into public roster",
+    "viewport": "mobile",
+    "covers": [
+      "acceptance workflow",
+      "roster upsert",
+      "public active roster",
+      "private contact exclusion",
+      "responsive roster"
+    ],
+    "description": "Confirms acceptance adds the player to the active roster and public cards do not display contact email.",
+    "steps": [
+      "Sign in with an authorized recruiter",
+      "Accept an application using Accept + add member",
+      "Open Clan roster publicly",
+      "Inspect the player card"
+    ],
+    "expected": "Accepted player appears with IGN, rank and role; email and reviewer notes are not public."
+  }
+]
