@@ -369,6 +369,7 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
         </ul>
         <div className="guide-stage-foot">Unlocks after all Stage 2 proofs are approved.</div>
       </article>
+    </div>
     <section className="panel discord-howto">
       <div className="guide-section-heading"><small className="kicker">DISCORD QUICK GUIDE</small><h2>Set your nickname and ask for the right role</h2><p>Use your server nickname so recruiters can match your Discord account with your application.</p></div>
       <ol className="discord-steps">
@@ -377,7 +378,6 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
         <li><span>03</span><div><strong>Follow staff role instructions</strong><p>Check the pinned instructions in the recruitment or verification channel. If the required role does not appear, ask an authorized staff member. Never share your password or login code.</p></div></li>
       </ol>
     </section>
-    </div>
     <section className="panel guide-links">
       <div className="guide-section-heading">
         <small className="kicker">STEP 03 / OFFICIAL RESOURCES</small>
