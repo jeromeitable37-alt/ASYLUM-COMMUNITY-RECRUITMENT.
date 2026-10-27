@@ -1,2 +1,5 @@
 [functions.asy-recruitment-evidence]
 verify_jwt = false
+
+[functions.asy-community-messaging]
+verify_jwt = false

@@ -5,6 +5,7 @@ import { ArrowRight, BadgeCheck, Bot, CalendarClock, CheckCircle2, ClipboardList
 const SUPABASE_URL = 'https://tyhszzztltamrohhyykh.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn';
 const EVIDENCE_API_URL = SUPABASE_URL + '/functions/v1/asy-recruitment-evidence';
+const MESSAGING_API_URL = SUPABASE_URL + '/functions/v1/asy-community-messaging';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
@@ -12,6 +13,10 @@ type ApplicantProgress = { application:{application_code:string;ign:string;statu
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string };
 type SavedApplication = { application_code:string; contact_email:string; ign:string; submitted_at:string };
 type IntakeSettings = { id:number; intake_open:boolean; application_limit:number|null; application_count:number; cycle_started_at:string; updated_at:string };
+type Announcement = { id:string; title:string; body:string; category:'general'|'recruitment'|'event'|'maintenance'; is_published:boolean; created_at:string; updated_at?:string; published_at?:string|null; created_by_email?:string; updated_by_email?:string|null };
+type CommunityChatMessage = { id:string; display_name:string; body:string; created_at:string };
+type ApplicationChatMessage = { id:string; application_id:string; sender_role:'applicant'|'recruiter'; sender_name:string; body:string; created_at:string; applicant_read_at?:string|null; recruiter_read_at?:string|null };
+const emptyAnnouncementDraft = {id:'',title:'',body:'',category:'general' as Announcement['category'],is_published:true};
 const statuses = ['pending','reviewing','interview','tryout','accepted','rejected','waitlisted'];
 const labels: Record<string,string> = { pending:'Pending review', reviewing:'In review', interview:'Interview', tryout:'Tryout', accepted:'Accepted', rejected:'Rejected', waitlisted:'Waitlisted' };
 const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', ageConfirmed:'', legendarySeriesCount:'6', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
@@ -66,18 +71,166 @@ export default function App() {
   const [selectedEvidence,setSelectedEvidence]=useState<Evidence[]>([]);
   const [evidenceNotes,setEvidenceNotes]=useState<Record<string,string>>({});
   const [applicantEvidenceNotes,setApplicantEvidenceNotes]=useState<Record<string,string>>({});
+  const [announcements,setAnnouncements]=useState<Announcement[]>([]);
+  const [announcementDraft,setAnnouncementDraft]=useState(emptyAnnouncementDraft);
+  const [announcementBusy,setAnnouncementBusy]=useState(false);
+  const [communityMessages,setCommunityMessages]=useState<CommunityChatMessage[]>([]);
+  const [communityDisplayName,setCommunityDisplayName]=useState('');
+  const [communityDraft,setCommunityDraft]=useState('');
+  const [communityChatBusy,setCommunityChatBusy]=useState(false);
+  const [applicantMessages,setApplicantMessages]=useState<ApplicationChatMessage[]>([]);
+  const [applicantMessageDraft,setApplicantMessageDraft]=useState('');
+  const [applicantMessageBusy,setApplicantMessageBusy]=useState(false);
+  const [adminApplicationMessages,setAdminApplicationMessages]=useState<ApplicationChatMessage[]>([]);
+  const [adminMessageDraft,setAdminMessageDraft]=useState('');
+  const [adminMessageBusy,setAdminMessageBusy]=useState(false);
   const notify=(message:string,isError=false)=>{setNotice(message);setHasError(isError);};
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   const intakeUsagePercent=intakeSettings?.application_limit ? Math.min(100,Math.round((intakeSettings.application_count/intakeSettings.application_limit)*100)) : 0;
   const updateForm=(key:keyof typeof form,value:string)=>setForm(old=>({...old,[key]:value}));
 
-  useEffect(()=>{void loadIntakeSettings();},[]);
+  useEffect(()=>{void loadIntakeSettings();void loadAnnouncements();},[]);
   useEffect(()=>{try{const raw=localStorage.getItem('asy-recruitment:last-application');if(raw){const saved=JSON.parse(raw) as SavedApplication;if(saved.application_code&&saved.contact_email){setSavedApplication(saved);setApplicationCode(saved.application_code);setContactEmail(saved.contact_email);}}}catch{}},[]);
   useEffect(()=>{supabase.auth.getSession().then(({data})=>setSession(data.session));const {data:listener}=supabase.auth.onAuthStateChange((_event,next)=>setSession(next));return()=>listener.subscription.unsubscribe();},[]);
   useEffect(()=>{if(session?.user.email) void checkAdmin(session.user.email);else setAuthorized(false);},[session]);
-  useEffect(()=>{if(page==='roster')void loadRoster();if(page==='admin'&&session&&authorized)void loadApplications();},[page,session,authorized]);
+  useEffect(()=>{if(page==='roster')void loadRoster();if(page==='admin'&&session&&authorized){void loadApplications();void loadAnnouncements();}},[page,session,authorized]);
+  useEffect(()=>{if(page==='community'){void loadAnnouncements();void loadCommunityMessages();}},[page,authorized,session?.access_token]);
+  useEffect(()=>{
+    if(page!=='community')return;
+    const timer=window.setInterval(()=>{void loadAnnouncements();void loadCommunityMessages();},12000);
+    return()=>window.clearInterval(timer);
+  },[page,authorized,session?.access_token]);
+  useEffect(()=>{
+    if(page!=='status'||!tracked){setApplicantMessages([]);return;}
+    void loadApplicantMessages(applicationCode,contactEmail);
+    const timer=window.setInterval(()=>void loadApplicantMessages(applicationCode,contactEmail),12000);
+    return()=>window.clearInterval(timer);
+  },[page,tracked?.application_code,applicationCode,contactEmail]);
+  useEffect(()=>{
+    if(page!=='admin'||!selected||!authorized){setAdminApplicationMessages([]);return;}
+    void loadAdminApplicationMessages(selected.id);
+    const timer=window.setInterval(()=>void loadAdminApplicationMessages(selected.id),10000);
+    return()=>window.clearInterval(timer);
+  },[page,selected?.id,authorized,session?.access_token]);
   useEffect(()=>{if(selected&&authorized)void loadSelectedEvidence(selected.id);else setSelectedEvidence([]);},[selected?.id,authorized]);
-  useEffect(()=>{setMgcNotes(selected?.mgc_verification_notes||'');setMgcContactConfirmed(Boolean(selected?.mgc_applicant_contacted));},[selected?.id]);
+  useEffect(()=>{setMgcNotes(selected?.mgc_verification_notes||'');setMgcContactConfirmed(Boolean(selected?.mgc_applicant_contacted));setAdminMessageDraft('');},[selected?.id]);
+  useEffect(()=>{setApplicantMessageDraft('');},[tracked?.application_code]);
+
+  async function messagingRequest(payload:Record<string,unknown>):Promise<any>{
+    const headers:Record<string,string>={apikey:SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'};
+    if(session?.access_token)headers.Authorization='Bearer '+session.access_token;
+    const response=await fetch(MESSAGING_API_URL,{method:'POST',headers,body:JSON.stringify(payload),cache:'no-store'});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'Messaging service is temporarily unavailable.');
+    return data;
+  }
+  async function loadAnnouncements(){
+    try{
+      const data=await messagingRequest({action:'announcements-list'});
+      setAnnouncements(Array.isArray(data.announcements)?data.announcements as Announcement[]:[]);
+    }catch(error){console.warn('Could not load ASY announcements.',error);}
+  }
+  async function loadCommunityMessages(){
+    try{
+      const data=await messagingRequest({action:'community-chat-list'});
+      setCommunityMessages(Array.isArray(data.messages)?data.messages as CommunityChatMessage[]:[]);
+    }catch(error){console.warn('Could not load community chat.',error);}
+  }
+  async function loadApplicantMessages(code=applicationCode,emailValue=contactEmail){
+    if(!code.trim()||!emailValue.trim()||!tracked)return;
+    try{
+      const data=await messagingRequest({action:'application-messages-list',application_code:code.trim(),contact_email:emailValue.trim().toLowerCase()});
+      setApplicantMessages(Array.isArray(data.messages)?data.messages as ApplicationChatMessage[]:[]);
+    }catch(error){console.warn('Could not load private applicant messages.',error);}
+  }
+  async function loadAdminApplicationMessages(applicationId=selected?.id){
+    if(!applicationId||!session?.access_token||!authorized)return;
+    try{
+      const data=await messagingRequest({action:'admin-application-messages-list',application_id:applicationId});
+      setAdminApplicationMessages(Array.isArray(data.messages)?data.messages as ApplicationChatMessage[]:[]);
+    }catch(error){console.warn('Could not load recruiter/applicant messages.',error);}
+  }
+  async function saveAnnouncement(event:FormEvent){
+    event.preventDefault();
+    const title=announcementDraft.title.trim();
+    const body=announcementDraft.body.trim();
+    if(title.length<3||!body){notify('Add a short title and announcement message.',true);return;}
+    setAnnouncementBusy(true);
+    try{
+      await messagingRequest({action:'announcement-save',id:announcementDraft.id||undefined,title,body,category:announcementDraft.category,is_published:announcementDraft.is_published});
+      setAnnouncementDraft(emptyAnnouncementDraft);
+      await loadAnnouncements();
+      notify(announcementDraft.is_published?'Announcement published.':'Announcement saved as a draft.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not save announcement.',true);}
+    finally{setAnnouncementBusy(false);}
+  }
+  async function setAnnouncementPublished(item:Announcement,published:boolean){
+    setAnnouncementBusy(true);
+    try{
+      await messagingRequest({action:'announcement-save',id:item.id,title:item.title,body:item.body,category:item.category,is_published:published});
+      await loadAnnouncements();
+      notify(published?'Announcement published.':'Announcement unpublished.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not update announcement.',true);}
+    finally{setAnnouncementBusy(false);}
+  }
+  async function deleteAnnouncement(item:Announcement){
+    if(!window.confirm('Delete this announcement?'))return;
+    setAnnouncementBusy(true);
+    try{
+      await messagingRequest({action:'announcement-delete',id:item.id});
+      if(announcementDraft.id===item.id)setAnnouncementDraft(emptyAnnouncementDraft);
+      await loadAnnouncements();
+      notify('Announcement deleted.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not delete announcement.',true);}
+    finally{setAnnouncementBusy(false);}
+  }
+  async function sendCommunityMessage(event:FormEvent){
+    event.preventDefault();
+    const displayName=communityDisplayName.trim().slice(0,32);
+    const body=communityDraft.trim().slice(0,500);
+    if(displayName.length<2||!body){notify('Enter your display name and a short message.',true);return;}
+    setCommunityChatBusy(true);
+    try{
+      await messagingRequest({action:'community-chat-send',display_name:displayName,body});
+      setCommunityDraft('');
+      await loadCommunityMessages();
+    }catch(error){notify(error instanceof Error?error.message:'Could not send community message.',true);}
+    finally{setCommunityChatBusy(false);}
+  }
+  async function hideCommunityMessage(message:CommunityChatMessage){
+    if(!window.confirm('Hide this public message from the community chat?'))return;
+    try{
+      await messagingRequest({action:'community-chat-hide',id:message.id,moderation_note:'Hidden by authorized recruiter'});
+      await loadCommunityMessages();
+      notify('Community message hidden.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not hide message.',true);}
+  }
+  async function sendApplicantMessage(event:FormEvent){
+    event.preventDefault();
+    const body=applicantMessageDraft.trim().slice(0,2000);
+    if(!tracked||!body)return;
+    setApplicantMessageBusy(true);
+    try{
+      await messagingRequest({action:'application-messages-send',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),body});
+      setApplicantMessageDraft('');
+      await loadApplicantMessages(applicationCode,contactEmail);
+    }catch(error){notify(error instanceof Error?error.message:'Could not send your message.',true);}
+    finally{setApplicantMessageBusy(false);}
+  }
+  async function sendAdminApplicantMessage(event:FormEvent){
+    event.preventDefault();
+    if(!selected)return;
+    const body=adminMessageDraft.trim().slice(0,2000);
+    if(!body)return;
+    setAdminMessageBusy(true);
+    try{
+      await messagingRequest({action:'admin-application-messages-send',application_id:selected.id,body});
+      setAdminMessageDraft('');
+      await loadAdminApplicationMessages(selected.id);
+      notify('Reply sent to applicant.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not send recruiter reply.',true);}
+    finally{setAdminMessageBusy(false);}
+  }
 
   async function loadIntakeSettings(){
     const {data,error}=await supabase.from('asy_recruitment_settings').select('id,intake_open,application_limit,application_count,cycle_started_at,updated_at').eq('id',1).maybeSingle();
@@ -346,7 +499,7 @@ export default function App() {
   async function saveTryout(event:FormEvent){event.preventDefault();if(!selected)return;setBusy(true);const {error}=await supabase.from('asy_recruitment_tryouts').insert({application_id:selected.id,scheduled_at:tryoutAt?new Date(tryoutAt).toISOString():null,mode:tryoutMode,score:tryoutScore?Number(tryoutScore):null,result:tryoutResult,notes:tryoutNotes.trim()||null});setBusy(false);if(error)notify('Tryout result could not be saved.',true);else{await updateApplication(selected,tryoutResult==='fail'?'rejected':'tryout');setTryoutScore('');setTryoutNotes('');notify('Tryout record saved.');}}
   const filtered=useMemo(()=>applications.filter(app=>(filter==='all'||app.status===filter)&&[app.ign,app.codm_uid,app.contact_email,app.application_code].some(v=>v.toLowerCase().includes(query.toLowerCase()))),[applications,filter,query]);
   const count=(status:string)=>applications.filter(app=>app.status===status).length;
-  const navigation=[['home','Overview'],['apply','Apply to join'],['status','Track application'],['screening','Screening guide'],['roster','Community members']];
+  const navigation=[['home','Overview'],['community','Community'],['apply','Apply to join'],['status','Track application'],['screening','Screening guide'],['roster','Community members']];
 
   return <div className="shell">
     <div className="topline"><i/> ASYLUM COMMUNITY <span>/</span> GAMING COMMUNITY</div>
@@ -357,7 +510,43 @@ export default function App() {
     </header>
     {notice&&<div className={'notice '+(hasError?'bad':'')}><BadgeCheck size={17}/><span>{notice}</span><button onClick={()=>setNotice('')} aria-label="Dismiss"><X size={15}/></button></div>}
     <main>
-      {page==='home'&&<Home intakeSettings={intakeSettings} onApply={()=>setPage('apply')} onRoster={()=>setPage('roster')} onTrack={()=>setPage('status')} onGuide={()=>setPage('screening')}/>}
+      {page==='home'&&<>
+        <Home intakeSettings={intakeSettings} onApply={()=>setPage('apply')} onRoster={()=>setPage('roster')} onTrack={()=>setPage('status')} onGuide={()=>setPage('screening')}/>
+        {announcements.some(item=>item.is_published)&&<section className="page announcement-preview">
+          <div className="announcement-preview-head"><div><small className="kicker">LATEST UPDATES</small><h2>From the <em>ASY community.</em></h2></div><button type="button" className="secondary" onClick={()=>setPage('community')}>All updates &amp; chat <ArrowRight size={14}/></button></div>
+          <div className="announcement-preview-grid">{announcements.filter(item=>item.is_published).slice(0,3).map(item=><article className="announcement-card" key={item.id}><span className={'announcement-category '+item.category}>{item.category}</span><h3>{item.title}</h3><p>{item.body}</p><small>{new Date(item.published_at||item.created_at).toLocaleDateString()}</small></article>)}</div>
+        </section>}
+      </>}
+      {page==='community'&&<section className="page community-page">
+        <Heading kicker="ASY COMMUNITY" title={<>NEWS &amp; <em>CHAT.</em></>} desc="Read official updates or talk in the public chat. Keep personal application details private."/>
+        <div className="community-layout">
+          <section className="panel community-announcements">
+            <div className="community-panel-heading"><div><small className="kicker">OFFICIAL UPDATES</small><h2>Announcements</h2></div><button type="button" className="secondary compact-button" onClick={()=>void loadAnnouncements()}>Refresh</button></div>
+            {(authorized?announcements:announcements.filter(item=>item.is_published)).length===0&&<p className="message-empty">No announcements yet. Check back for updates from ASY staff.</p>}
+            {(authorized?announcements:announcements.filter(item=>item.is_published)).map(item=><article className="announcement-card" key={item.id}>
+              <div className="announcement-card-meta"><span className={'announcement-category '+item.category}>{item.category}</span><small>{item.is_published?new Date(item.published_at||item.created_at).toLocaleString():'Draft · staff only'}</small></div>
+              <h3>{item.title}</h3><p>{item.body}</p>
+            </article>)}
+          </section>
+          <section className="panel community-chat-panel">
+            <div className="community-panel-heading"><div><small className="kicker">PUBLIC ROOM</small><h2>General chat</h2><p>Messages are visible to everyone. Names are not verified.</p></div><button type="button" className="secondary compact-button" onClick={()=>void loadCommunityMessages()}>Refresh</button></div>
+            <div className="public-chat-thread" aria-live="polite">
+              {communityMessages.length===0&&<p className="message-empty">No messages yet. Start the conversation respectfully.</p>}
+              {communityMessages.map(message=><article className="public-chat-message" key={message.id}>
+                <div className="thread-message-meta"><strong>{message.display_name}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
+                <p>{message.body}</p>
+                {authorized&&<button type="button" className="moderate-message" onClick={()=>void hideCommunityMessage(message)}>Hide message</button>}
+              </article>)}
+            </div>
+            <form className="community-chat-compose" onSubmit={sendCommunityMessage}>
+              <Field label="Display name"><input required minLength={2} maxLength={32} value={communityDisplayName} onChange={event=>setCommunityDisplayName(event.target.value)} placeholder="Choose a nickname"/></Field>
+              <Field label="Message"><textarea required rows={2} maxLength={500} value={communityDraft} onChange={event=>setCommunityDraft(event.target.value)} placeholder="Say hi to the community…"/></Field>
+              <button type="submit" className="primary" disabled={communityChatBusy||!communityDisplayName.trim()||!communityDraft.trim()}>{communityChatBusy?'Sending…':'Send message'} <Send size={15}/></button>
+            </form>
+            <small className="message-privacy-note">Do not share emails, UIDs, screenshots, passwords, or login codes in public chat. Staff can hide inappropriate messages.</small>
+          </section>
+        </div>
+      </section>}
       {page==='apply'&&<section className="page"><Heading kicker="01 / RECRUITMENT FORM" title={<>YOUR RUN <em>STARTS HERE.</em></>} desc="Complete the form honestly. Required fields are marked *. No account needed."/>
         <div className={'panel intake-banner '+(intakeFull?'closed':'open')}><div><strong>{intakeFull?(!intakeSettings?.intake_open?'Applications are temporarily closed':'Application limit reached'):'Recruitment intake is open'}</strong><p>{intakeSettings?.application_limit!==null&&intakeSettings?`${intakeSettings.application_count} of ${intakeSettings.application_limit} applications used this intake.`:'Check the eligibility requirements and complete the form once. Recruiters review applications individually.'}</p></div><span className="intake-dot"/></div>
         <form className="panel form" onSubmit={submitApplication}>
@@ -409,7 +598,7 @@ export default function App() {
         </form></section>}
       {page==='status'&&<section className="page narrow"><Heading kicker="02 / APPLICATION STATUS" title={<>CHECK YOUR <em>STATUS.</em></>} desc="Check your progress with your tracking code and the same email address used on your application."/>
         {savedApplication&&<div className="panel saved-reference"><div className="saved-reference-head"><div><small className="kicker">SAVED ON THIS DEVICE</small><h2>Your tracking code</h2><p>We saved your latest application reference here so you can find it again after you leave the site.</p></div><span className="saved-reference-icon"><ClipboardList size={20}/></span></div><div className="reference-code-row"><code>{savedApplication.application_code}</code><button className="secondary" type="button" onClick={()=>void copyApplicationCode(savedApplication.application_code)}><Copy size={15}/> Copy code</button></div><p className="saved-email"><Mail size={15}/> Email used: <strong>{savedApplication.contact_email}</strong></p><p className="saved-help">Using another device? Contact an ASy recruiter with your in-game name and the email you applied with. Do not post your UID or email publicly.</p><button className="saved-clear" type="button" onClick={clearSavedApplication}>Forget saved details on this device</button></div>}
-        <form className="panel form" onSubmit={checkStatus}><Field label="Application code"><input required value={applicationCode} onChange={e=>setApplicationCode(e.target.value.toUpperCase())} placeholder="ASYLUM-XXXXXXXX"/></Field><Field label="Contact email"><input required type="email" value={contactEmail} onChange={e=>setContactEmail(e.target.value)} placeholder="Email used in your application"/></Field><button className="primary full" disabled={busy}>{busy?'Checking…':'Check application'} <ArrowRight size={16}/></button></form>
+        <form className="panel form" onSubmit={checkStatus}><Field label="Application code"><input required value={applicationCode} onChange={e=>{setApplicationCode(e.target.value.toUpperCase());setTracked(null);setApplicantProgress(null);setApplicantMessages([]);}} placeholder="ASYLUM-XXXXXXXX"/></Field><Field label="Contact email"><input required type="email" value={contactEmail} onChange={e=>{setContactEmail(e.target.value);setTracked(null);setApplicantProgress(null);setApplicantMessages([]);}} placeholder="Email used in your application"/></Field><button className="primary full" disabled={busy}>{busy?'Checking…':'Check application'} <ArrowRight size={16}/></button></form>
         {tracked&&<div className="panel tracked"><small>APPLICATION FOUND</small><span className={'pill '+tracked.status}>{labels[tracked.status]||tracked.status}</span><h2>{tracked.ign}</h2><div className="tracked-reference"><p className="muted">Tracking code: <strong>{tracked.application_code}</strong></p><button className="saved-clear" type="button" onClick={()=>void copyApplicationCode(tracked.application_code)}><Copy size={14}/> Copy code</button></div><div className="timeline">{['pending','reviewing','interview','tryout','accepted'].map((stage,index)=><div className={'step '+(statuses.indexOf(tracked.status)>=statuses.indexOf(stage)&&tracked.status!=='rejected'?'done':'')} key={stage}><b>{index+1}</b><div><strong>{labels[stage]}</strong><small>{['Application received','Recruiter review','Interview stage','Tryout stage','Welcome to the roster'][index]}</small></div></div>)}</div><p className="muted">Submitted {new Date(tracked.submitted_at).toLocaleString()}</p></div>}
         {applicantProgress&&<section className="panel applicant-progress">
           <div className="applicant-progress-head"><small className="kicker">SCREENING PROGRESS / {applicantProgress.application.application_type.toUpperCase()}</small><h2>{({eligibility_review:'Step 0 · Recruiter eligibility review',tag_proofs:'Step 1 · CODM and TikTok tag proofs',membership_proofs:'Step 2 · Follow and Membership Form',discord_roster:'Step 3 · Discord nickname and roster photo',final_review:'Final recruiter double-check',screening_gc_ready:'Requirements approved · Screening GC review',complete:'Recruitment completed'} as Record<string,string>)[applicantProgress.application.workflow_step]||'Application in review'}</h2><p>Your next step unlocks after the recruiter approves all required items in the current step. Keep your tracking code and application email private.</p></div>
@@ -425,6 +614,21 @@ export default function App() {
           })}</div>
           {!['tag_proofs','membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)&&<p className="muted">Uploads will unlock here when an authorized recruiter approves your current step.</p>}
         </section>}
+        {tracked&&<section className="panel application-chat">
+          <div className="application-chat-heading"><div><small className="kicker">PRIVATE APPLICATION CHAT</small><h2>Message the recruitment team</h2><p>Ask about your application or reply to recruiter messages here.</p></div><span className="private-badge"><ShieldCheck size={13}/> Private</span></div>
+          <div className="message-thread" aria-live="polite">
+            {applicantMessages.length===0&&<p className="message-empty">No messages yet. Send a message if you need help with your application.</p>}
+            {applicantMessages.map(message=><article key={message.id} className={'thread-message '+message.sender_role}>
+              <div className="thread-message-meta"><strong>{message.sender_role==='recruiter'?'ASY Recruitment': 'You'}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
+              <p>{message.body}</p>
+            </article>)}
+          </div>
+          <form className="message-compose" onSubmit={sendApplicantMessage}>
+            <Field label="Your message"><textarea rows={2} maxLength={2000} value={applicantMessageDraft} onChange={event=>setApplicantMessageDraft(event.target.value)} placeholder="Type a question or reply…" /></Field>
+            <button type="submit" className="primary" disabled={applicantMessageBusy||!applicantMessageDraft.trim()}>{applicantMessageBusy?'Sending…':'Send message'} <Send size={15}/></button>
+          </form>
+          <small className="message-privacy-note">Only you and authorized recruiters can access this application conversation. Never send passwords or login codes.</small>
+        </section>}
       </section>}
       {page==='screening'&&<ScreeningGuide intakeSettings={intakeSettings} onApply={()=>setPage('apply')} onTrack={()=>setPage('status')}/> }
       {page==='roster'&&<RosterPage roster={roster} onApply={()=>setPage('apply')}/>}
@@ -433,6 +637,26 @@ export default function App() {
         :!authorized?<div className="panel empty"><ShieldCheck size={38}/><h2>Account not authorized</h2><p>Signed in as {session.user.email}, but this email is not on the recruiter allowlist.</p><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div>
         :<><div className="admin-head"><div><small className="kicker">ASYLUM COMMUNITY / RECRUITMENT CONTROL</small><h1>RECRUITER <em>DESK.</em></h1><p>{session.user.email}</p></div><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div>
           <div className="stats"><Stat icon={<ClipboardList/>} label="Total applicants" value={applications.length}/><Stat icon={<Zap/>} label="Pending review" value={count('pending')}/><Stat icon={<CalendarClock/>} label="In progress" value={count('reviewing')+count('interview')+count('tryout')}/><Stat icon={<Trophy/>} label="Accepted" value={count('accepted')}/></div>
+          <section className="panel announcement-admin">
+            <div className="announcement-admin-heading"><div><small className="kicker">COMMUNITY UPDATES</small><h2>Announcements</h2><p>Publish updates that appear on the public Community page.</p></div><span className="private-badge"><ShieldCheck size={13}/> Recruiter managed</span></div>
+            <form className="announcement-form" onSubmit={saveAnnouncement}>
+              <Field label="Title *"><input required minLength={3} maxLength={120} value={announcementDraft.title} onChange={event=>setAnnouncementDraft(old=>({...old,title:event.target.value}))} placeholder="Short announcement title"/></Field>
+              <div className="form-grid compact">
+                <Field label="Category"><select value={announcementDraft.category} onChange={event=>setAnnouncementDraft(old=>({...old,category:event.target.value as Announcement['category']}))}><option value="general">General</option><option value="recruitment">Recruitment</option><option value="event">Event</option><option value="maintenance">Maintenance</option></select></Field>
+                <label className="announcement-publish-toggle"><input type="checkbox" checked={announcementDraft.is_published} onChange={event=>setAnnouncementDraft(old=>({...old,is_published:event.target.checked}))}/><span><strong>Publish now</strong><small>Visible to everyone on Community.</small></span></label>
+              </div>
+              <Field label="Message *"><textarea required rows={3} maxLength={3000} value={announcementDraft.body} onChange={event=>setAnnouncementDraft(old=>({...old,body:event.target.value}))} placeholder="Write the important details in a few clear sentences…"/></Field>
+              <div className="announcement-form-actions"><button className="primary" disabled={announcementBusy}>{announcementBusy?'Saving…':announcementDraft.id?'Save changes':'Post announcement'} <Send size={14}/></button>{announcementDraft.id&&<button type="button" className="secondary" disabled={announcementBusy} onClick={()=>setAnnouncementDraft(emptyAnnouncementDraft)}>Cancel edit</button>}</div>
+            </form>
+            <div className="announcement-admin-list">
+              <div className="announcement-list-heading"><strong>Recent announcements</strong><button type="button" className="secondary compact-button" onClick={()=>void loadAnnouncements()}>Refresh</button></div>
+              {announcements.length===0&&<p className="message-empty">No announcements yet. Create one above.</p>}
+              {announcements.map(item=><article className="announcement-admin-item" key={item.id}>
+                <div className="announcement-admin-item-copy"><span className={'announcement-category '+item.category}>{item.category}</span><strong>{item.title}</strong><small>{item.is_published?'Published':'Draft'} · {new Date(item.updated_at||item.created_at).toLocaleString()}</small></div>
+                <div className="announcement-admin-item-actions"><button type="button" className="secondary compact-button" disabled={announcementBusy} onClick={()=>setAnnouncementDraft({id:item.id,title:item.title,body:item.body,category:item.category,is_published:item.is_published})}>Edit</button><button type="button" className="secondary compact-button" disabled={announcementBusy} onClick={()=>void setAnnouncementPublished(item,!item.is_published)}>{item.is_published?'Unpublish':'Publish'}</button><button type="button" className="danger compact-button" disabled={announcementBusy} onClick={()=>void deleteAnnouncement(item)}>Delete</button></div>
+              </article>)}
+            </div>
+          </section>
            <section className="panel intake-admin">
               <div className="intake-admin-heading">
                 <div className="intake-admin-title">
@@ -509,6 +733,20 @@ export default function App() {
                 <button type="button" className="danger" disabled={busy} onClick={()=>void saveMgcVerification('issue_found')}>Flag form issue</button>
                 <button type="button" className="primary" disabled={busy||selected.workflow_step!=='final_review'||!mgcContactConfirmed||!mgcNotes.trim()} onClick={()=>void saveMgcVerification('verified')}>Confirm MGC checked <CheckCircle2 size={15}/></button>
               </div>
+            </section>
+            <section className="panel application-chat admin-application-chat">
+              <div className="application-chat-heading"><div><small className="kicker">APPLICANT CONVERSATION</small><h2>Chat with {selected.ign}</h2><p>Private messages for this application only.</p></div><span className="private-badge"><ShieldCheck size={13}/> Recruiter only</span></div>
+              <div className="message-thread" aria-live="polite">
+                {adminApplicationMessages.length===0&&<p className="message-empty">No messages from this applicant yet.</p>}
+                {adminApplicationMessages.map(message=><article key={message.id} className={'thread-message '+message.sender_role}>
+                  <div className="thread-message-meta"><strong>{message.sender_role==='recruiter'?'ASY Recruitment':selected.ign}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
+                  <p>{message.body}</p>
+                </article>)}
+              </div>
+              <form className="message-compose" onSubmit={sendAdminApplicantMessage}>
+                <Field label="Reply to applicant"><textarea rows={2} maxLength={2000} value={adminMessageDraft} onChange={event=>setAdminMessageDraft(event.target.value)} placeholder="Message about the application or MGC double-check…"/></Field>
+                <button type="submit" className="primary" disabled={adminMessageBusy||!adminMessageDraft.trim()}>{adminMessageBusy?'Sending…':'Send reply'} <Send size={15}/></button>
+              </form>
             </section>
             <Field label="Private reviewer notes"><textarea rows={2} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Internal notes — not shown to applicant"/></Field>
             <div className="action-row"><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'reviewing')}>Mark in review</button><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'waitlisted')}>Waitlist</button><button className="danger" disabled={busy} onClick={()=>void updateApplication(selected,'rejected')}>Reject</button><button className="primary" disabled={busy||selected.workflow_step!=='screening_gc_ready'||selected.mgc_verification_status!=='verified'||!selected.mgc_applicant_contacted||!selected.mgc_checked_at||!selected.mgc_verification_notes?.trim()} onClick={()=>void updateApplication(selected,'accepted')}>{selected.workflow_step==='screening_gc_ready'&&selected.mgc_verification_status==='verified'?'Accept + add member':'Complete proofs and MGC check first'} <CheckCircle2 size={15}/></button></div>
