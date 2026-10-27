@@ -677,6 +677,20 @@ export default function App() {
                 <button type="button" className="primary" disabled={busy||selected.workflow_step!=='final_review'||!mgcContactConfirmed||!mgcNotes.trim()} onClick={()=>void saveMgcVerification('verified')}>Confirm MGC checked <CheckCircle2 size={15}/></button>
               </div>
             </section>
+            <section className="panel application-chat admin-application-chat">
+              <div className="application-chat-heading"><div><small className="kicker">APPLICANT CONVERSATION</small><h2>Chat with {selected.ign}</h2><p>Private messages for this application only.</p></div><span className="private-badge"><ShieldCheck size={13}/> Recruiter only</span></div>
+              <div className="message-thread" aria-live="polite">
+                {adminApplicationMessages.length===0&&<p className="message-empty">No messages from this applicant yet.</p>}
+                {adminApplicationMessages.map(message=><article key={message.id} className={'thread-message '+message.sender_role}>
+                  <div className="thread-message-meta"><strong>{message.sender_role==='recruiter'?'ASY Recruitment':selected.ign}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
+                  <p>{message.body}</p>
+                </article>)}
+              </div>
+              <form className="message-compose" onSubmit={sendAdminApplicantMessage}>
+                <Field label="Reply to applicant"><textarea rows={2} maxLength={2000} value={adminMessageDraft} onChange={event=>setAdminMessageDraft(event.target.value)} placeholder="Message about the application or MGC double-check…"/></Field>
+                <button type="submit" className="primary" disabled={adminMessageBusy||!adminMessageDraft.trim()}>{adminMessageBusy?'Sending…':'Send reply'} <Send size={15}/></button>
+              </form>
+            </section>
             <Field label="Private reviewer notes"><textarea rows={2} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Internal notes — not shown to applicant"/></Field>
             <div className="action-row"><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'reviewing')}>Mark in review</button><button className="secondary" disabled={busy} onClick={()=>void updateApplication(selected,'waitlisted')}>Waitlist</button><button className="danger" disabled={busy} onClick={()=>void updateApplication(selected,'rejected')}>Reject</button><button className="primary" disabled={busy||selected.workflow_step!=='screening_gc_ready'||selected.mgc_verification_status!=='verified'||!selected.mgc_applicant_contacted||!selected.mgc_checked_at||!selected.mgc_verification_notes?.trim()} onClick={()=>void updateApplication(selected,'accepted')}>{selected.workflow_step==='screening_gc_ready'&&selected.mgc_verification_status==='verified'?'Accept + add member':'Complete proofs and MGC check first'} <CheckCircle2 size={15}/></button></div>
             <div className="workflow"><div className="workflow-card"><h3><CalendarClock size={17}/> Schedule interview</h3><form onSubmit={scheduleInterview}><Field label="Date and time"><input type="datetime-local" required value={interviewAt} onChange={e=>setInterviewAt(e.target.value)}/></Field><Field label="Channel"><select value={interviewChannel} onChange={e=>setInterviewChannel(e.target.value)}><option>Discord</option><option>In-game voice</option><option>Other</option></select></Field><Field label="Details / invite"><input value={interviewDetails} onChange={e=>setInterviewDetails(e.target.value)} placeholder="Channel or meeting notes"/></Field><button className="secondary full" disabled={busy}>Save interview</button></form></div>
