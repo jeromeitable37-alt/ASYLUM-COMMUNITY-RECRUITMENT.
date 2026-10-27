@@ -150,12 +150,56 @@ export default function App() {
     await loadApplications();
     notify(status==='approved'?'Proof approved. The next stage opens only when all required proofs in this stage are approved.':'Correction requested. The applicant can upload a replacement screenshot.');
   }
+  async function saveMgcVerification(status:'contact_needed'|'issue_found'|'verified'){
+    if(!selected)return;
+    const note=mgcNotes.trim();
+    if(!note){notify('Add a short note about the applicant contact or MGC check.',true);return;}
+    if(status==='verified'&&selected.workflow_step!=='final_review'){
+      notify('Finish and approve all three screenshot stages before the final MGC check.',true);
+      return;
+    }
+    if(status==='verified'&&!mgcContactConfirmed){
+      notify('Confirm that you spoke with the applicant before marking MGC verified.',true);
+      return;
+    }
+    const reviewerEmail=session?.user.email?.trim().toLowerCase();
+    if(!reviewerEmail){notify('Recruiter session expired. Sign in again to record the MGC check.',true);return;}
+    setBusy(true);
+    try{
+      const checkedAt=new Date().toISOString();
+      const {data,error}=await supabase.from('asy_clan_applications').update({
+        mgc_verification_status:status,
+        mgc_applicant_contacted:mgcContactConfirmed,
+        mgc_checked_by_email:reviewerEmail,
+        mgc_checked_at:checkedAt,
+        mgc_verification_notes:note,
+        updated_at:checkedAt,
+      }).eq('id',selected.id).select('*').single();
+      if(error||!data){
+        console.error('MGC manual verification save failed.',error?.message);
+        notify(error?.message?.includes('authorized recruiter')?'Only authorized recruiters can save this check.':'Could not save the MGC check. Confirm recruiter access and try again.',true);
+        return;
+      }
+      setSelected(data as Application);
+      await loadApplications();
+      notify(status==='verified'?'MGC double-check saved. Final Screening GC review can now continue.':status==='contact_needed'?'Applicant contact needed; final approval remains blocked.':'MGC issue recorded; resolve it before continuing.');
+    }catch(error){
+      console.error('MGC verification request failed.',error);
+      notify('Connection error while saving the MGC check. Please retry.',true);
+    }finally{
+      setBusy(false);
+    }
+  }
   async function openEvidence(path:string){
     const {data,error}=await supabase.storage.from('asy-recruitment-private').createSignedUrl(path,300);
     if(error||!data?.signedUrl){notify('Could not open this private screenshot.',true);return;}
     window.open(data.signedUrl,'_blank','noopener,noreferrer');
   }
   async function advanceApplicationWorkflow(app:Application,nextStep:'tag_proofs'|'screening_gc_ready'){
+    if(nextStep==='screening_gc_ready'&&(app.mgc_verification_status!=='verified'||!app.mgc_applicant_contacted||!app.mgc_checked_at||!app.mgc_verification_notes?.trim())){
+      notify('Complete the MGC manual check and confirm applicant contact before marking Screening GC ready.',true);
+      return;
+    }
     setBusy(true);
     const {data,error}=await supabase.from('asy_clan_applications').update({workflow_step:nextStep,updated_at:new Date().toISOString()}).eq('id',app.id).select('*').single();
     setBusy(false);
