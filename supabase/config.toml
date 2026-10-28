@@ -3,3 +3,9 @@ verify_jwt = false
 
 [functions.asy-community-messaging]
 verify_jwt = false
+
+[functions.asy-operations]
+verify_jwt = false
+
+[functions.asy-member-directory-sync]
+verify_jwt = false
