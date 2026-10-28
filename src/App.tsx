@@ -1046,9 +1046,7 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
         <header className="chat-header">
           <span className="chat-bot-icon"><Bot size={19}/></span>
           <div><strong>ASY Recruitment Support</strong><small>Offline FAQ assistant · chat history saved</small></div>
-          <button type="button" aria-label="Clear chat history" title="Clear chat history" onClick={()=>{
-            if(window.confirm('Clear the saved ASY support chat on this browser?')) setMessages([supportWelcome]);
-          }}><X size={18}/></button>
+          <button type="button" aria-label="Close chat" onClick={()=>setOpen(false)}><X size={18}/></button>
         </header>
         <div className="chat-messages" aria-live="polite">
           {messages.map((message,index)=><div key={index} className={'chat-message '+message.role}>
