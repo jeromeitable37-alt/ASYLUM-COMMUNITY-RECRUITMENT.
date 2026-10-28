@@ -33,8 +33,8 @@ function json(status: number, value: unknown) {
 }
 function clean(v: unknown, max = 500) { return typeof v === "string" ? v.trim().slice(0, max) : ""; }
 function ip(req: Request) { return (req.headers.get("x-forwarded-for") || "unknown").split(",")[0].trim().slice(0, 80); }
-function canManage(role: string) { return ["owner", "management", "admin"].includes(role); }
-function canModerate(role: string) { return canManage(role) || role === "moderator"; }
+function canManage(role: string) { return ["owner", "management", "admin", "moderator"].includes(role.trim().toLowerCase()); }
+function canModerate(role: string) { return canManage(role); }
 async function staff(req: Request) {
   if (!db || !authClient) return { email: "", role: "", error: "Operations service is not configured." };
   const token = (req.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i)?.[1] || "";
