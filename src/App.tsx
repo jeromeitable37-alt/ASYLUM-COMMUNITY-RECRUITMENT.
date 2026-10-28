@@ -906,115 +906,130 @@ const screeningLinks: ChatLink[] = [
   { label: 'Official Discord', href: 'https://discord.gg/HbJ5Jvw8y8' },
 ];
 
+function normalizeSupportText(value:string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
+
 function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|null): Omit<ChatEntry, 'role'> {
-  const q = question.toLowerCase();
+  const q = normalizeSupportText(question);
+  if (/^(hi|hello|hey|good morning|good afternoon|good evening|kamusta|kumusta)$/.test(q)) {
+    return { text: 'Hi! Welcome to ASY Community. 😊 I can help with recruitment requirements, application tracking, screening proofs, referral applications, and basic dashboard questions. Ano ang gusto mong malaman?' };
+  }
   if (/referral|referred|referrer/.test(q)) {
     return {
-      text: `For Referral Recruitment, choose “Referral Recruitment” in the application form and enter your referrer's name plus Facebook profile link. Referral applicants complete the same eligibility checks and all Casual Recruitment proof stages, plus a screenshot of the conversation with the member who referred them. Upload that conversation screenshot in Stage 1 when it unlocks. Use Track application with your tracking code and the same email to submit proof privately and follow recruiter feedback. A referral does not guarantee acceptance.`,
+      text: 'For Referral Recruitment, choose “Referral Recruitment” in the application form and enter your referrer’s name plus Facebook profile link. Referral applicants complete the usual eligibility checks and screening proof stages, plus a screenshot of the conversation with the referring member. Upload it privately when Stage 1 unlocks. A referral does not guarantee acceptance.',
       links: screeningLinks,
     };
   }
-  if (/accepted|screening gc|screening group|requirements after|screenshot|roster photo|cooldown|cool down|gc nickname/.test(q)) {
+  if (/accepted|screening gc|screening group|screenshot|roster photo|cooldown|cool down|gc nickname|proofs|proof checklist|upload proof/.test(q)) {
     return {
-      text: `For recruitment screening, use the website's Track application page and enter your tracking code plus the same email used in your application. The website unlocks proof uploads in stages:
-
-1. Step 1: Upload screenshots of your main CODM and TikTok accounts with the ASY tag AFTER your IGN. Referral applicants must also provide the requested referral proof.
-2. Step 2: Upload proof that you follow the official ASY Community TikTok account and a screenshot of the completed Membership Form showing your IGN.
-3. Step 3: Set your Discord server nickname to IGN ASY and upload your roster photo following the admin reference. Put your Facebook name in the photo caption.
-
-Wait for a recruiter to review each stage before continuing. The final recruitment decision is made by the team, and the Screening GC invite is sent only when your CODM account already shows the ASY tag. Never send passwords or account login codes.`,
+      text: 'Use Track application with your tracking code and the same email you used to apply. Upload only the proof for the currently unlocked stage:\n\n1. Step 1: CODM and TikTok screenshots showing your ASY tag after your IGN. Referral applicants also upload the requested referral proof.\n2. Step 2: Screenshot showing that you follow the official ASY TikTok account and a completed Membership Form screenshot with your IGN.\n3. Step 3: Set your Discord server nickname to IGN ASY and upload your roster photo following the admin reference. Include your Facebook name in the photo caption.\n\nWait for the recruiter to review each stage. Never share passwords or login codes.',
       links: screeningLinks,
     };
   }
-  if (/eligible|eligibility|age|16\+|leg series|legendary series|requirements to join|requirements before|before applying/.test(q)) {
+  if (/eligible|eligibility|age|16|leg series|legendary series|requirements|minimum rank/.test(q)) {
     return {
-      text: `Before applying, check that you meet the current ASY recruitment requirements:
-
-• At least 16 years old.
-• At least 6 Legendary Series in BR or MP.
-• Use an appropriate Facebook name (no inappropriate or random names).
-• Be willing to add the ASY tag AFTER your IGN on your main CODM and TikTok accounts.
-• Be willing to submit a proper roster photo for the welcome banner.
-
-After submitting, use Track application to upload the requested proofs as each stage unlocks. The Screening GC invite is sent only after the ASY tag appears on your CODM account, and final decisions are made by the recruitment team.`,
+      text: 'The current basic ASY recruitment requirements are:\n\n• At least 16 years old.\n• At least 6 Legendary Series in BR or MP.\n• An appropriate Facebook name.\n• Willing to add the ASY tag after your IGN on your main CODM and TikTok accounts.\n• Willing to provide a proper roster photo when requested.\n\nMeeting the minimum requirements does not guarantee acceptance; the recruitment team reviews applications.',
       links: screeningLinks,
     };
   }
   if (/tiktok|follow/.test(q)) {
-    return {
-      text: 'Follow the official Asylum Community TikTok account. When the follow-proof step unlocks in Track application, upload a screenshot there for recruiter review. Keep your evidence private and do not post it in public channels.',
-      links: [screeningLinks[0]],
-    };
+    return { text: 'Follow the official ASY Community TikTok account. When the follow-proof step unlocks in Track application, upload a screenshot there for recruiter review. Keep the evidence private.', links: [screeningLinks[0]] };
   }
   if (/membership form|form link|member form/.test(q)) {
-    return {
-      text: 'Complete the official Membership Form and make sure your IGN is visible in the screenshot. Upload the screenshot through Track application when that step unlocks.',
-      links: [screeningLinks[1]],
-    };
+    return { text: 'Complete the official Membership Form and make sure your IGN is visible in the screenshot. Upload that screenshot through Track application when the matching step unlocks.', links: [screeningLinks[1]] };
   }
-  if (/discord|server nickname|roster photo|banner photo/.test(q)) {
-    return {
-      text: 'Join the official ASY Discord. When Step 3 unlocks in Track application, set your server nickname to IGN ASY and upload your roster photo following the admin reference. Include your Facebook name in the caption and keep the proof private.',
-      links: [screeningLinks[2]],
-    };
+  if (/discord|server nickname|banner photo/.test(q)) {
+    return { text: 'Join the official ASY Discord. When Step 3 unlocks in Track application, set your server nickname to IGN ASY and upload your roster photo following the admin reference. Include your Facebook name in the caption.', links: [screeningLinks[2]] };
   }
-  if (/apply|application|join|recruitment/.test(q)) {
-    return {
-      text: 'To join ASY, open “Apply to join” on this website and complete the application honestly. Save the ASYLUM tracking code shown after submission, then use “Track application” to check your status. Meeting the minimum requirements does not guarantee acceptance; recruiters review every application.',
-    };
-  }
-  if (/status|tracking|tracking code|pending|review/.test(q)) {
-    return {
-      text: 'Choose “Track application” on this website and enter the tracking code plus the same contact email you used when applying. The website shows the latest status saved by the recruitment team.',
-    };
+  if (/track|tracking code|application status|status|pending|review|where is my application/.test(q)) {
+    return { text: 'Open “Track application” on this website and enter your tracking code plus the same contact email you used when applying. The page shows the latest status saved by the recruitment team. If you lost the code, contact an authorized recruiter through the official Discord; do not post your email or application details in public chat.', links: [screeningLinks[2]] };
   }
   if (/limit|slots|capacity|how many applicants/.test(q)) {
-    if (!intakeSettings) return { text: 'I could not load the current intake status. Please refresh the page or check with an ASY recruiter.' };
-    if (!intakeSettings.intake_open) return { text: 'Recruitment submissions are currently closed by management. Please check the official ASY announcements for the next intake.' };
-    if (intakeSettings.application_limit !== null && intakeSettings.application_count >= intakeSettings.application_limit) return { text: 'The current recruitment application limit has been reached. Please check back after management opens a new intake.' };
-    if (intakeSettings.application_limit === null) return { text: 'Recruitment is open right now. Management has not set a numeric application cap for this intake, so please submit only one application and wait for its status.' };
-    return { text: `Recruitment is open. ${intakeSettings.application_count} of ${intakeSettings.application_limit} application slots have been used in this intake. Please submit only one application.` };
+    if (!intakeSettings) return { text: 'I could not load the current intake status. Refresh the page or check the latest official announcement before submitting.' };
+    if (!intakeSettings.intake_open) return { text: 'Recruitment submissions are currently closed by management. Check official ASY announcements for the next intake.' };
+    if (intakeSettings.application_limit !== null && intakeSettings.application_count >= intakeSettings.application_limit) return { text: 'The current application limit has been reached. Please check back after management opens a new intake.' };
+    if (intakeSettings.application_limit === null) return { text: 'Recruitment is currently open. Management has not set a numeric application cap for this intake, so submit only one application and wait for its status.' };
+    return { text: 'Recruitment is open. ' + intakeSettings.application_count + ' of ' + intakeSettings.application_limit + ' application slots have been used. Please submit only one application.' };
   }
-  if (/human|admin|recruiter|staff|help|assist/.test(q)) {
-    return {
-      text: 'I can answer common recruitment questions here. For a case that needs a human decision, contact the recruitment team through the official Discord and follow the admins’ instructions.',
-      links: [screeningLinks[2]],
-    };
+  if (/casual group|casual team|casual player|looking for team|find teammates|team/.test(q)) {
+    return { text: 'For now, ASY is focusing on Casual Groups so members can find teammates and play together. Competitive team management is paused while the competitive roster is small. Check official ASY announcements for group activity details; the dashboard’s team list may be updated by management.' };
   }
-  return {
-    text: 'I can help with ASY eligibility, how to apply, tracking your application, and the step-by-step screening proofs. Try asking “What proofs do I need to upload?” or tap one of the quick questions below.',
-  };
+  if (/scrim|practice match|friendly match|match schedule/.test(q)) {
+    return { text: 'For scrim updates, check the official ASY announcements and the scrim schedule on the dashboard. Confirm the date, time, game mode, and opponent with management before the match. If a schedule looks incorrect, report the event title and displayed time to an authorized admin.' };
+  }
+  if (/password|login code|otp|account hacked|facebook password/.test(q)) {
+    return { text: 'For your safety, never send your password, OTP, or login code to this chat or any ASY staff member. Use the official account recovery process for the platform involved. ASY recruitment only needs the information and proof requested by the website.' };
+  }
+  if (/dashboard|website|bug|error|not working|does not work|cannot|can't|cant|problem|issue/.test(q)) {
+    return { text: 'Sorry you’re having trouble with the dashboard. Try refreshing the page and checking that you entered the correct tracking code and the same application email. If it still fails, take a screenshot of the error (hide personal details) and send it to management through the official Discord. Never share passwords or login codes.' , links: [screeningLinks[2]] };
+  }
+  if (/human|admin|recruiter|staff|help|assist|contact/.test(q)) {
+    return { text: 'I can answer common ASY questions, but a recruiter or management member must handle account-specific issues and final decisions. Contact the team through the official Discord and follow the admins’ instructions.', links: [screeningLinks[2]] };
+  }
+  if (/apply|application|join|recruitment/.test(q)) {
+    return { text: 'To join ASY, open “Apply to join” on this website and complete the application honestly. Save the ASYLUM tracking code shown after submission, then use “Track application” to check your status. Submit only one application and wait for recruiter review.' };
+  }
+  return { text: 'I don’t have a verified answer for that exact question yet, so I don’t want to guess. I can help with eligibility, applying, tracking your application, screening proofs, referral requirements, Casual Groups, scrims, and basic dashboard issues. For anything else, contact management through the official Discord.', links: [screeningLinks[2]] };
+}
+
+const SUPPORT_HISTORY_KEY = 'asy-recruitment-support-history-v1';
+const supportWelcome: ChatEntry = {
+  role: 'assistant',
+  text: 'Hi! I’m the ASY Recruitment Assistant. I can help with eligibility, applying, tracking, screening proofs, referrals, Casual Groups, and scrims. Your chat history is saved on this browser. Recruiters make all final decisions.',
+};
+
+function loadSupportHistory(): ChatEntry[] {
+  try {
+    const raw = window.localStorage.getItem(SUPPORT_HISTORY_KEY);
+    if (!raw) return [supportWelcome];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [supportWelcome];
+    const valid = parsed.filter((item): item is ChatEntry =>
+      !!item && typeof item === 'object' &&
+      ((item as ChatEntry).role === 'assistant' || (item as ChatEntry).role === 'user') &&
+      typeof (item as ChatEntry).text === 'string'
+    ).slice(-100);
+    return valid.length ? valid : [supportWelcome];
+  } catch {
+    return [supportWelcome];
+  }
 }
 
 function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
   const [open,setOpen]=useState(false);
   const [draft,setDraft]=useState('');
   const [chatBusy,setChatBusy]=useState(false);
-  const [messages,setMessages]=useState<ChatEntry[]>([
-    {role:'assistant',text:'Hi! I’m the ASY Recruitment Assistant. Ask me about eligibility, applying, tracking, or what to prepare at each screening step. Recruiters make all final decisions.'},
-  ]);
+  const [messages,setMessages]=useState<ChatEntry[]>(loadSupportHistory);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SUPPORT_HISTORY_KEY, JSON.stringify(messages.slice(-100)));
+    } catch {
+      // Chat remains usable even if the browser blocks local storage.
+    }
+  }, [messages]);
 
   async function ask(question:string) {
     const cleanQuestion=question.trim().slice(0,500);
     if(!cleanQuestion||chatBusy)return;
     const fallback=getRecruitmentReply(cleanQuestion,intakeSettings);
-    const history=messages.slice(-8).map(item=>({role:item.role,text:item.text.slice(0,500)}));
+    const normalizedQuestion=normalizeSupportText(cleanQuestion);
+    const repeatedQuestion=messages.some(item => item.role==='user' && normalizeSupportText(item.text)===normalizedQuestion);
+    const repeatedAnswer=messages.some(item => item.role==='assistant' && normalizeSupportText(item.text)===normalizeSupportText(fallback.text));
+    let answer = fallback;
+    if (repeatedQuestion || repeatedAnswer) {
+      const shortAnswer = fallback.text.length > 260 ? fallback.text.slice(0,257).trimEnd() + '…' : fallback.text;
+      answer = {
+        text: 'Quick recap (I saved the earlier conversation above): ' + shortAnswer,
+        links: fallback.links,
+      };
+    }
     setMessages(old=>[...old,{role:'user',text:cleanQuestion}]);
     setChatBusy(true);
-    let answerText='';
-    try {
-      const response=await fetch('/api/support-chat',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({question:cleanQuestion,history}),
-      });
-      const data=await response.json().catch(()=>({}));
-      if(response.ok&&data.configured===true&&typeof data.answer==='string'&&data.answer.trim()) answerText=data.answer.trim();
-    } catch {
-      // Keep the curated FAQ available if the AI route is not configured or temporarily unavailable.
-    }
+    // No external AI/API key is required. Use the verified local ASY FAQ so replies stay available.
+    setMessages(old=>[...old,{role:'assistant',...answer}]);
     setChatBusy(false);
-    setMessages(old=>[...old,{role:'assistant',...(answerText?{text:answerText,links:fallback.links}:{...fallback})}]);
   }
 
   function sendMessage(event:FormEvent) {
@@ -1030,8 +1045,10 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
       {open&&<section className="chat-panel" role="dialog" aria-label="ASY Recruitment Support">
         <header className="chat-header">
           <span className="chat-bot-icon"><Bot size={19}/></span>
-          <div><strong>ASY Recruitment Support</strong><small>AI assistant + official recruitment guide</small></div>
-          <button type="button" aria-label="Close chat" onClick={()=>setOpen(false)}><X size={18}/></button>
+          <div><strong>ASY Recruitment Support</strong><small>Offline FAQ assistant · chat history saved</small></div>
+          <button type="button" aria-label="Clear chat history" title="Clear chat history" onClick={()=>{
+            if(window.confirm('Clear the saved ASY support chat on this browser?')) setMessages([supportWelcome]);
+          }}><X size={18}/></button>
         </header>
         <div className="chat-messages" aria-live="polite">
           {messages.map((message,index)=><div key={index} className={'chat-message '+message.role}>
@@ -1051,7 +1068,7 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
           <input value={draft} onChange={event=>setDraft(event.target.value)} placeholder="Ask about ASY recruitment…" aria-label="Ask about ASY recruitment" maxLength={500} disabled={chatBusy}/>
           <button type="submit" disabled={!draft.trim()||chatBusy} aria-label="Send message"><Send size={17}/></button>
         </form>
-        <p className="chat-disclaimer">AI replies use a private server key; official FAQ answers remain the fallback. Recruiters make final decisions.</p>
+        <p className="chat-disclaimer">No API key needed. Replies use the saved ASY FAQ and your earlier messages on this browser. For account-specific decisions, contact management. Recruiters make final decisions.</p>
       </section>}
       <button type="button" className="chat-launcher" aria-label={open?'Close support chat':'Open support chat'} aria-expanded={open} onClick={()=>setOpen(value=>!value)}>
         {open?<X size={23}/>:<MessageCircle size={24}/>}
