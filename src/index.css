@@ -463,3 +463,26 @@
 @media(max-width:600px){.roster-tools{align-items:stretch;flex-direction:column}.roster-search{max-width:none;width:100%}}
 
 .roster-pagination{display:flex;align-items:center;justify-content:center;gap:14px;margin:20px 0 28px;color:#a99eae;font-size:11px}.roster-pagination .secondary{padding:8px 13px;font-size:10px}.roster-pagination button:disabled{opacity:.35;cursor:not-allowed}@media(max-width:480px){.roster-pagination{gap:8px}.roster-pagination .secondary{padding:8px 10px}}
+
+
+/* ASY member account portal */
+.account-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:1.25rem;align-items:start}
+.account-profile-panel,.account-link-panel,.account-staff-request{padding:clamp(1rem,2vw,1.5rem)}
+.account-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem}
+.account-heading h2,.account-link-panel h2,.account-staff-request h2{margin:.25rem 0 .5rem}
+.account-avatar-row{display:flex;align-items:center;gap:1rem;margin:1rem 0 1.25rem}
+.account-avatar{width:84px;height:84px;object-fit:cover;border-radius:18px;border:1px solid var(--line,#2b2b2b);background:var(--panel,#151515)}
+.account-avatar.placeholder{display:grid;place-items:center;color:var(--muted,#aaa)}
+.account-avatar.small{width:42px;height:42px;border-radius:12px}
+.account-profile-form{padding:0;border:0;background:transparent;box-shadow:none}
+.account-status-note{margin-top:1rem;padding:1rem;border:1px solid var(--line,#2b2b2b);border-radius:14px;background:rgba(255,255,255,.025)}
+.account-status-note p{margin:.35rem 0 0;color:var(--muted,#aaa)}
+.linked-app-card{padding:1rem;border:1px solid var(--line,#2b2b2b);border-radius:14px;margin:1rem 0}
+.account-staff-request{grid-column:1/-1}
+.account-layout>.secondary{justify-self:start}
+.account-page .login-wrap{align-items:start}
+.account-page .login{width:100%;max-width:460px}
+.account-page .login-wrap>div{padding-top:1.5rem}
+.account-page .saved-clear{margin-top:.5rem}
+.account-page .announcement-card .actions{margin-top:1rem}
+@media(max-width:800px){.account-layout{grid-template-columns:1fr}.account-staff-request{grid-column:auto}.account-page .login-wrap{grid-template-columns:1fr}.account-page .login-wrap>div{padding-top:0}}
