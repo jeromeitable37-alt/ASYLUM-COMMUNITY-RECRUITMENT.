@@ -49,7 +49,7 @@ async function staff(req: Request) {
 
 async function accountUser(req: Request) {
   if (!db || !authClient) return { user: null as any, response: json(503, { error: "Accounts service is not configured." }) };
-  const token = (req.headers.get("authorization") || "").match(/^Bearer\\s+(.+)$/i)?.[1] || "";
+  const token = (req.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i)?.[1] || "";
   if (!token || token === publishableKey) return { user: null as any, response: json(401, { error: "Sign in to continue." }) };
   const { data: { user }, error } = await authClient.auth.getUser(token);
   if (error || !user?.id || !user.email) return { user: null as any, response: json(401, { error: "Your session is invalid or expired. Sign in again." }) };
@@ -176,7 +176,7 @@ Deno.serve(async (req: Request) => {
       const uid = clean(body.codm_uid, 32);
       const discord = clean(body.discord_username, 80);
       const photoUrl = clean(body.photo_url, 500);
-      if (displayName.length < 2 || ign.length < 2 || !/^\\d{19}$/.test(uid) || !photoUrl) {
+      if (displayName.length < 2 || ign.length < 2 || !/^\d{19}$/.test(uid) || !photoUrl) {
         return json(400, { error: "Display name, IGN, 19-digit CODM UID, and profile picture are required." });
       }
       let parsedPhoto: URL;
