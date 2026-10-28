@@ -771,6 +771,7 @@ export default function App() {
             </article>;
           })}</div>
           {!['tag_proofs','membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)&&<p className="muted">Uploads will unlock here when an authorized recruiter approves your current step.</p>}
+          {['screening_gc_ready','complete'].includes(applicantProgress.application.workflow_step)&&<div className="panel success-note"><strong>Screening approved — Membership Form unlocked.</strong><p>Complete the official form now. This link is shown only after the final recruiter check.</p><a className="primary" href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer">Open Membership Form <ArrowRight size={15}/></a></div>}
         </section>}
         {tracked&&<section className="panel application-chat">
           <div className="application-chat-heading"><div><small className="kicker">PRIVATE APPLICATION CHAT</small><h2>Message the recruitment team</h2><p>Ask about your application or reply to recruiter messages here.</p></div><span className="private-badge"><ShieldCheck size={13}/> Private</span></div>
