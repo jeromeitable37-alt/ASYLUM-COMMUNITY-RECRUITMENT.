@@ -786,6 +786,7 @@ export default function App() {
         </section>}
         {tracked&&<section className="panel application-chat">
           <div className="application-chat-heading"><div><small className="kicker">PRIVATE APPLICATION CHAT</small><h2>Message the recruitment team</h2><p>Ask about your application or reply to recruiter messages here.</p></div><span className="private-badge"><ShieldCheck size={13}/> Private</span></div>
+          {tracked&&applicantProgress&&['screening_gc_ready','complete'].includes(applicantProgress.application.workflow_step)&&<div className="membership-form-chat-link"><strong>Your next step: Official Membership Form</strong><p>Your requirements have been approved. Open and complete the official form using the link below.</p><a className="primary" href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer">Open Membership Form <ArrowRight size={15}/></a></div>}
           <div className="message-thread" aria-live="polite">
             {applicantMessages.length===0&&<p className="message-empty">No messages yet. Send a message if you need help with your application.</p>}
             {applicantMessages.map(message=><article key={message.id} className={'thread-message '+message.sender_role}>
