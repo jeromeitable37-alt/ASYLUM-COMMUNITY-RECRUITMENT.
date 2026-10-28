@@ -40,12 +40,31 @@ export default function App() {
   const [page,setPage]=useState('home');
   const [session,setSession]=useState<Session|null>(null);
   const [authorized,setAuthorized]=useState(false);
+  const [staffRole,setStaffRole]=useState<string|null>(null);
   const [notice,setNotice]=useState('');
   const [hasError,setHasError]=useState(false);
   const [busy,setBusy]=useState(false);
   const [mobileOpen,setMobileOpen]=useState(false);
   const [email,setEmail]=useState('jeromeitable37@gmail.com');
   const [password,setPassword]=useState('');
+  const [accountMode,setAccountMode]=useState<'signup'|'signin'>('signup');
+  const [accountEmail,setAccountEmail]=useState('');
+  const [accountPassword,setAccountPassword]=useState('');
+  const [accountDisplayName,setAccountDisplayName]=useState('');
+  const [accountIgn,setAccountIgn]=useState('');
+  const [accountUid,setAccountUid]=useState('');
+  const [accountDiscord,setAccountDiscord]=useState('');
+  const [accountPhotoUrl,setAccountPhotoUrl]=useState('');
+  const [accountProfile,setAccountProfile]=useState<MemberAccount|null>(null);
+  const [linkedMemberApplication,setLinkedMemberApplication]=useState<LinkedMemberApplication|null>(null);
+  const [accountAdminRequest,setAccountAdminRequest]=useState<AdminAccessRequest|null>(null);
+  const [accountAdminReason,setAccountAdminReason]=useState('');
+  const [accountLinkCode,setAccountLinkCode]=useState('');
+  const [accountBusy,setAccountBusy]=useState(false);
+  const [avatarUploading,setAvatarUploading]=useState(false);
+  const [adminAccessRequests,setAdminAccessRequests]=useState<AdminAccessRequest[]>([]);
+  const [memberReviewProfiles,setMemberReviewProfiles]=useState<MemberReviewProfile[]>([]);
+  const [memberReviewNotes,setMemberReviewNotes]=useState<Record<string,string>>({});
   const [applications,setApplications]=useState<Application[]>([]);
   const [roster,setRoster]=useState<Roster[]>([]);
   const [query,setQuery]=useState('');
@@ -382,7 +401,7 @@ export default function App() {
     await loadApplications();
     notify(nextStep==='tag_proofs'?'Eligibility approved. Step 1 screenshot submissions are now unlocked.':'Final review completed. Applicant is now eligible for the Screening GC decision.');
   }
-  async function checkAdmin(userEmail:string){const {data,error}=await supabase.from('asy_recruitment_admins').select('email').eq('email',userEmail.toLowerCase()).maybeSingle();setAuthorized(!error&&Boolean(data));}
+  async function checkAdmin(userEmail:string){const {data,error}=await supabase.from('asy_recruitment_admins').select('email,role').eq('email',userEmail.toLowerCase()).maybeSingle();setAuthorized(!error&&Boolean(data));setStaffRole(!error&&data?String(data.role||'recruiter').toLowerCase():null);}
   async function signIn(event:FormEvent){event.preventDefault();setBusy(true);const {error}=await supabase.auth.signInWithPassword({email:email.trim().toLowerCase(),password});setBusy(false);if(error){notify(error.message.toLowerCase().includes('invalid login credentials')?'Email or password is incorrect. Use the Supabase recruiter account connected to this website.':error.message,true);}else notify('Signed in. Checking recruiter permissions…');}
   async function signOut(){await supabase.auth.signOut();setAuthorized(false);setApplications([]);setSelected(null);notify('Signed out.');}
   async function submitApplication(event:FormEvent) {
