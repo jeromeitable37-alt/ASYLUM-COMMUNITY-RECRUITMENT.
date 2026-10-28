@@ -152,9 +152,15 @@ Deno.serve(async (req: Request) => {
     if (action === "member-account-get") {
       const { user, response } = await accountUser(req);
       if (response) return response;
-      const { data: profile, error } = await db.from("asy_member_accounts").select("user_id,display_name,ign,codm_uid,discord_username,photo_url,approval_status,review_note,linked_application_id,linked_at,created_at,updated_at").eq("user_id", user.id).maybeSingle();
+      let { data: profile, error } = await db.from("asy_member_accounts").select("user_id,display_name,ign,codm_uid,discord_username,photo_url,approval_status,review_note,linked_application_id,linked_at,created_at,updated_at").eq("user_id", user.id).maybeSingle();
       if (error) throw error;
-      if (!profile) return json(404, { error: "Member profile has not been initialized yet. Sign out and sign in again, or contact ASY support." });
+      if (!profile) {
+        const { data: created, error: createError } = await db.from("asy_member_accounts").insert({
+          user_id: user.id, display_name: clean(user.user_metadata?.display_name, 80)
+        }).select("user_id,display_name,ign,codm_uid,discord_username,photo_url,approval_status,review_note,linked_application_id,linked_at,created_at,updated_at").single();
+        if (createError) throw createError;
+        profile = created;
+      }
       let linkedApplication = null;
       if (profile.linked_application_id) {
         const { data: app, error: appError } = await db.from("asy_clan_applications").select("application_code,ign,status,workflow_step,submitted_at,updated_at").eq("id", profile.linked_application_id).maybeSingle();
@@ -182,10 +188,15 @@ Deno.serve(async (req: Request) => {
       let parsedPhoto: URL;
       try { parsedPhoto = new URL(photoUrl); } catch { return json(400, { error: "Upload a valid profile picture." }); }
       if (parsedPhoto.protocol !== "https:" || parsedPhoto.hostname !== "tyhszzztltamrohhyykh.supabase.co") return json(400, { error: "Profile picture must be uploaded to the ASY member avatar storage." });
-      const { data, error } = await db.from("asy_member_accounts").update({
+      const { data: currentProfile, error: currentProfileError } = await db.from("asy_member_accounts").select("approval_status").eq("user_id", user.id).maybeSingle();
+      if (currentProfileError) throw currentProfileError;
+      const profileUpdate: Record<string, unknown> = {
         display_name: displayName, ign, codm_uid: uid, discord_username: discord,
         photo_url: photoUrl, updated_at: new Date().toISOString()
-      }).eq("user_id", user.id).select("user_id,display_name,ign,codm_uid,discord_username,photo_url,approval_status,review_note,linked_application_id,linked_at,updated_at").maybeSingle();
+      };
+      if (currentProfile?.approval_status === "rejected") profileUpdate.approval_status = "pending";
+      const { data, error } = await db.from("asy_member_accounts").update(profileUpdate)
+        .eq("user_id", user.id).select("user_id,display_name,ign,codm_uid,discord_username,photo_url,approval_status,review_note,linked_application_id,linked_at,updated_at").maybeSingle();
       if (error) throw error;
       if (!data) return json(404, { error: "Member profile was not found. Please sign out and sign in again." });
       return json(200, { profile: data });
