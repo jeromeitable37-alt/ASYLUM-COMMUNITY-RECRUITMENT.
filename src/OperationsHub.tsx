@@ -35,6 +35,7 @@ export function OperationsHub({ mode, session, authorized, onNotify }: Props) {
   const [memberSearch, setMemberSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [directorySyncBusy, setDirectorySyncBusy] = useState(false);
 
   async function request(payload: Record<string, unknown>) {
     const headers: Record<string, string> = { apikey: SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' };
@@ -154,6 +155,28 @@ export function OperationsHub({ mode, session, authorized, onNotify }: Props) {
     try { await request({ action: 'notification-read', id: note.id }); await loadNotifications(); }
     catch (error) { onNotify(error instanceof Error ? error.message : 'Could not mark notification read.', true); }
   }
+  async function syncMemberDirectory() {
+    if (!authorized || !session?.access_token) { onNotify('Sign in with an authorized staff account first.', true); return; }
+    if (!window.confirm('Sync the public member directory from the latest Google Sheet? Only IGN, CODM UID (stored privately), clan name, and form timestamp are used. Birthdates and social links are ignored. Existing members missing from the sheet will not be deleted.')) return;
+    setDirectorySyncBusy(true);
+    try {
+      const response = await fetch('https://tyhszzztltamrohhyykh.supabase.co/functions/v1/asy-member-directory-sync', {
+        method: 'POST',
+        headers: { apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: 'Bearer ' + session.access_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync-directory' }),
+        cache: 'no-store',
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not sync the member spreadsheet.');
+      await loadPublic();
+      await loadRoster();
+      await loadDashboard();
+      onNotify('Member directory synced: ' + data.unique_members + ' unique members (' + data.duplicate_uids_merged + ' duplicate UID row(s) merged).');
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : 'Could not sync the member directory.', true);
+    } finally { setDirectorySyncBusy(false); }
+  }
+
   async function downloadBackup() {
     setBusy(true);
     try {
@@ -222,7 +245,7 @@ export function OperationsHub({ mode, session, authorized, onNotify }: Props) {
         </div>}
 
         {tab === 'teams' && <div className="ops-workspace">
-          <div className="ops-workspace-head"><div><small className="kicker">ROSTER MANAGEMENT</small><h2>Teams &amp; players</h2><p>Only authorized management roles can change team assignments.</p></div></div>
+          <div className="ops-workspace-head"><div><small className="kicker">ROSTER MANAGEMENT</small><h2>Teams &amp; players</h2><p>Manage teams and sync the current member list. Private form fields are excluded from the public directory.</p></div><button type="button" className="secondary compact-button" disabled={directorySyncBusy} onClick={() => void syncMemberDirectory()}><RefreshCw size={14}/>{directorySyncBusy ? 'Syncing…' : 'Sync member sheet'}</button></div>
           <form className="panel ops-form" onSubmit={saveTeam}><div className="ops-form-head"><strong>{teamDraft.id ? 'Edit team' : 'Create a team'}</strong><button type="button" className="text-button" onClick={() => setTeamDraft(emptyTeam)}>Clear</button></div><div className="ops-form-grid"><label className="field"><span>Team name</span><input required minLength={2} maxLength={80} value={teamDraft.name} onChange={e => setTeamDraft({ ...teamDraft, name: e.target.value })}/></label><label className="field"><span>Division</span><select value={teamDraft.division} onChange={e => setTeamDraft({ ...teamDraft, division: e.target.value })}><option>Mixed</option><option>BR</option><option>MP</option><option>Academy</option></select></label><label className="field ops-full"><span>Description</span><textarea maxLength={1000} rows={2} value={teamDraft.description} onChange={e => setTeamDraft({ ...teamDraft, description: e.target.value })}/></label><label className="field"><span>Captain (optional)</span><select value={teamDraft.captain_roster_id} onChange={e => setTeamDraft({ ...teamDraft, captain_roster_id: e.target.value })}><option value="">No captain selected</option>{roster.map(m => <option key={m.id} value={m.id}>{m.ign}</option>)}</select></label><label className="field"><span>Status</span><select value={teamDraft.is_active ? 'true' : 'false'} onChange={e => setTeamDraft({ ...teamDraft, is_active: e.target.value === 'true' })}><option value="true">Active</option><option value="false">Inactive</option></select></label></div><button className="primary" type="submit" disabled={busy}>{busy ? 'Saving…' : teamDraft.id ? 'Save changes' : 'Create team'}</button></form>
           <div className="ops-team-admin-list">{teams.map(team => <article className="panel ops-admin-card" key={team.id}><div className="ops-section-title"><div><span className="ops-chip">{team.division}</span><h3>{team.name}</h3><p>{team.description || 'No description.'} · {team.is_active ? 'Active' : 'Inactive'}</p></div><div className="ops-inline-actions"><button type="button" className="secondary compact-button" onClick={() => setTeamDraft({ id: team.id, name: team.name, division: team.division, description: team.description, captain_roster_id: team.captain_roster_id || '', is_active: team.is_active })}>Edit</button><button type="button" className="danger compact-button" onClick={() => void deleteTeam(team)}>Delete</button></div></div><div className="ops-team-members">{team.members.filter(m => m.member).map(m => <span key={m.roster_id}>{m.member?.ign}<small>{m.team_position}</small><button title="Remove member" onClick={() => void removeTeamMember(team.id, m.roster_id)}><X size={12}/></button></span>)}</div></article>)}</div>
           <form className="panel ops-form" onSubmit={saveTeamMember}><div className="ops-form-head"><strong>Assign a player</strong></div><div className="ops-form-grid"><label className="field"><span>Team</span><select required value={teamMemberDraft.team_id} onChange={e => setTeamMemberDraft({ ...teamMemberDraft, team_id: e.target.value })}><option value="">Choose team</option>{teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label><label className="field"><span>Member</span><select required value={teamMemberDraft.roster_id} onChange={e => setTeamMemberDraft({ ...teamMemberDraft, roster_id: e.target.value })}><option value="">Choose member</option>{roster.map(m => <option key={m.id} value={m.id}>{m.ign}</option>)}</select></label><label className="field"><span>Team position</span><select value={teamMemberDraft.team_position} onChange={e => setTeamMemberDraft({ ...teamMemberDraft, team_position: e.target.value })}><option>Player</option><option>Captain</option><option>Substitute</option><option>Coach</option></select></label></div><button className="primary" type="submit" disabled={busy}>Assign member</button></form>
