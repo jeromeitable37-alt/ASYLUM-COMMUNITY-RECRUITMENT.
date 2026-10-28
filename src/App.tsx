@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createClient, Session } from '@supabase/supabase-js';
+import { ApplicantNotificationPanel, OperationsHub } from './OperationsHub';
 import { ArrowRight, BadgeCheck, Bot, CalendarClock, CheckCircle2, ClipboardList, Copy, Mail, Crosshair, Gamepad2, LogIn, LogOut, MessageCircle, Search, Send, ShieldCheck, Swords, Trophy, Upload, Users, X, Zap } from 'lucide-react';
 
 const SUPABASE_URL = 'https://tyhszzztltamrohhyykh.supabase.co';
@@ -10,7 +11,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
 type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
-type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string };
+type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string; clan_name?:string|null };
 type SavedApplication = { application_code:string; contact_email:string; ign:string; submitted_at:string };
 type IntakeSettings = { id:number; intake_open:boolean; application_limit:number|null; application_count:number; cycle_started_at:string; updated_at:string };
 type Announcement = { id:string; title:string; body:string; category:'general'|'recruitment'|'event'|'maintenance'; is_published:boolean; created_at:string; updated_at?:string; published_at?:string|null; created_by_email?:string; updated_by_email?:string|null };
@@ -196,6 +197,20 @@ export default function App() {
       await loadCommunityMessages();
     }catch(error){notify(error instanceof Error?error.message:'Could not send community message.',true);}
     finally{setCommunityChatBusy(false);}
+  }
+  async function reportCommunityMessage(message:CommunityChatMessage){
+    const reason=window.prompt('Report reason: spam, harassment, personal_information, impersonation, or other','spam');
+    if(!reason)return;
+    const normalized=reason.trim().toLowerCase().replaceAll(' ','_');
+    if(!['spam','harassment','personal_information','impersonation','other'].includes(normalized)){notify('Choose spam, harassment, personal_information, impersonation, or other.',true);return;}
+    const details=window.prompt('Optional details (do not include private contact details)','')||'';
+    try{
+      const headers:Record<string,string>={apikey:SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'};
+      const response=await fetch('https://tyhszzztltamrohhyykh.supabase.co/functions/v1/asy-operations',{method:'POST',headers,body:JSON.stringify({action:'chat-report',message_id:message.id,reporter_name:communityDisplayName.trim()||'Community member',reason:normalized,details}),cache:'no-store'});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'Could not submit report.');
+      notify('Report submitted to ASY moderators.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not submit report.',true);}
   }
   async function hideCommunityMessage(message:CommunityChatMessage){
     if(!window.confirm('Hide this public message from the community chat?'))return;
@@ -493,13 +508,13 @@ export default function App() {
   async function copyApplicationCode(codeToCopy=savedApplication?.application_code||applicationCode){if(!codeToCopy){notify('There is no tracking code to copy yet.',true);return;}try{await navigator.clipboard.writeText(codeToCopy);notify('Tracking code copied. Keep it private with your application email.');}catch{notify('Copy is unavailable in this browser. Select the code and copy it manually.',true);}}
   function clearSavedApplication(){try{localStorage.removeItem('asy-recruitment:last-application');}catch{}setSavedApplication(null);setApplicationCode('');setContactEmail('');setTracked(null);notify('Saved tracking details cleared from this device.');}
   async function loadApplications(){const {data,error}=await supabase.from('asy_clan_applications').select('*').order('submitted_at',{ascending:false});if(error)notify('Unable to load applications. Confirm recruiter access.',true);else setApplications((data||[]) as Application[]);}
-  async function loadRoster(){const {data,error}=await supabase.from('asy_clan_roster_public').select('id,ign,main_role,rank,member_status,joined_at').eq('member_status','active').order('joined_at');if(error)notify('Could not load the roster right now.',true);else setRoster((data||[]) as Roster[]);}
+  async function loadRoster(){const {data,error}=await supabase.from('asy_clan_roster_public').select('id,ign,main_role,rank,member_status,joined_at,clan_name').eq('member_status','active').order('joined_at');if(error)notify('Could not load the roster right now.',true);else setRoster((data||[]) as Roster[]);}
   async function updateApplication(app:Application,status:string){setBusy(true);const {error}=await supabase.from('asy_clan_applications').update({status,reviewer_notes:notes.trim()||null,updated_at:new Date().toISOString()}).eq('id',app.id);if(error){setBusy(false);notify('Could not save this review. Check recruiter permissions.',true);return;}if(status==='accepted'){const {error:rosterError}=await supabase.from('asy_clan_roster').upsert({application_id:app.id,ign:app.ign,codm_uid:app.codm_uid,main_role:app.main_role,rank:app.rank,discord_username:app.discord_username,member_status:'active'},{onConflict:'application_id'});if(rosterError)notify('Status updated, but roster sync failed. Check whether this UID already exists.',true);}setBusy(false);setSelected(null);await loadApplications();notify(status==='accepted'?'Applicant accepted and added to community members.':'Application review saved.');}
   async function scheduleInterview(event:FormEvent){event.preventDefault();if(!selected||!interviewAt)return;setBusy(true);const {error}=await supabase.from('asy_recruitment_interviews').insert({application_id:selected.id,scheduled_at:new Date(interviewAt).toISOString(),channel:interviewChannel,meeting_details:interviewDetails.trim()||null,created_by:session?.user.email||null});setBusy(false);if(error)notify('Interview could not be saved.',true);else{await updateApplication(selected,'interview');setInterviewAt('');setInterviewDetails('');notify('Interview scheduled.');}}
   async function saveTryout(event:FormEvent){event.preventDefault();if(!selected)return;setBusy(true);const {error}=await supabase.from('asy_recruitment_tryouts').insert({application_id:selected.id,scheduled_at:tryoutAt?new Date(tryoutAt).toISOString():null,mode:tryoutMode,score:tryoutScore?Number(tryoutScore):null,result:tryoutResult,notes:tryoutNotes.trim()||null});setBusy(false);if(error)notify('Tryout result could not be saved.',true);else{await updateApplication(selected,tryoutResult==='fail'?'rejected':'tryout');setTryoutScore('');setTryoutNotes('');notify('Tryout record saved.');}}
   const filtered=useMemo(()=>applications.filter(app=>(filter==='all'||app.status===filter)&&[app.ign,app.codm_uid,app.contact_email,app.application_code].some(v=>v.toLowerCase().includes(query.toLowerCase()))),[applications,filter,query]);
   const count=(status:string)=>applications.filter(app=>app.status===status).length;
-  const navigation=[['home','Overview'],['community','Community'],['apply','Apply to join'],['status','Track application'],['screening','Screening guide'],['roster','Community members']];
+  const navigation=[['home','Overview'],['community','Community'],['teams','Teams & Scrims'],['apply','Apply to join'],['status','Track application'],['screening','Screening guide'],['roster','Community members'],...(authorized?[['operations','Operations']]:[])];
 
   return <div className="shell">
     <div className="topline"><i/> ASYLUM COMMUNITY <span>/</span> GAMING COMMUNITY</div>
@@ -535,7 +550,7 @@ export default function App() {
               {communityMessages.map(message=><article className="public-chat-message" key={message.id}>
                 <div className="thread-message-meta"><strong>{message.display_name}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
                 <p>{message.body}</p>
-                {authorized&&<button type="button" className="moderate-message" onClick={()=>void hideCommunityMessage(message)}>Hide message</button>}
+                {!authorized&&<button type="button" className="moderate-message" onClick={()=>void reportCommunityMessage(message)}>Report message</button>}{authorized&&<><button type="button" className="moderate-message" onClick={()=>void reportCommunityMessage(message)}>Report message</button><button type="button" className="moderate-message" onClick={()=>void hideCommunityMessage(message)}>Hide message</button></>}
               </article>)}
             </div>
             <form className="community-chat-compose" onSubmit={sendCommunityMessage}>
@@ -629,9 +644,12 @@ export default function App() {
           </form>
           <small className="message-privacy-note">Only you and authorized recruiters can access this application conversation. Never send passwords or login codes.</small>
         </section>}
+        {tracked&&<ApplicantNotificationPanel applicationCode={applicationCode.trim()} contactEmail={contactEmail.trim().toLowerCase()} onNotify={notify}/>}
       </section>}
       {page==='screening'&&<ScreeningGuide intakeSettings={intakeSettings} onApply={()=>setPage('apply')} onTrack={()=>setPage('status')}/> }
       {page==='roster'&&<RosterPage roster={roster} onApply={()=>setPage('apply')}/>}
+      {page==='teams'&&<OperationsHub mode="public" session={session} authorized={authorized} onNotify={notify}/>}
+      {page==='operations'&&<OperationsHub mode="staff" session={session} authorized={authorized} onNotify={notify}/>}
       {page==='admin'&&<section className="page admin-page">
         {!session?<div className="login-wrap"><div><small className="kicker">RESTRICTED AREA</small><h1>RECRUITER<br/><em>COMMAND.</em></h1><p className="muted">Sign in with an authorized Asylum Community recruitment account to review applications, schedule interviews and track tryouts.</p><div className="secure"><ShieldCheck/> ACCESS CONTROLLED BY SUPABASE AUTH</div></div><form className="panel login" onSubmit={signIn}><div className="login-icon"><ShieldCheck/></div><h2>Recruiter sign in</h2><p className="muted">Only approved recruiter emails can access applicant data.</p><Field label="Email"><input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="jeromeitable37@gmail.com"/></Field><Field label="Password"><input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Your password"/></Field><button className="primary full" disabled={busy}>{busy?'Signing in…':'Sign in securely'} <LogIn size={16}/></button><small className="muted">Account must exist in Supabase Auth and be added to the Asylum Community recruiter allowlist.</small></form></div>
         :!authorized?<div className="panel empty"><ShieldCheck size={38}/><h2>Account not authorized</h2><p>Signed in as {session.user.email}, but this email is not on the recruiter allowlist.</p><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div>
@@ -862,8 +880,15 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
 }
 
 function RosterPage({roster,onApply}:{roster:Roster[];onApply:()=>void}) {
- return <section className="page"><Heading kicker="03 / OUR PLAYERS" title={<>THE ASYLUM <em>COMMUNITY.</em></>} desc="Meet the active members of Asylum Community."/>
- {roster.length===0?<div className="panel empty"><Users size={38}/><h2>Community roster coming together.</h2><p>Approved community members can appear here once recruitment starts.</p><button className="secondary" onClick={onApply}>Be one of the first <ArrowRight size={15}/></button></div>:<div className="roster-grid">{roster.map((member,index)=><div className="roster-card" key={member.id}><span className="number">{String(index+1).padStart(2,'0')}</span><div className="avatar"><Swords size={27}/></div><small>{member.rank}</small><h3>{member.ign}</h3><span className="role">{member.main_role}</span><footer><i/> ACTIVE <span>CODM</span></footer></div>)}</div>}
+ const [search,setSearch]=useState('');
+ const [currentPage,setCurrentPage]=useState(1);
+ const pageSize=24;
+ const filtered=roster.filter(member=>[member.ign,member.clan_name||'',member.rank,member.main_role].some(value=>value.toLowerCase().includes(search.trim().toLowerCase())));
+ const pageCount=Math.max(1,Math.ceil(filtered.length/pageSize));
+ const visible=filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);
+ return <section className="page"><Heading kicker="03 / OFFICIAL DIRECTORY" title={<>THE ASYLUM <em>COMMUNITY.</em></>} desc="Search active ASY members by in-game name or clan. Personal contact details and CODM UIDs are not shown here."/>
+ <div className="roster-tools"><label className="roster-search"><Search size={16}/><input value={search} onChange={event=>{setSearch(event.target.value);setCurrentPage(1);}} placeholder="Search IGN or clan name"/></label><span>{filtered.length} of {roster.length} members</span></div>
+ {roster.length===0?<div className="panel empty"><Users size={38}/><h2>Community roster coming together.</h2><p>Approved community members can appear here once recruitment starts.</p><button className="secondary" onClick={onApply}>Be one of the first <ArrowRight size={15}/></button></div>:filtered.length===0?<div className="panel empty"><Search size={30}/><h2>No matching members</h2><p>Try a different in-game name or clan.</p></div>:<><div className="roster-grid">{visible.map((member,index)=><div className="roster-card" key={member.id}><span className="number">{String((currentPage-1)*pageSize+index+1).padStart(3,'0')}</span><div className="avatar"><Swords size={27}/></div><small>{member.clan_name||member.rank||'ASY Community'}</small><h3>{member.ign}</h3><span className="role">{member.main_role==='Community Member'?'ASY Member':member.main_role}</span><footer><i/> ACTIVE <span>CODM</span></footer></div>)}</div><div className="roster-pagination"><button className="secondary" disabled={currentPage===1} onClick={()=>setCurrentPage(page=>Math.max(1,page-1))}>Previous</button><span>Page {currentPage} of {pageCount}</span><button className="secondary" disabled={currentPage>=pageCount} onClick={()=>setCurrentPage(page=>Math.min(pageCount,page+1))}>Next</button></div></>}
  <section className="callout"><div><small>NEXT UP COULD BE YOU</small><h2>READY TO JOIN ASYLUM COMMUNITY?</h2><p>Bring your best game and a team-first mindset.</p></div><button className="primary" onClick={onApply}>Apply now <ArrowRight size={16}/></button></section></section>;
 }
 function Heading({kicker,title,desc}:{kicker:string;title:React.ReactNode;desc:string}){return <div className="heading"><small>{kicker}</small><h1>{title}</h1><p>{desc}</p></div>;}
