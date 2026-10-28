@@ -9,7 +9,7 @@ const EVIDENCE_API_URL = SUPABASE_URL + '/functions/v1/asy-recruitment-evidence'
 const MESSAGING_API_URL = SUPABASE_URL + '/functions/v1/asy-community-messaging';
 const OPERATIONS_API_URL = SUPABASE_URL + '/functions/v1/asy-operations';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
+type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
 type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string; clan_name?:string|null };
@@ -386,6 +386,17 @@ export default function App() {
     const {data,error}=await supabase.storage.from('asy-recruitment-private').createSignedUrl(path,300);
     if(error||!data?.signedUrl){notify('Could not open this private screenshot.',true);return;}
     window.open(data.signedUrl,'_blank','noopener,noreferrer');
+  }
+  async function updateAgeVerification(app:Application,status:'verified'|'underage'|'needs_confirmation'){
+    const labels={verified:'16+ age requirement verified.',underage:'Applicant marked as under 16.',needs_confirmation:'Age needs further confirmation.'};
+    if(status==='verified'&&!window.confirm('Confirm that you have checked an appropriate age confirmation and this applicant is at least 16? Do not collect or store an ID image unless separately required by an approved policy.'))return;
+    setBusy(true);
+    const {data,error}=await supabase.from('asy_clan_applications').update({age_verification_status:status,age_verified_by_email:session?.user.email||null,age_verified_at:new Date().toISOString(),age_verification_notes:status==='verified'?'Recruiter confirmed minimum age requirement.':status==='underage'?'Does not meet the 16+ minimum age requirement.':'Needs further age confirmation.',updated_at:new Date().toISOString()}).eq('id',app.id).select('*').single();
+    setBusy(false);
+    if(error||!data){notify('Could not save age verification. Check recruiter permissions.',true);return;}
+    setSelected(data as Application);
+    await loadApplications();
+    notify(labels[status]);
   }
   async function advanceApplicationWorkflow(app:Application,nextStep:'tag_proofs'|'screening_gc_ready'){
     if(nextStep==='screening_gc_ready'&&(app.mgc_verification_status!=='verified'||!app.mgc_applicant_contacted||!app.mgc_checked_at||!app.mgc_verification_notes?.trim())){
@@ -910,6 +921,13 @@ export default function App() {
               </div>
             </section>
             <div className="reason"><b>Why they want to join</b><p>{selected.reason}</p></div>
+            <section className="panel age-verification-panel">
+              <small className="kicker">AGE VERIFICATION · MINIMUM 16</small><h2>Confirm applicant age</h2>
+              <p className="muted">The applicant has self-confirmed they are at least 16. A recruiter must verify this before approving eligibility and unlocking Step 1. Do not request or store a full ID image unless ASY has an approved policy requiring it.</p>
+              <p><strong>Status:</strong> {({pending:'Pending verification',verified:'Verified · 16+',underage:'Does not meet minimum age',needs_confirmation:'Needs confirmation'} as Record<string,string>)[selected.age_verification_status||'pending']||'Pending verification'}</p>
+              {selected.age_verified_at&&<small className="muted">Checked by {selected.age_verified_by_email||'recruiter'} · {new Date(selected.age_verified_at).toLocaleString()}</small>}
+              <div className="action-row"><button type="button" className="primary" disabled={busy||selected.age_verification_status==='verified'} onClick={()=>void updateAgeVerification(selected,'verified')}>Confirm 16+ verified <CheckCircle2 size={15}/></button><button type="button" className="secondary" disabled={busy} onClick={()=>void updateAgeVerification(selected,'needs_confirmation')}>Needs confirmation</button><button type="button" className="secondary" disabled={busy} onClick={()=>void updateAgeVerification(selected,'underage')}>Under 16</button></div>
+            </section>
             <section className="panel admin-evidence">
               <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each proof or request a correction with a note. Every required proof must be approved before the next stage opens.</p>
               {selectedEvidence.map(item=><article className="admin-evidence-item" key={item.requirement_key}>
@@ -919,7 +937,7 @@ export default function App() {
                 {item.status==='pending'&&<><Field label="Feedback for applicant"><textarea rows={2} value={evidenceNotes[item.id||'']??item.reviewer_notes??''} onChange={e=>setEvidenceNotes(old=>({...old,[item.id||'']:e.target.value}))} placeholder="Optional note; add one if requesting correction"/></Field><div className="action-row"><button type="button" className="secondary" disabled={busy} onClick={()=>void reviewEvidence(item,'needs_correction')}>Request correction</button><button type="button" className="primary" disabled={busy} onClick={()=>void reviewEvidence(item,'approved')}>Approve proof <CheckCircle2 size={15}/></button></div></>}
                 {item.status==='needs_correction'&&<p className="correction-note">Correction requested. The applicant can upload a replacement at the current step.</p>}
               </article>)}
-              {selected.workflow_step==='eligibility_review'&&<button type="button" className="primary full" disabled={busy} onClick={()=>void advanceApplicationWorkflow(selected,'tag_proofs')}>Approve eligibility & unlock Step 1 <ArrowRight size={15}/></button>}
+              {selected.workflow_step==='eligibility_review'&&<button type="button" className="primary full" disabled={busy||selected.age_verification_status!=='verified'} onClick={()=>void advanceApplicationWorkflow(selected,'tag_proofs')}>Approve eligibility & unlock Step 1 <ArrowRight size={15}/></button>}
               {selected.workflow_step==='final_review'&&<><button type="button" className="primary full" disabled={busy||selected.mgc_verification_status!=='verified'||!selected.mgc_applicant_contacted||!selected.mgc_checked_at||!selected.mgc_verification_notes?.trim()} onClick={()=>void advanceApplicationWorkflow(selected,'screening_gc_ready')}>Mark Screening GC ready <CheckCircle2 size={15}/></button>{selected.mgc_verification_status!=='verified'&&<small className="mgc-unavailable-note">Complete the MGC check and confirm applicant contact below first.</small>}</>}
               {selected.workflow_step==='screening_gc_ready'&&<p className="success-note">All required evidence is approved. The final recruitment decision is ready.</p>}
             </section>
