@@ -248,7 +248,8 @@ Deno.serve(async (req: Request) => {
       const token = (req.headers.get("authorization") || "").match(/^Bearer\\s+(.+)$/i)?.[1] || "";
       const { data: currentAuth } = await authClient!.auth.getUser(token);
       if (userId === currentAuth.user?.id && ["disable", "delete", "member"].includes(operation)) return json(409, { error: "You cannot disable or remove your own staff access." });
-      if (["delete", "admin", "member"].includes(operation) && user.role.trim().toLowerCase() !== "owner") return json(403, { error: "Only the Owner can delete accounts or change Admin roles." });
+      if (operation === "delete" && user.role.trim().toLowerCase() !== "owner") return json(403, { error: "Only the Owner can permanently delete user accounts." });
+      if (["admin", "member"].includes(operation) && !["owner", "admin", "management"].includes(user.role.trim().toLowerCase())) return json(403, { error: "Only the Owner, Admin, or Management can change user roles." });
       const { data: target, error: targetError } = await db.auth.admin.getUserById(userId);
       if (targetError || !target?.user?.email) return json(404, { error: "User account was not found." });
       const targetEmail = String(target.user.email).toLowerCase();
