@@ -18,7 +18,8 @@ const ALLOWED_TYPES: Record<string, string> = {
 const STAGE_BY_STEP: Record<string, number> = {
   tag_proofs: 1,
   membership_proofs: 2,
-  discord_roster: 3,
+  // Legacy in-progress applications may still have this step name; their remaining proofs now belong to stage 2.
+  discord_roster: 2,
 };
 
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
