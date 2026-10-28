@@ -231,11 +231,11 @@ Deno.serve(async (req: Request) => {
       if (response) return response;
       const id = clean(body.id, 80);
       const name = clean(body.name, 80);
-      const division = clean(body.division, 20) || "Mixed";
+      const division = clean(body.division, 20) || "Casual";
       const description = clean(body.description, 1000);
       const captain = clean(body.captain_roster_id, 80) || null;
       const active = body.is_active !== false;
-      if (name.length < 2 || !["BR", "MP", "Mixed", "Academy"].includes(division)) return json(400, { error: "Enter a team name and choose a supported division." });
+      if (name.length < 2 || !["Casual", "BR", "MP", "Mixed", "Academy"].includes(division)) return json(400, { error: "Enter a team name and choose a supported division." });
       if (captain) {
         const { data, error } = await db.from("asy_clan_roster").select("id").eq("id", captain).maybeSingle();
         if (error) throw error;
