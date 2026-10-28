@@ -257,6 +257,8 @@ Deno.serve(async (req: Request) => {
       if (targetStaffError) throw targetStaffError;
       if (targetStaff?.role?.trim().toLowerCase() === "owner" && ["delete", "admin", "member"].includes(operation)) return json(409, { error: "The Owner account cannot be deleted or demoted here." });
       if (operation === "disable" || operation === "enable") {
+        const { error: authUpdateError } = await db.auth.admin.updateUserById(userId, { ban_duration: operation === "disable" ? "876000h" : "none" });
+        if (authUpdateError) throw authUpdateError;
         const { error } = await db.from("asy_member_accounts").upsert({ user_id: userId, display_name: String(target.user.user_metadata?.display_name || targetEmail), is_disabled: operation === "disable", updated_at: new Date().toISOString() }, { onConflict: "user_id" });
         if (error) throw error;
       } else if (operation === "admin") {
