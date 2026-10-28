@@ -457,3 +457,7 @@
   .thread-message{max-width:100%}
 }
 
+
+
+.roster-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 18px;color:#9f95a4;font-size:11px}.roster-search{display:flex;align-items:center;gap:9px;flex:1;max-width:500px;min-width:0;padding:0 13px;border:1px solid #39313d;border-radius:8px;background:#141117;color:#a99eae}.roster-search:focus-within{border-color:#9c3949;box-shadow:0 0 0 3px #9c39491a}.roster-search input{width:100%;min-width:0;padding:12px 0;border:0;outline:0;background:transparent;color:#fff;font-size:12px}.roster-search input::placeholder{color:#7f7584}.roster-card>small{display:block;max-width:100%;overflow-wrap:anywhere}
+@media(max-width:600px){.roster-tools{align-items:stretch;flex-direction:column}.roster-search{max-width:none;width:100%}}
