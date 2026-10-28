@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { Activity, Bell, CalendarClock, Check, Download, Flag, RefreshCw, Search, ShieldCheck, Swords, Users, X } from 'lucide-react';
 import './operations.css';
@@ -32,7 +32,6 @@ export function OperationsHub({ mode, session, authorized, onNotify }: Props) {
   const [teamDraft, setTeamDraft] = useState(emptyTeam);
   const [scrimDraft, setScrimDraft] = useState(emptyScrim);
   const [teamMemberDraft, setTeamMemberDraft] = useState({ team_id: '', roster_id: '', team_position: 'Player' });
-  const [memberSearch, setMemberSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [directorySyncBusy, setDirectorySyncBusy] = useState(false);
@@ -98,11 +97,6 @@ export function OperationsHub({ mode, session, authorized, onNotify }: Props) {
     if (tab === 'activity') void loadAudit();
     if (tab === 'teams' || tab === 'scrims') { void loadPublic(); void loadRoster(); }
   }, [mode, tab, authorized, session?.access_token]);
-
-  const filteredRoster = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    return q ? roster.filter(m => [m.ign, m.rank, m.main_role, m.clan_name || ''].some(v => String(v).toLowerCase().includes(q))) : roster;
-  }, [roster, memberSearch]);
 
   async function saveTeam(event: FormEvent) {
     event.preventDefault(); setBusy(true);
