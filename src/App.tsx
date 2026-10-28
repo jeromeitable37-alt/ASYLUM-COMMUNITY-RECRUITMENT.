@@ -118,7 +118,7 @@ export default function App() {
   useEffect(()=>{try{const raw=localStorage.getItem('asy-recruitment:last-application');if(raw){const saved=JSON.parse(raw) as SavedApplication;if(saved.application_code&&saved.contact_email){setSavedApplication(saved);setApplicationCode(saved.application_code);setContactEmail(saved.contact_email);}}}catch{}},[]);
   useEffect(()=>{supabase.auth.getSession().then(({data})=>setSession(data.session));const {data:listener}=supabase.auth.onAuthStateChange((_event,next)=>setSession(next));return()=>listener.subscription.unsubscribe();},[]);
   useEffect(()=>{if(session?.user.email) void checkAdmin(session.user.email);else setAuthorized(false);},[session]);
-  useEffect(()=>{if(page==='roster')void loadRoster();if(page==='admin'&&session&&authorized){void loadApplications();void loadAnnouncements();}},[page,session,authorized]);
+  useEffect(()=>{if(page==='roster')void loadRoster();if(page==='account'&&session)void loadMemberAccount();if(page==='admin'&&session&&authorized){void loadApplications();void loadAnnouncements();void loadMemberAccountReviews();if(staffRole==='owner')void loadAdminAccessRequests();}},[page,session,authorized,staffRole]);
   useEffect(()=>{if(page==='community'){void loadAnnouncements();void loadCommunityMessages();}},[page,authorized,session?.access_token]);
   useEffect(()=>{
     if(page!=='community')return;
@@ -657,7 +657,7 @@ export default function App() {
   async function saveTryout(event:FormEvent){event.preventDefault();if(!selected)return;setBusy(true);const {error}=await supabase.from('asy_recruitment_tryouts').insert({application_id:selected.id,scheduled_at:tryoutAt?new Date(tryoutAt).toISOString():null,mode:tryoutMode,score:tryoutScore?Number(tryoutScore):null,result:tryoutResult,notes:tryoutNotes.trim()||null});setBusy(false);if(error)notify('Tryout result could not be saved.',true);else{await updateApplication(selected,tryoutResult==='fail'?'rejected':'tryout');setTryoutScore('');setTryoutNotes('');notify('Tryout record saved.');}}
   const filtered=useMemo(()=>applications.filter(app=>(filter==='all'||app.status===filter)&&[app.ign,app.codm_uid,app.contact_email,app.application_code].some(v=>v.toLowerCase().includes(query.toLowerCase()))),[applications,filter,query]);
   const count=(status:string)=>applications.filter(app=>app.status===status).length;
-  const navigation=[['home','Overview'],['community','Community'],['teams','Teams & Scrims'],['apply','Apply to join'],['status','Track application'],['screening','Screening guide'],['roster','Community members'],...(authorized?[['operations','Operations']]:[])];
+  const navigation=[['home','Overview'],['community','Community'],['teams','Teams & Scrims'],['apply','Apply to join'],['status','Track application'],['account','Member account'],['screening','Screening guide'],['roster','Community members'],...(authorized?[['operations','Operations']]:[])];
 
   return <div className="shell">
     <div className="topline"><i/> ASYLUM COMMUNITY <span>/</span> GAMING COMMUNITY</div>
