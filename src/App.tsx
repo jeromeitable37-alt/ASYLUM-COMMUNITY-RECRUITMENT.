@@ -326,7 +326,7 @@ export default function App() {
     finally{setEvidenceUploadKey('');}
   }
   async function loadSelectedEvidence(applicationId:string){
-    const {data,error}=await supabase.from('asy_recruitment_evidence').select('*').eq('application_id',applicationId).order('stage_number').order('requirement_label');
+    const {data,error}=await supabase.from('asy_recruitment_evidence').select('*').eq('application_id',applicationId).neq('requirement_key','membership_form_screenshot').order('stage_number').order('requirement_label');
     if(error){notify('Could not load requirement evidence. Confirm recruiter permissions.',true);return;}
     setSelectedEvidence((data||[]) as Evidence[]);
   }
@@ -1115,7 +1115,7 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
     return { text: 'Join the official ASY Discord. When Step 3 unlocks in Track application, set your server nickname to IGN ASY and upload your roster photo following the admin reference. Include your Facebook name in the caption.', links: [screeningLinks[1]] };
   }
   if (/track|tracking code|application status|status|pending|review|where is my application/.test(q)) {
-    return { text: 'Open “Track application” on this website and enter your tracking code plus the same contact email you used when applying. The page shows the latest status saved by the recruitment team. If you lost the code, contact an authorized recruiter through the official Discord; do not post your email or application details in public chat.', links: [screeningLinks[2]] };
+    return { text: 'Open “Track application” on this website and enter your tracking code plus the same contact email you used when applying. The page shows the latest status saved by the recruitment team. If you lost the code, contact an authorized recruiter through the official Discord; do not post your email or application details in public chat.', links: [screeningLinks[1]] };
   }
   if (/limit|slots|capacity|how many applicants/.test(q)) {
     if (!intakeSettings) return { text: 'I could not load the current intake status. Refresh the page or check the latest official announcement before submitting.' };
@@ -1134,15 +1134,15 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
     return { text: 'For your safety, never send your password, OTP, or login code to this chat or any ASY staff member. Use the official account recovery process for the platform involved. ASY recruitment only needs the information and proof requested by the website.' };
   }
   if (/dashboard|website|bug|error|not working|does not work|cannot|can't|cant|problem|issue/.test(q)) {
-    return { text: 'Sorry you’re having trouble with the dashboard. Try refreshing the page and checking that you entered the correct tracking code and the same application email. If it still fails, take a screenshot of the error (hide personal details) and send it to management through the official Discord. Never share passwords or login codes.' , links: [screeningLinks[2]] };
+    return { text: 'Sorry you’re having trouble with the dashboard. Try refreshing the page and checking that you entered the correct tracking code and the same application email. If it still fails, take a screenshot of the error (hide personal details) and send it to management through the official Discord. Never share passwords or login codes.' , links: [screeningLinks[1]] };
   }
   if (/human|admin|recruiter|staff|help|assist|contact/.test(q)) {
-    return { text: 'I can answer common ASY questions, but a recruiter or management member must handle account-specific issues and final decisions. Contact the team through the official Discord and follow the admins’ instructions.', links: [screeningLinks[2]] };
+    return { text: 'I can answer common ASY questions, but a recruiter or management member must handle account-specific issues and final decisions. Contact the team through the official Discord and follow the admins’ instructions.', links: [screeningLinks[1]] };
   }
   if (/apply|application|join|recruitment/.test(q)) {
     return { text: 'To join ASY, open “Apply to join” on this website and complete the application honestly. Save the ASYLUM tracking code shown after submission, then use “Track application” to check your status. Submit only one application and wait for recruiter review.' };
   }
-  return { text: 'I don’t have a verified answer for that exact question yet, so I don’t want to guess. I can help with eligibility, applying, tracking your application, screening proofs, referral requirements, Casual Groups, scrims, and basic dashboard issues. For anything else, contact management through the official Discord.', links: [screeningLinks[2]] };
+  return { text: 'I don’t have a verified answer for that exact question yet, so I don’t want to guess. I can help with eligibility, applying, tracking your application, screening proofs, referral requirements, Casual Groups, scrims, and basic dashboard issues. For anything else, contact management through the official Discord.', links: [screeningLinks[1]] };
 }
 
 const SUPPORT_HISTORY_KEY = 'asy-recruitment-support-history-v1';
