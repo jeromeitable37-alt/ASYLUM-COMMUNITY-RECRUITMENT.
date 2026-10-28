@@ -54,6 +54,9 @@ async function accountUser(req: Request) {
   const { data: { user }, error } = await authClient.auth.getUser(token);
   if (error || !user?.id || !user.email) return { user: null as any, response: json(401, { error: "Your session is invalid or expired. Sign in again." }) };
   if (!user.email_confirmed_at) return { user: null as any, response: json(403, { error: "Verify your email before using member accounts." }) };
+  const { data: memberState, error: memberStateError } = await db.from("asy_member_accounts").select("is_disabled").eq("user_id", user.id).maybeSingle();
+  if (memberStateError) return { user: null as any, response: json(503, { error: "Could not verify this member account status." }) };
+  if (memberState?.is_disabled === true) return { user: null as any, response: json(403, { error: "This ASY account has been disabled. Contact an authorized administrator." }) };
   return { user, response: null as Response | null };
 }
 
@@ -225,10 +228,49 @@ Deno.serve(async (req: Request) => {
       const { user, response } = await requireStaff(req, canManage);
       if (response) return response;
       const { data, error } = await db.from("asy_member_accounts")
-        .select("user_id,display_name,ign,codm_uid,discord_username,photo_url,approval_status,review_note,linked_application_id,created_at,updated_at")
+        .select("user_id,display_name,ign,codm_uid,discord_username,photo_url,approval_status,review_note,linked_application_id,created_at,updated_at,is_disabled")
         .order("created_at", { ascending: false }).limit(300);
       if (error) throw error;
-      return json(200, { profiles: data || [], role: user.role });
+      const profiles = await Promise.all((data || []).map(async (profile: any) => {
+        const { data: authData } = await db.auth.admin.getUserById(profile.user_id);
+        const email = String(authData?.user?.email || "").toLowerCase();
+        const { data: staffData } = email ? await db.from("asy_recruitment_admins").select("role").eq("email", email).maybeSingle() : { data: null };
+        return { ...profile, email, role: staffData?.role || null, is_disabled: Boolean(profile.is_disabled) };
+      }));
+      return json(200, { profiles, role: user.role });
+    }
+
+    if (action === "user-management-update") {
+      const { user, response } = await requireStaff(req, canManage);
+      if (response) return response;
+      const userId = clean(body.user_id, 80);
+      const operation = clean(body.operation, 20);
+      if (!userId || !["disable", "enable", "delete", "admin", "member"].includes(operation)) return json(400, { error: "Choose a valid user-management action." });
+      const token = (req.headers.get("authorization") || "").match(/^Bearer\\s+(.+)$/i)?.[1] || "";
+      const { data: currentAuth } = await authClient!.auth.getUser(token);
+      if (userId === currentAuth.user?.id && ["disable", "delete", "member"].includes(operation)) return json(409, { error: "You cannot disable or remove your own staff access." });
+      if (["delete", "admin", "member"].includes(operation) && user.role.trim().toLowerCase() !== "owner") return json(403, { error: "Only the Owner can delete accounts or change Admin roles." });
+      const { data: target, error: targetError } = await db.auth.admin.getUserById(userId);
+      if (targetError || !target?.user?.email) return json(404, { error: "User account was not found." });
+      const targetEmail = String(target.user.email).toLowerCase();
+      const { data: targetStaff, error: targetStaffError } = await db.from("asy_recruitment_admins").select("role").eq("email", targetEmail).maybeSingle();
+      if (targetStaffError) throw targetStaffError;
+      if (targetStaff?.role?.trim().toLowerCase() === "owner" && ["delete", "admin", "member"].includes(operation)) return json(409, { error: "The Owner account cannot be deleted or demoted here." });
+      if (operation === "disable" || operation === "enable") {
+        const { error } = await db.from("asy_member_accounts").upsert({ user_id: userId, display_name: String(target.user.user_metadata?.display_name || targetEmail), is_disabled: operation === "disable", updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+        if (error) throw error;
+      } else if (operation === "admin") {
+        const { error } = await db.from("asy_recruitment_admins").upsert({ email: targetEmail, role: "admin" }, { onConflict: "email" });
+        if (error) throw error;
+      } else if (operation === "member") {
+        const { error } = await db.from("asy_recruitment_admins").delete().eq("email", targetEmail);
+        if (error) throw error;
+      } else if (operation === "delete") {
+        const { error } = await db.auth.admin.deleteUser(userId);
+        if (error) throw error;
+      }
+      await audit(user.email, "user_management." + operation, "user", userId, "User management action " + operation + " performed for " + targetEmail + ".");
+      return json(200, { success: true, operation });
     }
 
     if (action === "member-account-review") {
