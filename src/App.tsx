@@ -399,6 +399,10 @@ export default function App() {
     notify(labels[status]);
   }
   async function advanceApplicationWorkflow(app:Application,nextStep:'tag_proofs'|'screening_gc_ready'){
+    if(nextStep==='tag_proofs'&&app.age_verification_status!=='verified'){
+      notify('Verify that the applicant is at least 16 before approving eligibility.',true);
+      return;
+    }
     if(nextStep==='screening_gc_ready'&&(app.mgc_verification_status!=='verified'||!app.mgc_applicant_contacted||!app.mgc_checked_at||!app.mgc_verification_notes?.trim())){
       notify('Complete the MGC manual check and confirm applicant contact before marking Screening GC ready.',true);
       return;
