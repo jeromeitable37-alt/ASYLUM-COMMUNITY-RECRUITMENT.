@@ -404,6 +404,125 @@ export default function App() {
   async function checkAdmin(userEmail:string){const {data,error}=await supabase.from('asy_recruitment_admins').select('email,role').eq('email',userEmail.toLowerCase()).maybeSingle();setAuthorized(!error&&Boolean(data));setStaffRole(!error&&data?String(data.role||'recruiter').toLowerCase():null);}
   async function signIn(event:FormEvent){event.preventDefault();setBusy(true);const {error}=await supabase.auth.signInWithPassword({email:email.trim().toLowerCase(),password});setBusy(false);if(error){notify(error.message.toLowerCase().includes('invalid login credentials')?'Email or password is incorrect. Use the Supabase recruiter account connected to this website.':error.message,true);}else notify('Signed in. Checking recruiter permissions…');}
   async function signOut(){await supabase.auth.signOut();setAuthorized(false);setApplications([]);setSelected(null);notify('Signed out.');}
+
+  async function operationsRequest(payload:Record<string,unknown>):Promise<any>{
+    const headers:Record<string,string>={apikey:SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'};
+    if(session?.access_token)headers.Authorization='Bearer '+session.access_token;
+    const response=await fetch(OPERATIONS_API_URL,{method:'POST',headers,body:JSON.stringify(payload),cache:'no-store'});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(typeof data.error==='string'?data.error:'ASY account service is temporarily unavailable.');
+    return data;
+  }
+  async function loadMemberAccount(){
+    if(!session?.access_token)return;
+    try{
+      const data=await operationsRequest({action:'member-account-get'});
+      const profile=data.profile as MemberAccount;
+      setAccountProfile(profile);
+      setLinkedMemberApplication((data.linkedApplication||null) as LinkedMemberApplication|null);
+      setAccountAdminRequest((data.adminRequest||null) as AdminAccessRequest|null);
+      setAccountEmail(String(data.email||session.user.email||''));
+      setAccountDisplayName(profile.display_name||'');
+      setAccountIgn(profile.ign||'');
+      setAccountUid(profile.codm_uid||'');
+      setAccountDiscord(profile.discord_username||'');
+      setAccountPhotoUrl(profile.photo_url||'');
+      if(data.staffRole)setStaffRole(String(data.staffRole).toLowerCase());
+    }catch(error){notify(error instanceof Error?error.message:'Could not load your ASY member account.',true);}
+  }
+  async function submitAccountAuth(event:FormEvent){
+    event.preventDefault();
+    setAccountBusy(true);
+    try{
+      const normalizedEmail=accountEmail.trim().toLowerCase();
+      if(accountMode==='signup'){
+        if(accountDisplayName.trim().length<2)throw new Error('Enter your display name.');
+        if(accountPassword.length<8)throw new Error('Use a password with at least 8 characters.');
+        const {data,error}=await supabase.auth.signUp({email:normalizedEmail,password:accountPassword,options:{data:{display_name:accountDisplayName.trim()},emailRedirectTo:window.location.origin}});
+        if(error)throw error;
+        if(data.session){setAccountPassword('');setPage('account');notify('Account created. Verify your email if prompted, then complete your profile.');}
+        else {setAccountPassword('');notify('Registration started. Check your email and verify it before signing in.');setAccountMode('signin');}
+      }else{
+        const {error}=await supabase.auth.signInWithPassword({email:normalizedEmail,password:accountPassword});
+        if(error)throw error;
+        setAccountPassword('');
+        notify('Signed in. Loading your member account…');
+      }
+    }catch(error){notify(error instanceof Error?error.message:'Could not complete account sign-in.',true);}
+    finally{setAccountBusy(false);}
+  }
+  async function uploadMemberAvatar(file:File){
+    if(!session?.user.id){notify('Sign in before uploading a profile picture.',true);return;}
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)){notify('Choose a JPG, PNG, or WebP image.',true);return;}
+    if(file.size>5*1024*1024){notify('Profile picture must be 5 MB or smaller.',true);return;}
+    setAvatarUploading(true);
+    try{
+      const safeName=file.name.toLowerCase().replace(/[^a-z0-9._-]/g,'-').slice(-80)||'avatar';
+      const path=session.user.id+'/'+crypto.randomUUID()+'-'+safeName;
+      const {error}=await supabase.storage.from('asy-member-avatars').upload(path,file,{upsert:false,contentType:file.type,cacheControl:'3600'});
+      if(error)throw error;
+      const {data}=supabase.storage.from('asy-member-avatars').getPublicUrl(path);
+      setAccountPhotoUrl(data.publicUrl);
+      notify('Profile picture uploaded. Save your profile to apply it.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not upload the profile picture.',true);}
+    finally{setAvatarUploading(false);}
+  }
+  async function saveMemberAccount(event:FormEvent){
+    event.preventDefault();
+    setAccountBusy(true);
+    try{
+      const data=await operationsRequest({action:'member-account-save',display_name:accountDisplayName,ign:accountIgn,codm_uid:accountUid,discord_username:accountDiscord,photo_url:accountPhotoUrl});
+      setAccountProfile(data.profile as MemberAccount);
+      notify('Profile saved. Your member account remains pending until ASY staff approves it.');
+      await loadMemberAccount();
+    }catch(error){notify(error instanceof Error?error.message:'Could not save your profile.',true);}
+    finally{setAccountBusy(false);}
+  }
+  async function linkExistingApplication(event:FormEvent){
+    event.preventDefault();
+    setAccountBusy(true);
+    try{
+      const data=await operationsRequest({action:'member-account-link-application',application_code:accountLinkCode.trim()});
+      setLinkedMemberApplication(data.application as LinkedMemberApplication);
+      setAccountLinkCode('');
+      notify('Existing application linked successfully. Your tracking history was preserved.');
+      await loadMemberAccount();
+    }catch(error){notify(error instanceof Error?error.message:'Could not link the application.',true);}
+    finally{setAccountBusy(false);}
+  }
+  async function submitAdminAccessRequest(event:FormEvent){
+    event.preventDefault();
+    setAccountBusy(true);
+    try{
+      const data=await operationsRequest({action:'admin-access-request',display_name:accountDisplayName,reason:accountAdminReason});
+      setAccountAdminRequest(data.request as AdminAccessRequest);
+      notify('Admin access request submitted. The main Admin must approve it.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not submit the Admin request.',true);}
+    finally{setAccountBusy(false);}
+  }
+  async function loadAdminAccessRequests(){
+    try{const data=await operationsRequest({action:'admin-access-requests-list'});setAdminAccessRequests(Array.isArray(data.requests)?data.requests as AdminAccessRequest:[]);}
+    catch(error){console.warn('Could not load Admin access requests.',error);}
+  }
+  async function reviewAdminAccessRequest(request:AdminAccessRequest,status:'approved'|'rejected'){
+    if(!window.confirm((status==='approved'?'Approve':'Reject')+' Admin access for '+request.email+'?'))return;
+    setAccountBusy(true);
+    try{await operationsRequest({action:'admin-access-request-review',id:request.id,status});await loadAdminAccessRequests();notify(status==='approved'?'Admin access approved. The user can now sign in to the Admin Portal.':'Admin access request rejected.');}
+    catch(error){notify(error instanceof Error?error.message:'Could not review Admin request.',true);}
+    finally{setAccountBusy(false);}
+  }
+  async function loadMemberAccountReviews(){
+    try{const data=await operationsRequest({action:'member-account-review-list'});setMemberReviewProfiles(Array.isArray(data.profiles)?data.profiles as MemberReviewProfile[]:[]);}
+    catch(error){console.warn('Could not load member account reviews.',error);}
+  }
+  async function reviewMemberAccount(profile:MemberReviewProfile,status:'approved'|'rejected'){
+    if(!window.confirm((status==='approved'?'Approve':'Reject')+' this member account?'))return;
+    setAccountBusy(true);
+    try{await operationsRequest({action:'member-account-review',user_id:profile.user_id,status,review_note:memberReviewNotes[profile.user_id]||''});await loadMemberAccountReviews();notify(status==='approved'?'Member account approved.':'Member account rejected.');}
+    catch(error){notify(error instanceof Error?error.message:'Could not review member account.',true);}
+    finally{setAccountBusy(false);}
+  }
+
   async function submitApplication(event:FormEvent) {
     event.preventDefault();
 
