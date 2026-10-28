@@ -683,6 +683,24 @@ export default function App() {
   async function saveTryout(event:FormEvent){event.preventDefault();if(!selected)return;setBusy(true);const {error}=await supabase.from('asy_recruitment_tryouts').insert({application_id:selected.id,scheduled_at:tryoutAt?new Date(tryoutAt).toISOString():null,mode:tryoutMode,score:tryoutScore?Number(tryoutScore):null,result:tryoutResult,notes:tryoutNotes.trim()||null});setBusy(false);if(error)notify('Tryout result could not be saved.',true);else{await updateApplication(selected,tryoutResult==='fail'?'rejected':'tryout');setTryoutScore('');setTryoutNotes('');notify('Tryout record saved.');}}
   const filtered=useMemo(()=>applications.filter(app=>(filter==='all'||app.status===filter)&&[app.ign,app.codm_uid,app.contact_email,app.application_code].some(v=>v.toLowerCase().includes(query.toLowerCase()))),[applications,filter,query]);
   const count=(status:string)=>applications.filter(app=>app.status===status).length;
+  function exportApplicantRecords(){
+    if(!authorized){notify('Recruiter access is required to export applicant records.',true);return;}
+    if(!applications.length){notify('There are no applicant records to export.',true);return;}
+    const columns=Object.keys(applications[0]);
+    const csvCell=(value:unknown)=>{
+      let text=value==null?'':typeof value==='object'?JSON.stringify(value):String(value);
+      if(/^[=+@\\-\\t\\r]/.test(text))text="'"+text;
+      return '"'+text.replace(/"/g,'""')+'"';
+    };
+    const csv=[columns.map(csvCell).join(','),...applications.map(app=>columns.map(key=>csvCell((app as unknown as Record<string,unknown>)[key])).join(','))].join('\\r\\n');
+    const blob=new Blob(['\\uFEFF',csv],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=url;
+    link.download='ASY-Recruitment-Applicant-Records-'+new Date().toISOString().slice(0,10)+'.csv';
+    document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+    notify('Applicant records exported as CSV.');
+  }
   const navigation=[['home','Overview'],['community','Community'],['teams','Teams & Scrims'],['apply','Apply to join'],['status','Track application'],['account','Member account'],['screening','Screening guide'],['roster','Community members'],...(authorized?[['operations','Operations']]:[])];
 
   return <div className="shell">
@@ -846,7 +864,7 @@ export default function App() {
       {page==='admin'&&<section className="page admin-page">
         {!session?<div className="login-wrap"><div><small className="kicker">RESTRICTED AREA</small><h1>RECRUITER<br/><em>COMMAND.</em></h1><p className="muted">Sign in with an authorized Asylum Community recruitment account to review applications, schedule interviews and track tryouts.</p><div className="secure"><ShieldCheck/> ACCESS CONTROLLED BY SUPABASE AUTH</div></div><form className="panel login" onSubmit={signIn}><div className="login-icon"><ShieldCheck/></div><h2>Recruiter sign in</h2><p className="muted">Only approved recruiter emails can access applicant data.</p><Field label="Email"><input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="jeromeitable37@gmail.com"/></Field><Field label="Password"><input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Your password"/></Field><button className="primary full" disabled={busy}>{busy?'Signing in…':'Sign in securely'} <LogIn size={16}/></button><small className="muted">Account must exist in Supabase Auth and be added to the Asylum Community recruiter allowlist.</small></form></div>
         :!authorized?<div className="panel empty"><ShieldCheck size={38}/><h2>Account not authorized</h2><p>Signed in as {session.user.email}, but this email is not on the recruiter allowlist.</p><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div>
-        :<><div className="admin-head"><div><small className="kicker">ASYLUM COMMUNITY / RECRUITMENT CONTROL</small><h1>RECRUITER <em>DESK.</em></h1><p>{session.user.email}</p></div><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div>
+        :<><div className="admin-head"><div><small className="kicker">ASYLUM COMMUNITY / RECRUITMENT CONTROL</small><h1>RECRUITER <em>DESK.</em></h1><p>{session.user.email}</p></div><div className="actions"><button className="secondary" onClick={exportApplicantRecords}><Download size={15}/> Export applicant records</button><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div></div>
           <div className="stats"><Stat icon={<ClipboardList/>} label="Total applicants" value={applications.length}/><Stat icon={<Zap/>} label="Pending review" value={count('pending')}/><Stat icon={<CalendarClock/>} label="In progress" value={count('reviewing')+count('interview')+count('tryout')}/><Stat icon={<Trophy/>} label="Accepted" value={count('accepted')}/></div>
           <section className="panel announcement-admin">
             <div className="announcement-admin-heading"><div><small className="kicker">MEMBER APPROVAL</small><h2>Member account requests</h2><p>Review profile information before marking an account as an approved member.</p></div><button type="button" className="secondary compact-button" onClick={()=>void loadMemberAccountReviews()}>Refresh</button></div>
