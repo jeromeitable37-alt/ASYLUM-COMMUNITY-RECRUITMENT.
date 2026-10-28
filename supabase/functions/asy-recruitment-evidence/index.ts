@@ -96,6 +96,7 @@ Deno.serve(async (req: Request) => {
         .from("asy_recruitment_evidence")
         .select("requirement_key, requirement_label, stage_number, status, file_name, applicant_note, reviewer_notes, submitted_at, reviewed_at")
         .eq("application_id", application.id)
+        .neq("requirement_key", "membership_form_screenshot")
         .order("stage_number")
         .order("requirement_label");
       if (error) throw error;
