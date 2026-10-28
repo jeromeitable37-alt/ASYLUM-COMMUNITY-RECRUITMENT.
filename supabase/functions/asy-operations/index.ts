@@ -46,6 +46,17 @@ async function staff(req: Request) {
   if (error || !data) return { email: "", role: "", error: "This account is not authorized for ASY recruitment operations." };
   return { email, role: String(data.role || "recruiter"), error: "" };
 }
+
+async function accountUser(req: Request) {
+  if (!db || !authClient) return { user: null as any, response: json(503, { error: "Accounts service is not configured." }) };
+  const token = (req.headers.get("authorization") || "").match(/^Bearer\\s+(.+)$/i)?.[1] || "";
+  if (!token || token === publishableKey) return { user: null as any, response: json(401, { error: "Sign in to continue." }) };
+  const { data: { user }, error } = await authClient.auth.getUser(token);
+  if (error || !user?.id || !user.email) return { user: null as any, response: json(401, { error: "Your session is invalid or expired. Sign in again." }) };
+  if (!user.email_confirmed_at) return { user: null as any, response: json(403, { error: "Verify your email before using member accounts." }) };
+  return { user, response: null as Response | null };
+}
+
 async function applicantApp(code: string, email: string) {
   if (!db || !code || !email) return null;
   const { data, error } = await db.from("asy_clan_applications").select("id,application_code,ign,status,workflow_step,contact_email,application_type,submitted_at,updated_at").eq("application_code", code.toUpperCase()).ilike("contact_email", email.toLowerCase()).maybeSingle();
@@ -78,6 +89,151 @@ Deno.serve(async (req: Request) => {
       const { data, error } = await db.from("asy_clan_roster_public").select("id,ign,main_role,rank,member_status,joined_at").eq("member_status", "active").order("joined_at", { ascending: true }).limit(500);
       if (error) throw error;
       return json(200, { members: data || [] });
+    }
+
+
+    if (action === "admin-access-request") {
+      const { user, response } = await accountUser(req);
+      if (response) return response;
+      const displayName = clean(body.display_name, 80);
+      const reason = clean(body.reason, 800);
+      if (displayName.length < 2 || reason.length < 10) return json(400, { error: "Enter your name and at least 10 characters explaining why you need Admin access." });
+      const email = String(user.email).trim().toLowerCase();
+      const { data: existingStaff, error: staffError } = await db.from("asy_recruitment_admins").select("email,role").eq("email", email).maybeSingle();
+      if (staffError) throw staffError;
+      if (existingStaff) return json(409, { error: "This account already has staff access.", role: existingStaff.role });
+      const { data, error } = await db.from("asy_admin_access_requests").upsert({
+        user_id: user.id, email, display_name: displayName, reason,
+        status: "pending", reviewed_by_email: null, reviewed_at: null, updated_at: new Date().toISOString()
+      }, { onConflict: "user_id" }).select("id,status,created_at").single();
+      if (error) throw error;
+      return json(200, { request: data, message: "Admin access request submitted. The main Admin must approve it." });
+    }
+
+    if (action === "admin-access-requests-list") {
+      const { user, response } = await requireStaff(req, (role) => role.trim().toLowerCase() === "owner");
+      if (response) return response;
+      const { data, error } = await db.from("asy_admin_access_requests")
+        .select("id,user_id,email,display_name,reason,status,reviewed_by_email,reviewed_at,created_at")
+        .order("created_at", { ascending: false }).limit(200);
+      if (error) throw error;
+      return json(200, { requests: data || [] });
+    }
+
+    if (action === "admin-access-request-review") {
+      const { user, response } = await requireStaff(req, (role) => role.trim().toLowerCase() === "owner");
+      if (response) return response;
+      const id = clean(body.id, 80);
+      const status = clean(body.status, 20);
+      if (!id || !["approved", "rejected"].includes(status)) return json(400, { error: "Choose approve or reject." });
+      const { data: request, error: requestError } = await db.from("asy_admin_access_requests")
+        .select("id,user_id,email,display_name,status").eq("id", id).maybeSingle();
+      if (requestError) throw requestError;
+      if (!request) return json(404, { error: "Admin access request not found." });
+      if (request.status !== "pending") return json(409, { error: "This request has already been reviewed." });
+      if (status === "approved") {
+        const { data: authUser, error: authError } = await db.auth.admin.getUserById(request.user_id);
+        if (authError || !authUser?.user?.email_confirmed_at || String(authUser.user.email || "").toLowerCase() !== String(request.email).toLowerCase()) {
+          return json(409, { error: "The requested account must still exist and have a verified matching email." });
+        }
+        const { error: upsertError } = await db.from("asy_recruitment_admins").upsert(
+          { email: String(request.email).toLowerCase(), role: "admin" }, { onConflict: "email" }
+        );
+        if (upsertError) throw upsertError;
+      }
+      const { error: updateError } = await db.from("asy_admin_access_requests").update({
+        status, reviewed_by_email: user.email.toLowerCase(), reviewed_at: new Date().toISOString(), updated_at: new Date().toISOString()
+      }).eq("id", id);
+      if (updateError) throw updateError;
+      await audit(user.email, "admin_access." + status, "admin_access_request", id, "Admin access request for " + request.email + " was " + status + ".");
+      return json(200, { success: true, status });
+    }
+
+    if (action === "member-account-get") {
+      const { user, response } = await accountUser(req);
+      if (response) return response;
+      const { data: profile, error } = await db.from("asy_member_accounts").select("user_id,display_name,ign,codm_uid,discord_username,photo_url,approval_status,review_note,linked_application_id,linked_at,created_at,updated_at").eq("user_id", user.id).maybeSingle();
+      if (error) throw error;
+      if (!profile) return json(404, { error: "Member profile has not been initialized yet. Sign out and sign in again, or contact ASY support." });
+      let linkedApplication = null;
+      if (profile.linked_application_id) {
+        const { data: app, error: appError } = await db.from("asy_clan_applications").select("application_code,ign,status,workflow_step,submitted_at,updated_at").eq("id", profile.linked_application_id).maybeSingle();
+        if (appError) throw appError;
+        linkedApplication = app;
+      }
+      const { data: ownRequest, error: ownRequestError } = await db.from("asy_admin_access_requests").select("id,status,reason,created_at,reviewed_at").eq("user_id", user.id).maybeSingle();
+      if (ownRequestError) throw ownRequestError;
+      const { data: staffRow, error: staffRowError } = await db.from("asy_recruitment_admins").select("role").eq("email", String(user.email).toLowerCase()).maybeSingle();
+      if (staffRowError) throw staffRowError;
+      return json(200, { profile, linkedApplication, adminRequest: ownRequest, staffRole: staffRow?.role || null, email: user.email });
+    }
+
+    if (action === "member-account-save") {
+      const { user, response } = await accountUser(req);
+      if (response) return response;
+      const displayName = clean(body.display_name, 80);
+      const ign = clean(body.ign, 40);
+      const uid = clean(body.codm_uid, 32);
+      const discord = clean(body.discord_username, 80);
+      const photoUrl = clean(body.photo_url, 500);
+      if (displayName.length < 2 || ign.length < 2 || !/^\\d{19}$/.test(uid) || !photoUrl) {
+        return json(400, { error: "Display name, IGN, 19-digit CODM UID, and profile picture are required." });
+      }
+      let parsedPhoto: URL;
+      try { parsedPhoto = new URL(photoUrl); } catch { return json(400, { error: "Upload a valid profile picture." }); }
+      if (parsedPhoto.protocol !== "https:" || parsedPhoto.hostname !== "tyhszzztltamrohhyykh.supabase.co") return json(400, { error: "Profile picture must be uploaded to the ASY member avatar storage." });
+      const { data, error } = await db.from("asy_member_accounts").update({
+        display_name: displayName, ign, codm_uid: uid, discord_username: discord,
+        photo_url: photoUrl, updated_at: new Date().toISOString()
+      }).eq("user_id", user.id).select("user_id,display_name,ign,codm_uid,discord_username,photo_url,approval_status,review_note,linked_application_id,linked_at,updated_at").maybeSingle();
+      if (error) throw error;
+      if (!data) return json(404, { error: "Member profile was not found. Please sign out and sign in again." });
+      return json(200, { profile: data });
+    }
+
+    if (action === "member-account-link-application") {
+      const { user, response } = await accountUser(req);
+      if (response) return response;
+      const code = clean(body.application_code, 80).toUpperCase();
+      const email = String(user.email).trim().toLowerCase();
+      if (!code) return json(400, { error: "Enter your existing application tracking code." });
+      const app = await applicantApp(code, email);
+      if (!app) return json(404, { error: "We couldn't match that tracking code to your verified account email. Existing application data has not been changed." });
+      const { data: profile, error: profileError } = await db.from("asy_member_accounts").select("linked_application_id").eq("user_id", user.id).maybeSingle();
+      if (profileError) throw profileError;
+      if (!profile) return json(404, { error: "Member profile not found." });
+      if (profile.linked_application_id && profile.linked_application_id !== app.id) return json(409, { error: "A different application is already linked. Contact ASY support if this is incorrect." });
+      const { error } = await db.from("asy_member_accounts").update({
+        linked_application_id: app.id, linked_at: new Date().toISOString(), updated_at: new Date().toISOString()
+      }).eq("user_id", user.id);
+      if (error) throw error;
+      return json(200, { success: true, application: { application_code: app.application_code, ign: app.ign, status: app.status, workflow_step: app.workflow_step, submitted_at: app.submitted_at, updated_at: app.updated_at } });
+    }
+
+    if (action === "member-account-review-list") {
+      const { user, response } = await requireStaff(req, canManage);
+      if (response) return response;
+      const { data, error } = await db.from("asy_member_accounts")
+        .select("user_id,display_name,ign,codm_uid,discord_username,photo_url,approval_status,review_note,linked_application_id,created_at,updated_at")
+        .order("created_at", { ascending: false }).limit(300);
+      if (error) throw error;
+      return json(200, { profiles: data || [], role: user.role });
+    }
+
+    if (action === "member-account-review") {
+      const { user, response } = await requireStaff(req, canManage);
+      if (response) return response;
+      const userId = clean(body.user_id, 80);
+      const status = clean(body.status, 20);
+      const note = clean(body.review_note, 500);
+      if (!userId || !["approved", "rejected", "pending"].includes(status)) return json(400, { error: "Choose a valid member approval status." });
+      const { data, error } = await db.from("asy_member_accounts").update({
+        approval_status: status, review_note: note || null, updated_at: new Date().toISOString()
+      }).eq("user_id", userId).select("user_id,approval_status").maybeSingle();
+      if (error) throw error;
+      if (!data) return json(404, { error: "Member account not found." });
+      await audit(user.email, "member_account." + status, "member_account", userId, "Member account was marked " + status + ".");
+      return json(200, { success: true, profile: data });
     }
 
     if (action === "dashboard-summary") {
