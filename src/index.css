@@ -519,3 +519,18 @@
 .bulk-evidence-submit p.muted{color:#aaa1ad;font-size:11px}
 .bulk-evidence-submit small{color:#d9aeb5;font-size:10px}
 .bulk-evidence-submit button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:42px;width:100%}
+
+
+/* Email-based password recovery */
+.password-reset-page{max-width:760px;padding-top:clamp(42px,7vw,86px)}
+.password-reset-panel{max-width:620px;margin:0 auto;padding:clamp(18px,4vw,32px)}
+.password-reset-panel .form{padding:0;border:0;background:transparent;box-shadow:none}
+.password-reset-panel .form>.muted{font-size:11px;line-height:1.7}
+.password-reset-panel .text-link{display:inline-flex;align-items:center;gap:8px;margin:18px 0 0}
+.password-reset-sent{display:grid;justify-items:start;gap:12px;padding:8px 0 20px}
+.password-reset-sent h2{font:800 29px 'Barlow Condensed',sans-serif;margin:0;color:#f4f4f5}
+.password-reset-sent p{margin:0;color:#aaa1ad;font-size:12px;line-height:1.8;overflow-wrap:anywhere}
+.password-reset-sent p strong{color:#f4f4f5}
+.reset-email-icon{width:48px;height:48px;border:1px solid #62313a;border-radius:50%;display:grid;place-items:center;background:#281419;color:#f15b68}
+.account-forgot-password,.recruiter-forgot-password{display:inline-flex;align-items:center;gap:7px;align-self:flex-start;margin:2px 0 10px;padding:5px 0;color:#f07882;font-size:11px;font-weight:700;text-decoration:none}
+.account-forgot-password:hover,.recruiter-forgot-password:hover{color:#fff;text-decoration:underline}
