@@ -1068,15 +1068,6 @@ export default function App() {
             <Field label="TikTok profile link"><input type="url" value={form.applicantTikTokUrl} onChange={e=>updateForm('applicantTikTokUrl',e.target.value)} placeholder="https://tiktok.com/@…"/><small className="field-hint">Optional · Profile link only.</small></Field>
             <Field label="Streamer Mode ID"><input value={form.streamerModeId} maxLength={100} onChange={e=>updateForm('streamerModeId',e.target.value)} placeholder="Optional ID"/></Field>
           </div>
-          {form.applicationType==='referral'&&<>
-            <Section n="04" title="Player profile" sub="Optional referral details."/>
-            <div className="form-grid">
-              <Field label="Main role"><select value={form.role} onChange={e=>updateForm('role',e.target.value)}>{['Slayer','Support','Sniper','Objective','Flex','Entry Fragger','IGL / Shot-caller'].map(v=><option key={v}>{v}</option>)}</select></Field>
-              <Field label="Preferred mode"><select value={form.mode} onChange={e=>updateForm('mode',e.target.value)}>{['Ranked Multiplayer','Search & Destroy','Hardpoint','Domination','Battle Royale','Scrims / Competitive','Casual / Mixed'].map(v=><option key={v}>{v}</option>)}</select></Field>
-              <Field label="Availability"><select value={form.availability} onChange={e=>updateForm('availability',e.target.value)}>{['Weekdays','Evenings / weekends','Weekends only','Flexible schedule','Varies weekly'].map(v=><option key={v}>{v}</option>)}</select></Field>
-              <Field label="Previous community / team experience"><input value={form.experience} onChange={e=>updateForm('experience',e.target.value)} placeholder="Optional"/></Field>
-            </div>
-          </>}
           <Field label="Why do you want to join ASY? *"><textarea required minLength={10} maxLength={1000} rows={3} value={form.reason} onChange={e=>updateForm('reason',e.target.value)} placeholder="A few sentences are enough…"/></Field>
           <div className="privacy"><ShieldCheck size={17}/> Profile links and IDs are for recruitment review only. Never share passwords or login codes.</div>
           <button className="primary" disabled={busy||intakeFull}>{busy?'Submitting…':intakeFull?'Applications closed':'Submit application'} <ArrowRight size={16}/></button>
@@ -1402,26 +1393,40 @@ const EXAMPLE_PROOFS = [
 ] as const;
 function ExampleProof({kind,manage=false}:{kind:string;manage?:boolean}){
   const [version,setVersion]=useState(0);
-  const [available,setAvailable]=useState(false);
+  const [imageUrl,setImageUrl]=useState('');
   const [uploading,setUploading]=useState(false);
   const info=EXAMPLE_PROOFS.find(item=>item.key===kind);
-  const path='references/'+kind+'.img';
-  const {data}=supabase.storage.from('asy-recruitment-examples').getPublicUrl(path);
-  const url=data.publicUrl+'?v='+version;
-  useEffect(()=>{let alive=true;fetch(url,{method:'HEAD'}).then(r=>{if(alive)setAvailable(r.ok);}).catch(()=>{if(alive)setAvailable(false);});return()=>{alive=false;};},[url]);
+  const bucket=supabase.storage.from('asy-recruitment-examples');
+  useEffect(()=>{
+    let alive=true;
+    async function findExample(){
+      for(const ext of ['png','jpg','webp']){
+        const {data}=bucket.getPublicUrl('references/'+kind+'.'+ext);
+        try{const response=await fetch(data.publicUrl+'?v='+version,{method:'HEAD',cache:'no-store'});
+          if(response.ok){if(alive)setImageUrl(data.publicUrl+'?v='+version);return;}
+        }catch{}
+      }
+      if(alive)setImageUrl('');
+    }
+    void findExample();return()=>{alive=false;};
+  },[kind,version]);
   async function upload(file:File){
-    if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>8*1024*1024){alert('Choose JPG, PNG or WebP up to 8 MB.');return;}
+    const extensions:Record<string,string>={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'};
+    const extension=extensions[file.type];
+    if(!extension||file.size>8*1024*1024){alert('Choose JPG, PNG or WebP up to 8 MB.');return;}
     setUploading(true);
     try{
-      const {error}=await supabase.storage.from('asy-recruitment-examples').upload(path,file,{upsert:true,contentType:file.type,cacheControl:'60'});
+      const path='references/'+kind+'.'+extension;
+      const {error}=await bucket.upload(path,file,{upsert:true,contentType:file.type,cacheControl:'60'});
       if(error)throw error;
-      setVersion(Date.now());setAvailable(true);
+      setImageUrl(bucket.getPublicUrl(path).data.publicUrl+'?v='+Date.now());
+      setVersion(Date.now());
     }catch(error){alert(error instanceof Error?error.message:'Could not upload example.');}
     finally{setUploading(false);}
   }
   return <div className="example-proof">
     <strong>📷 {info?.title||'Screenshot example'}</strong>
-    {available?<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={info?.title||'Reference screenshot'} loading="lazy" onError={()=>setAvailable(false)}/></a>:<p className="muted">Reference image will appear here once uploaded by recruitment staff.</p>}
+    {imageUrl?<a href={imageUrl} target="_blank" rel="noreferrer"><img src={imageUrl} alt={info?.title||'Reference screenshot'} loading="lazy" onError={()=>setImageUrl('')}/></a>:<p className="muted">Reference image will appear here once uploaded by recruitment staff.</p>}
     <small>{info?.hint}</small>
     {manage&&<label className="upload-control"><span>{uploading?'Uploading example…':'Upload / replace example image'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={e=>{const file=e.target.files?.[0];if(file)void upload(file);e.currentTarget.value='';}}/></label>}
   </div>;
