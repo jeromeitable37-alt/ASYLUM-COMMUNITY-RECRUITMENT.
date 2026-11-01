@@ -840,3 +840,13 @@
 .applicant-upload-help strong{display:block;margin-bottom:6px}
 .applicant-upload-help p{margin:0;font-size:13px;line-height:1.7}
 @media(max-width:600px){.message-thread .thread-message{max-width:96%}.message-thread .thread-message:has(.chat-media){min-width:min(240px,95%)}.message-thread .thread-message .chat-media img{max-height:280px}}
+
+.staff-alert-settings{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:16px 18px;margin:16px 0;border:1px solid rgba(255,255,255,.13);border-radius:14px}
+.staff-alert-settings>div{flex:1 1 260px}
+.staff-alert-settings strong{font-size:14px}
+.staff-alert-settings p{font-size:12px;line-height:1.65;margin:5px 0 0;color:#b7b7c2}
+.staff-alert-settings>span{font-size:12px;color:#e6e6ec}
+.staff-alert-settings details{flex:1 0 100%;font-size:12px}
+.staff-alert-settings details summary{cursor:pointer}
+.staff-alert-settings details ul{max-height:190px;overflow:auto;line-height:1.8;padding-left:18px}
+@media(max-width:600px){.staff-alert-settings{padding:14px}.staff-alert-settings button{max-width:100%}}
