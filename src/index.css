@@ -506,3 +506,16 @@
 .correction-help{margin:8px 0 12px;color:#aaa2ae;font-size:11px;line-height:1.7}
 .thread-message p a{color:#ff7882;text-decoration:underline;overflow-wrap:anywhere}
 @media(max-width:640px){.admin-edit-grid{grid-template-columns:1fr}.admin-edit-actions{grid-column:auto}.recruiter-quick-links{align-items:stretch}.recruiter-quick-links button{width:100%}}
+
+
+/* Recruiter-first details review and grouped Stage 2 proof submission */
+.application-details-review{margin:16px 0;padding:16px 18px;border:1px solid #49363c;border-radius:9px;background:linear-gradient(145deg,#191419,#111015)}
+.application-details-review h3{margin:7px 0 8px;color:#f6f0f5;font-size:15px}
+.application-details-review>p{margin:8px 0;color:#c4bac6;font-size:11px;line-height:1.75}
+.application-details-review>small{display:block;margin:8px 0;color:#aaa0ad;font-size:10px;line-height:1.6}
+.application-details-review>button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:39px;margin-top:7px}
+.bulk-evidence-submit{display:grid;gap:10px;margin:16px 0 6px;padding:16px;border:1px solid #49363c;border-radius:9px;background:linear-gradient(145deg,#191419,#111015)}
+.bulk-evidence-submit p{margin:0;color:#f4edf3;font-size:12px;line-height:1.7}
+.bulk-evidence-submit p.muted{color:#aaa1ad;font-size:11px}
+.bulk-evidence-submit small{color:#d9aeb5;font-size:10px}
+.bulk-evidence-submit button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:42px;width:100%}
