@@ -10,7 +10,7 @@ const MESSAGING_API_URL = SUPABASE_URL + '/functions/v1/asy-community-messaging'
 const OPERATIONS_API_URL = SUPABASE_URL + '/functions/v1/asy-operations';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
-type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
+type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; is_required?:boolean; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
 type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string; clan_name?:string|null };
 type SavedApplication = { application_code:string; contact_email:string; ign:string; submitted_at:string };
@@ -292,8 +292,8 @@ export default function App() {
     const email=get('contact_email').toLowerCase();
     const levelText=get('level');
     const level=levelText?Number(levelText):null;
-    if(!get('ign')||!get('codm_uid')||!email||!get('region')||!get('rank')||!get('main_role')||!get('preferred_mode')||!get('availability')){
-      notify('Please complete the required applicant details before saving.',true);return;
+    if(!get('ign')||!get('codm_uid')||!email||!get('region')||!get('rank')||!get('main_role')||!get('preferred_mode')||!get('availability')||get('reason').length<10){
+      notify('Please complete the required applicant details and enter a reason of at least 10 characters before saving.',true);return;
     }
     if(level!==null&&(!Number.isInteger(level)||level<1||level>500)){
       notify('Enter a valid player level.',true);return;
