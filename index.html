@@ -14,13 +14,70 @@
     <title>ASYLUM COMMUNITY RECRUITMENT</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#09090c;color:#f4f0f4;font-family:Arial,sans-serif">
+        <div style="text-align:center">
+          <strong style="color:#ef4552;letter-spacing:2px">ASYLUM COMMUNITY</strong>
+          <p style="color:#aaa1ad">Loading recruitment portal…</p>
+        </div>
+      </div>
+    </div>
     <script>
+      (function () {
+        function showLoadError(message) {
+          var root = document.getElementById("root");
+          if (!root || root.querySelector("[data-asy-load-error]")) return;
+          var panel = document.createElement("main");
+          panel.setAttribute("data-asy-load-error", "true");
+          panel.style.cssText = "min-height:100vh;display:grid;place-items:center;padding:24px;background:#09090c;color:#f4f0f4;font-family:Arial,sans-serif";
+          var card = document.createElement("section");
+          card.style.cssText = "width:100%;max-width:560px;padding:28px;border:1px solid #49343b;border-radius:12px;background:#141216";
+          var brand = document.createElement("p");
+          brand.textContent = "ASYLUM COMMUNITY · RECRUITMENT";
+          brand.style.cssText = "color:#ef4552;font-size:11px;font-weight:800;letter-spacing:2px";
+          var title = document.createElement("h1");
+          title.textContent = "The page could not start.";
+          title.style.fontSize = "25px";
+          var detail = document.createElement("p");
+          detail.textContent = String(message || "The app script did not finish loading.").slice(0, 260);
+          detail.style.cssText = "color:#c0b7c1;font-size:13px;line-height:1.6;overflow-wrap:anywhere";
+          var button = document.createElement("button");
+          button.textContent = "Reload page";
+          button.style.cssText = "padding:12px 16px;border:0;border-radius:5px;background:#e52d3b;color:white;font-weight:700;cursor:pointer";
+          button.onclick = function () { window.location.reload(); };
+          card.append(brand, title, detail, button);
+          panel.append(card);
+          root.replaceChildren(panel);
+        }
+        window.addEventListener("error", function (event) {
+          if (event instanceof ErrorEvent) showLoadError(event.message || "A frontend script failed to load.");
+        }, true);
+        window.addEventListener("unhandledrejection", function (event) {
+          var reason = event.reason;
+          showLoadError(reason && reason.message ? reason.message : String(reason || "An unhandled app error occurred."));
+        });
+        window.setTimeout(function () {
+          var root = document.getElementById("root");
+          if (root && root.querySelector("[data-asy-load-error]")) return;
+          var loading = root && root.textContent && root.textContent.indexOf("Loading recruitment portal") >= 0;
+          if (loading) showLoadError("The app did not finish starting. Reload the page or reset the app cache.");
+        }, 15000);
+      })();
+
       if ("serviceWorker" in navigator && window.location.protocol === "https:") {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js").catch((error) => {
-            console.error("ASYLUM service worker registration failed:", error);
-          });
+        var hadController = Boolean(navigator.serviceWorker.controller);
+        var refreshing = false;
+        navigator.serviceWorker.addEventListener("controllerchange", function () {
+          if (!hadController || refreshing) return;
+          refreshing = true;
+          window.location.reload();
+        });
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" })
+            .then(function (registration) { return registration.update(); })
+            .catch(function (error) {
+              console.error("ASYLUM service worker registration failed:", error);
+            });
         });
       }
     </script>
