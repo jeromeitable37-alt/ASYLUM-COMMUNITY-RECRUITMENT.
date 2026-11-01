@@ -1103,7 +1103,7 @@ export default function App() {
                 {item.status==='pending'&&<><Field label="Feedback for applicant"><textarea rows={2} value={evidenceNotes[item.id||'']??item.reviewer_notes??''} onChange={e=>setEvidenceNotes(old=>({...old,[item.id||'']:e.target.value}))} placeholder="Optional note; add one if requesting correction"/></Field><div className="action-row"><button type="button" className="secondary" disabled={busy} onClick={()=>void reviewEvidence(item,'needs_correction')}>Request correction</button><button type="button" className="primary" disabled={busy} onClick={()=>void reviewEvidence(item,'approved')}>Approve proof <CheckCircle2 size={15}/></button></div></>}
                 {item.status==='needs_correction'&&<p className="correction-note">Correction requested. The applicant can upload a replacement at the current step.</p>}
               </article>)}
-              {selected.workflow_step==='eligibility_review'&&<button type="button" className="primary full" disabled={busy||selected.age_verification_status!=='verified'} onClick={()=>void advanceApplicationWorkflow(selected,'tag_proofs')}>Approve eligibility & unlock Step 1 <ArrowRight size={15}/></button>}
+              {selected.workflow_step==='eligibility_review'&&<button type="button" className="primary full" disabled={busy||selected.age_verification_status!=='verified'||!selected.application_details_verified} onClick={()=>void advanceApplicationWorkflow(selected,'tag_proofs')}>Approve eligibility & unlock Step 1 <ArrowRight size={15}/></button>}
               {selected.workflow_step==='final_review'&&<><button type="button" className="primary full" disabled={busy||selected.mgc_verification_status!=='verified'||!selected.mgc_applicant_contacted||!selected.mgc_checked_at||!selected.mgc_verification_notes?.trim()} onClick={()=>void advanceApplicationWorkflow(selected,'screening_gc_ready')}>Mark Screening GC ready <CheckCircle2 size={15}/></button>{selected.mgc_verification_status!=='verified'&&<small className="mgc-unavailable-note">Complete the MGC check and confirm applicant contact below first.</small>}</>}
               {selected.workflow_step==='screening_gc_ready'&&<p className="success-note">All required evidence is approved. The final recruitment decision is ready.</p>}
             </section>
@@ -1229,7 +1229,7 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
         <ul className="guide-list">
           <li>Recruiters review all required screenshots</li>
           <li>The team completes the manual MGC double-check and contacts you when needed</li>
-          <li>The Membership Form link is sent privately after the final check is cleared</li>
+          <li>The Membership Form link is sent privately after all screenshot proofs are approved. Recruiters check the form response before the final MGC confirmation</li>
         </ul>
         <div className="guide-stage-foot">Do not create another application while waiting for review.</div>
       </article>
@@ -1243,7 +1243,7 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
       <div className="guide-link-grid">
         <a href="https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1" target="_blank" rel="noreferrer"><b>ASY Community TikTok</b><span>Follow account <ArrowRight size={14}/></span></a>
       </div>
-      <p className="muted">The Discord invite is sent individually after CODM proof approval. The Membership Form is sent individually after all required screenshots and the final MGC check are approved.</p>
+      <p className="muted">The Discord invite is sent individually after CODM proof approval so you can complete the Discord and roster-photo screenshots. The Membership Form is sent after all required screenshots are approved; the recruiter then checks your response before the final MGC confirmation.</p>
     </section>
     <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Final check</strong><p>Recruiters will contact you to double-check the Membership Form/MGC because of the reported form bug. No GC invite or acceptance is automatic.</p></div></section>
     <div className="guide-cta-row"><div><strong>Ready?</strong><p>Apply or track your current screening.</p></div><div className="guide-cta-actions"><button className="primary" type="button" onClick={onApply}>Apply <ArrowRight size={15}/></button><button className="secondary" type="button" onClick={onTrack}>Track application <ArrowRight size={15}/></button></div></div>
@@ -1286,13 +1286,13 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
   }
   if (/referral|referred|referrer/.test(q)) {
     return {
-      text: 'For Referral Recruitment, choose “Referral Recruitment” in the application form and enter your referrer’s name plus Facebook profile link. Referral applicants complete the usual eligibility checks and screening proof stages, plus a screenshot of the conversation with the referring member. Upload it privately when Stage 1 unlocks. A referral does not guarantee acceptance.',
+      text: 'For Referral Recruitment, choose “Referral Recruitment” in the application form and enter your referrer’s name plus Facebook profile link. Referral applicants complete the usual eligibility checks and screening proof stages, plus a screenshot of the conversation with the referring member. Upload it with your other remaining screenshots in Step 2, after the CODM screenshot is approved. A referral does not guarantee acceptance.',
       links: screeningLinks,
     };
   }
   if (/accepted|screening gc|screening group|screenshot|roster photo|cooldown|cool down|gc nickname|proofs|proof checklist|upload proof/.test(q)) {
     return {
-      text: 'Use Track application with your tracking code and the same email you used to apply. Upload only the proof for the currently unlocked stage:\n\n1. Step 1: Upload your main CODM account screenshot showing the ASY tag after your IGN. Referral applicants should wait until Step 2 to upload referral proof.\n2. Step 2: After CODM approval, upload all remaining screenshots together: TikTok account with ASY tag, follow proof for the official ASY TikTok, Discord nickname in the format IGN ASY, and roster photo following the admin reference. Referral applicants also upload their referral conversation screenshot. Include your Facebook name in the roster photo caption.\n\nThe Membership Form link appears only after recruitment staff finish the final check. Never share passwords or login codes.',
+      text: 'Use Track application with your tracking code and the same email you used to apply. Upload only the proof for the currently unlocked stage:\n\n1. Step 1: Upload your main CODM account screenshot showing the ASY tag after your IGN. Referral applicants should wait until Step 2 to upload referral proof.\n2. Step 2: After CODM approval, upload all remaining screenshots together: TikTok account with ASY tag, follow proof for the official ASY TikTok, Discord nickname in the format IGN ASY, and roster photo following the admin reference. Referral applicants also upload their referral conversation screenshot. Include your Facebook name in the roster photo caption.\n\nThe Membership Form link is sent privately after all required screenshots are approved. After you submit it, tell the recruiter in Private Application Chat so the team can check the response before the final MGC confirmation. Never share passwords or login codes.',
       links: screeningLinks,
     };
   }
