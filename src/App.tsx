@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createClient, Session } from '@supabase/supabase-js';
 import { ApplicantNotificationPanel, OperationsHub } from './OperationsHub';
 import { Download, ArrowRight, BadgeCheck, Bot, CalendarClock, CheckCircle2, ClipboardList, Copy, Crosshair, Gamepad2, LogIn, LogOut, Mail, MessageCircle, Search, Send, ShieldCheck, Swords, Trophy, Upload, Users, X, Zap } from 'lucide-react';
@@ -123,6 +123,57 @@ export default function App() {
   const [applicantChatFile,setApplicantChatFile]=useState<File|null>(null);
   const [adminChatFile,setAdminChatFile]=useState<File|null>(null);
   const [adminMessageBusy,setAdminMessageBusy]=useState(false);
+  const [desktopAlerts,setDesktopAlerts]=useState(false);
+  const [alertCount,setAlertCount]=useState(0);
+  const [alertHistory,setAlertHistory]=useState<string[]>([]);
+  const appSeen=useRef<Set<string>|null>(null);
+  const messageSeen=useRef<Map<string,Set<string>>>(new Map());
+  function playStaffAlert(title:string,body:string){
+    setAlertCount(v=>v+1);
+    setAlertHistory(v=>[title+' — '+body,...v].slice(0,20));
+    if(!desktopAlerts)return;
+    try{
+      const AudioContextClass=window.AudioContext;
+      if(AudioContextClass){const ctx=new AudioContextClass();const oscillator=ctx.createOscillator();const gain=ctx.createGain();oscillator.type='sine';oscillator.frequency.value=780;gain.gain.value=.07;oscillator.connect(gain);gain.connect(ctx.destination);oscillator.start();oscillator.stop(ctx.currentTime+.16);oscillator.onended=()=>void ctx.close();}
+    }catch{}
+    if('Notification' in window&&Notification.permission==='granted'){
+      try{new Notification(title,{body,icon:'/favicon.ico',tag:'asy-'+Date.now()});}catch{}
+    }
+  }
+  async function enableStaffAlerts(){
+    if(!('Notification' in window)){notify('System notifications are not supported in this browser. In-app alerts will still work.',true);return;}
+    const permission=await Notification.requestPermission();
+    if(permission==='granted'){setDesktopAlerts(true);notify('Notifications enabled while the website is open.');}
+    else notify('Notification permission was not granted. You can still see in-app alerts.',true);
+  }
+  useEffect(()=>{
+    if(page!=='admin'||!authorized||!session?.access_token){appSeen.current=null;messageSeen.current.clear();return;}
+    let cancelled=false;
+    async function checkNewApplications(){
+      const {data,error}=await supabase.from('asy_clan_applications').select('id,ign,submitted_at').order('submitted_at',{ascending:false}).limit(100);
+      if(error||cancelled)return;
+      const ids=new Set((data||[]).map(row=>row.id as string));
+      if(appSeen.current!==null){
+        const added=(data||[]).filter(row=>!appSeen.current?.has(row.id));
+        if(added.length)playStaffAlert('New ASYLUM application',added.length===1?(added[0].ign||'New applicant')+' submitted an application.':added.length+' new applications received.');
+      }
+      appSeen.current=ids;
+    }
+    void checkNewApplications();
+    const timer=window.setInterval(()=>void checkNewApplications(),15000);
+    return()=>{cancelled=true;window.clearInterval(timer);};
+  },[page,authorized,session?.access_token,desktopAlerts]);
+  useEffect(()=>{
+    if(page!=='admin'||!selected?.id||!authorized)return;
+    const appId=selected.id;
+    const current=new Set(adminApplicationMessages.map(message=>message.id));
+    const seen=messageSeen.current.get(appId);
+    if(seen&&current.size){
+      const fresh=adminApplicationMessages.filter(message=>message.sender_role==='applicant'&&!seen.has(message.id));
+      if(fresh.length)playStaffAlert('New applicant message',selected.ign+' sent '+fresh.length+' message'+(fresh.length>1?'s':'')+'.');
+    }
+    messageSeen.current.set(appId,current);
+  },[adminApplicationMessages,selected?.id,page,authorized]);
   const notify=(message:string,isError=false)=>{setNotice(message);setHasError(isError);};
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   const intakeUsagePercent=intakeSettings?.application_limit ? Math.min(100,Math.round((intakeSettings.application_count/intakeSettings.application_limit)*100)) : 0;
@@ -1336,7 +1387,7 @@ export default function App() {
             </section>
             <section className="panel application-chat admin-application-chat">
               <div className="application-chat-heading"><div><small className="kicker">APPLICANT CONVERSATION</small><h2>Chat with {selected.ign}</h2><p>Private messages for this application only.</p></div><span className="private-badge"><ShieldCheck size={13}/> Recruiter only</span></div>
-              {((selectedEvidence.some(item=>item.requirement_key==='codm_tag_screenshot'&&item.status==='approved')&&['membership_proofs','discord_roster','final_review','screening_gc_ready','complete'].includes(selected.workflow_step))||['screening_gc_ready','complete'].includes(selected.workflow_step))&&<div className="recruiter-quick-links">
+              {((selectedEvidence.some(item=>item.requirement_key==='codm_tag_screenshot'&&item.status==='approved')&&['membership_proofs','discord_roster','final_review','screening_gc_ready','complete'].includes(selected.workflow_step))||['screening_gc_ready','complete'].includes(selected.workflow_step))&&<div className="panel staff-alert-settings"><div><strong>🔔 Recruitment notifications</strong><p>New applications and messages from the open applicant conversation. Alerts work while this page is open.</p></div><button type="button" className="secondary" onClick={()=>void enableStaffAlerts()}>{desktopAlerts?'Notifications enabled':'Enable notifications + sound'}</button><span>Unread alerts: {alertCount}</span>{alertCount>0&&<button type="button" className="secondary" onClick={()=>setAlertCount(0)}>Mark read</button>}{alertHistory.length>0&&<details><summary>Recent alerts</summary><ul>{alertHistory.map((item,index)=><li key={index}>{item}</li>)}</ul></details>}</div><div className="recruiter-quick-links">
                 <p><strong>Next-step links — manual delivery.</strong> Choose the link appropriate for this applicant's current stage.</p>
                 {selectedEvidence.some(item=>item.requirement_key==='codm_tag_screenshot'&&item.status==='approved')&&['membership_proofs','discord_roster','final_review','screening_gc_ready','complete'].includes(selected.workflow_step)&&<button type="button" className="secondary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('Your CODM screenshot has been approved. You can now join the official ASY Discord using this invite: https://discord.gg/HbJ5Jvw8y8\n\nAfter joining, go to #get-role and click the 😇 Angel emoji. Follow the server instructions. Use IGN ASY as your server nickname. If you see #NO ACCESS, follow its instructions; otherwise go to #SELECT YOUR VERSION HERE. Please ask an admin to confirm your game version before proceeding.')}>Send Discord invite + guide <Send size={14}/></button>}
                 {selected.application_type!=='referral'&&selected.workflow_step==='final_review'&&selectedEvidence.length>0&&selectedEvidence.every(item=>!item.is_required||item.status==='approved')&&<button type="button" className="primary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('All required screenshot proofs have been approved. Please complete the official ASY Membership Form using this link: https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform\n\nUse the same IGN and CODM UID from your application. After submitting, reply here with “Submitted” so the recruiter can check your response before the final MGC confirmation.')}>Send Membership Form (Non-Referral) <Send size={14}/></button>}
