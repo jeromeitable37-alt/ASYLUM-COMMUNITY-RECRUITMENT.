@@ -48,6 +48,13 @@ export default function App() {
   const [mobileOpen,setMobileOpen]=useState(false);
   const [email,setEmail]=useState('jeromeitable37@gmail.com');
   const [password,setPassword]=useState('');
+  const [resetSource,setResetSource]=useState<'recruiter'|'member'>('member');
+  const [resetEmail,setResetEmail]=useState('');
+  const [resetEmailSent,setResetEmailSent]=useState(false);
+  const [resetRecoveryActive,setResetRecoveryActive]=useState(false);
+  const [resetNewPassword,setResetNewPassword]=useState('');
+  const [resetConfirmPassword,setResetConfirmPassword]=useState('');
+  const [resetBusy,setResetBusy]=useState(false);
   const [accountMode,setAccountMode]=useState<'signup'|'signin'>('signup');
   const [accountEmail,setAccountEmail]=useState('');
   const [accountPassword,setAccountPassword]=useState('');
@@ -119,7 +126,22 @@ export default function App() {
 
   useEffect(()=>{void loadIntakeSettings();void loadAnnouncements();},[]);
   useEffect(()=>{try{const raw=localStorage.getItem('asy-recruitment:last-application');if(raw){const saved=JSON.parse(raw) as SavedApplication;if(saved.application_code&&saved.contact_email){setSavedApplication(saved);setApplicationCode(saved.application_code);setContactEmail(saved.contact_email);}}}catch{}},[]);
-  useEffect(()=>{supabase.auth.getSession().then(({data})=>setSession(data.session));const {data:listener}=supabase.auth.onAuthStateChange((_event,next)=>setSession(next));return()=>listener.subscription.unsubscribe();},[]);
+  useEffect(()=>{
+    supabase.auth.getSession().then(({data})=>setSession(data.session));
+    const {data:listener}=supabase.auth.onAuthStateChange((event,next)=>{
+      setSession(next);
+      if(event==='PASSWORD_RECOVERY'){
+        const source=new URLSearchParams(window.location.search).get('password-reset');
+        setResetSource(source==='recruiter'?'recruiter':'member');
+        setResetRecoveryActive(true);
+        setResetEmailSent(false);
+        setPage('reset-password');
+        setNotice('Email verified. Choose a new password for your ASY account.');
+        setHasError(false);
+      }
+    });
+    return()=>listener.subscription.unsubscribe();
+  },[]);
   useEffect(()=>{if(session?.user.email) void checkAdmin(session.user.email);else setAuthorized(false);},[session]);
   useEffect(()=>{if(page==='roster')void loadRoster();if(page==='account'&&session)void loadMemberAccount();if(page==='admin'&&session&&authorized){void loadApplications();void loadAnnouncements();void loadMemberAccountReviews();if(staffRole==='owner')void loadAdminAccessRequests();}},[page,session,authorized,staffRole]);
   useEffect(()=>{if(page==='community'){void loadAnnouncements();void loadCommunityMessages();}},[page,authorized,session?.access_token]);
@@ -577,6 +599,72 @@ export default function App() {
       if(data.staffRole)setStaffRole(String(data.staffRole).toLowerCase());
     }catch(error){notify(error instanceof Error?error.message:'Could not load your ASY member account.',true);}
   }
+  function openPasswordReset(source:'recruiter'|'member'){
+    setResetSource(source);
+    setResetEmail(source==='recruiter'?email:accountEmail);
+    setResetEmailSent(false);
+    setResetNewPassword('');
+    setResetConfirmPassword('');
+    setPage('password-reset');
+    setNotice('');
+  }
+
+  async function sendPasswordResetEmail(event:FormEvent){
+    event.preventDefault();
+    const normalizedEmail=resetEmail.trim().toLowerCase();
+    if(!normalizedEmail){notify('Enter the email address linked to your account.',true);return;}
+    setResetBusy(true);
+    try{
+      const redirectTo=window.location.origin+'/?password-reset='+resetSource;
+      const {error}=await supabase.auth.resetPasswordForEmail(normalizedEmail,{redirectTo});
+      if(error){
+        const message=error.message||'Could not send the password reset email.';
+        if(/redirect|allow.?list|not allowed/i.test(message)){
+          throw new Error('This website address is not yet allowed for password recovery. Add '+window.location.origin+'/** to Supabase Authentication → URL Configuration → Redirect URLs, then try again.');
+        }
+        throw error;
+      }
+      setResetEmailSent(true);
+      notify('Password reset request processed. Check your inbox and spam folder for the recovery email.');
+    }catch(error){
+      notify(error instanceof Error?error.message:'Could not request a password reset. Please try again.',true);
+    }finally{
+      setResetBusy(false);
+    }
+  }
+
+  async function saveRecoveredPassword(event:FormEvent){
+    event.preventDefault();
+    if(!resetRecoveryActive||!session){
+      notify('Open the latest password recovery link from your email before choosing a new password.',true);return;
+    }
+    if(resetNewPassword.length<8){
+      notify('Use a password with at least 8 characters.',true);return;
+    }
+    if(resetNewPassword!==resetConfirmPassword){
+      notify('The new password and confirmation do not match.',true);return;
+    }
+    setResetBusy(true);
+    try{
+      const {error}=await supabase.auth.updateUser({password:resetNewPassword});
+      if(error)throw error;
+      await supabase.auth.signOut();
+      setSession(null);
+      setPassword('');
+      setAccountPassword('');
+      setResetNewPassword('');
+      setResetConfirmPassword('');
+      setResetRecoveryActive(false);
+      setResetEmailSent(false);
+      setPage(resetSource==='recruiter'?'admin':'account');
+      notify('Password updated successfully. Sign in using your new password.');
+    }catch(error){
+      notify(error instanceof Error?error.message:'Could not update the password. Request a new recovery email and try again.',true);
+    }finally{
+      setResetBusy(false);
+    }
+  }
+
   async function submitAccountAuth(event:FormEvent){
     event.preventDefault();
     setAccountBusy(true);
@@ -844,6 +932,36 @@ export default function App() {
     </header>
     {notice&&<div className={'notice '+(hasError?'bad':'')}><BadgeCheck size={17}/><span>{notice}</span><button onClick={()=>setNotice('')} aria-label="Dismiss"><X size={15}/></button></div>}
     <main>
+      {page==='password-reset'&&<section className="page password-reset-page">
+        <Heading kicker="ASYLUM COMMUNITY / ACCOUNT RECOVERY" title={<>RESET YOUR <em>PASSWORD.</em></>} desc={resetSource==='recruiter'?'Enter the email linked to your authorized recruiter account. We will email a secure recovery link.':'Enter the email linked to your ASY Member Account. We will email a secure recovery link.'}/>
+        <div className="panel password-reset-panel">
+          {!resetEmailSent?<form className="form" onSubmit={sendPasswordResetEmail}>
+            <Field label="Account email"><input required type="email" autoComplete="email" value={resetEmail} onChange={event=>setResetEmail(event.target.value)} placeholder="you@example.com"/></Field>
+            <button className="primary full" disabled={resetBusy}>{resetBusy?'Sending email…':'Send password reset email'} <Send size={15}/></button>
+            <p className="muted">For privacy, the same confirmation message is shown whether or not an account exists for that email.</p>
+          </form>:<div className="password-reset-sent">
+            <span className="reset-email-icon"><Mail size={24}/></span>
+            <h2>Check your email</h2>
+            <p>When an account exists for <strong>{resetEmail}</strong>, Supabase sends a secure password recovery link. Check your inbox and spam folder. The link can only be used for a limited time.</p>
+            <button type="button" className="secondary" onClick={()=>setResetEmailSent(false)}>Send another email</button>
+          </div>}
+          <button type="button" className="text-link" onClick={()=>{setPage(resetSource==='recruiter'?'admin':'account');setNotice('');}}>Back to {resetSource==='recruiter'?'Recruiter Login':'Member Account sign in'} <ArrowRight size={14}/></button>
+        </div>
+      </section>}
+      {page==='reset-password'&&<section className="page password-reset-page">
+        <Heading kicker="ASYLUM COMMUNITY / SECURE ACCOUNT" title={<>CHOOSE A NEW <em>PASSWORD.</em></>} desc="Your recovery link has been verified. Create a new password for your account."/>
+        <div className="panel password-reset-panel">
+          {resetRecoveryActive&&session?<form className="form" onSubmit={saveRecoveredPassword}>
+            <Field label="New password"><input required type="password" minLength={8} autoComplete="new-password" value={resetNewPassword} onChange={event=>setResetNewPassword(event.target.value)} placeholder="At least 8 characters"/></Field>
+            <Field label="Confirm new password"><input required type="password" minLength={8} autoComplete="new-password" value={resetConfirmPassword} onChange={event=>setResetConfirmPassword(event.target.value)} placeholder="Enter the new password again"/></Field>
+            <button className="primary full" disabled={resetBusy}>{resetBusy?'Updating password…':'Save new password'} <CheckCircle2 size={15}/></button>
+          </form>:<div className="password-reset-sent">
+            <h2>Recovery link needed</h2>
+            <p>Open the newest password reset email on this device. If the link expired or was already used, request a new recovery email.</p>
+            <button type="button" className="primary" onClick={()=>{setResetRecoveryActive(false);setPage('password-reset');setResetEmailSent(false);}}>Request a new reset email</button>
+          </div>}
+        </div>
+      </section>}
       {page==='home'&&<>
         <Home intakeSettings={intakeSettings} onApply={()=>setPage('apply')} onRoster={()=>setPage('roster')} onTrack={()=>setPage('status')} onGuide={()=>setPage('screening')}/>
         {announcements.some(item=>item.is_published)&&<section className="page announcement-preview">
@@ -987,6 +1105,7 @@ export default function App() {
             <Field label="Email"><input required type="email" value={accountEmail} onChange={e=>setAccountEmail(e.target.value)} placeholder="you@example.com"/></Field>
             <Field label="Password"><input required type="password" minLength={8} value={accountPassword} onChange={e=>setAccountPassword(e.target.value)} placeholder="At least 8 characters"/></Field>
             <button className="primary" disabled={accountBusy}>{accountBusy?'Please wait…':accountMode==='signup'?'Create member account':'Sign in'} <ArrowRight size={16}/></button>
+            {accountMode==='signin'&&<button type="button" className="text-link account-forgot-password" onClick={()=>openPasswordReset('member')}>Forgot password? <ArrowRight size={14}/></button>}
             <button type="button" className="secondary" onClick={()=>setAccountMode(accountMode==='signup'?'signin':'signup')}>{accountMode==='signup'?'Already registered? Sign in':'Need an account? Sign up'}</button>
           </form>
         </div>:<div className="account-layout">
@@ -1004,7 +1123,7 @@ export default function App() {
       {page==='teams'&&<OperationsHub mode="public" session={session} authorized={authorized} onNotify={notify}/>}
       {page==='operations'&&<OperationsHub mode="staff" session={session} authorized={authorized} onNotify={notify}/>}
       {page==='admin'&&<section className="page admin-page">
-        {!session?<div className="login-wrap"><div><small className="kicker">RESTRICTED AREA</small><h1>RECRUITER<br/><em>COMMAND.</em></h1><p className="muted">Sign in with an authorized Asylum Community recruitment account to review applications, schedule interviews and track tryouts.</p><div className="secure"><ShieldCheck/> ACCESS CONTROLLED BY SUPABASE AUTH</div></div><form className="panel login" onSubmit={signIn}><div className="login-icon"><ShieldCheck/></div><h2>Recruiter sign in</h2><p className="muted">Only approved recruiter emails can access applicant data.</p><Field label="Email"><input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="jeromeitable37@gmail.com"/></Field><Field label="Password"><input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Your password"/></Field><button className="primary full" disabled={busy}>{busy?'Signing in…':'Sign in securely'} <LogIn size={16}/></button><small className="muted">Account must exist in Supabase Auth and be added to the Asylum Community recruiter allowlist.</small></form></div>
+        {!session?<div className="login-wrap"><div><small className="kicker">RESTRICTED AREA</small><h1>RECRUITER<br/><em>COMMAND.</em></h1><p className="muted">Sign in with an authorized Asylum Community recruitment account to review applications, schedule interviews and track tryouts.</p><div className="secure"><ShieldCheck/> ACCESS CONTROLLED BY SUPABASE AUTH</div></div><form className="panel login" onSubmit={signIn}><div className="login-icon"><ShieldCheck/></div><h2>Recruiter sign in</h2><p className="muted">Only approved recruiter emails can access applicant data.</p><Field label="Email"><input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="jeromeitable37@gmail.com"/></Field><Field label="Password"><input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Your password"/></Field><button className="primary full" disabled={busy}>{busy?'Signing in…':'Sign in securely'} <LogIn size={16}/></button><button type="button" className="text-link recruiter-forgot-password" onClick={()=>openPasswordReset('recruiter')}>Forgot password? <ArrowRight size={14}/></button><small className="muted">Account must exist in Supabase Auth and be added to the Asylum Community recruiter allowlist.</small></form></div>
         :!authorized?<div className="panel empty"><ShieldCheck size={38}/><h2>Account not authorized</h2><p>Signed in as {session.user.email}, but this email is not on the recruiter allowlist.</p><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div>
         :<><div className="admin-head"><div><small className="kicker">ASYLUM COMMUNITY / RECRUITMENT CONTROL</small><h1>RECRUITER <em>DESK.</em></h1><p>{session.user.email}</p></div><div className="actions"><button className="secondary" onClick={exportApplicantRecords}><Download size={15}/> Export applicant records</button><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div></div>
           <div className="stats"><Stat icon={<ClipboardList/>} label="Total applicants" value={applications.length}/><Stat icon={<Zap/>} label="Pending review" value={count('pending')}/><Stat icon={<CalendarClock/>} label="In progress" value={count('reviewing')+count('interview')+count('tryout')}/><Stat icon={<Trophy/>} label="Accepted" value={count('accepted')}/></div>
