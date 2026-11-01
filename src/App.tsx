@@ -22,6 +22,7 @@ type IntakeSettings = { id:number; intake_open:boolean; application_limit:number
 type Announcement = { id:string; title:string; body:string; category:'general'|'recruitment'|'event'|'maintenance'; is_published:boolean; created_at:string; updated_at?:string; published_at?:string|null; created_by_email?:string; updated_by_email?:string|null };
 type CommunityChatMessage = { id:string; display_name:string; body:string; created_at:string };
 type ApplicationChatMessage = { id:string; application_id:string; sender_role:'applicant'|'recruiter'; sender_name:string; body:string; created_at:string; applicant_read_at?:string|null; recruiter_read_at?:string|null };
+function renderApplicationMessage(body:string){return body.split(/(https?:\/\/[^\s]+)/g).map((part,index)=>/^https?:\/\//i.test(part)?<a key={index} href={part} target="_blank" rel="noreferrer">{part}</a>:part);}
 const emptyAnnouncementDraft = {id:'',title:'',body:'',category:'general' as Announcement['category'],is_published:true};
 const statuses = ['pending','reviewing','interview','tryout','accepted','rejected','waitlisted'];
 const labels: Record<string,string> = { pending:'Pending review', reviewing:'In review', interview:'Interview', tryout:'Tryout', accepted:'Accepted', rejected:'Rejected', waitlisted:'Waitlisted' };
@@ -269,6 +270,51 @@ export default function App() {
       notify('Reply sent to applicant.');
     }catch(error){notify(error instanceof Error?error.message:'Could not send recruiter reply.',true);}
     finally{setAdminMessageBusy(false);}
+  }
+
+  async function sendAdminQuickMessage(body:string){
+    if(!selected||!body.trim())return;
+    setAdminMessageBusy(true);
+    try{
+      await messagingRequest({action:'admin-application-messages-send',application_id:selected.id,body:body.trim().slice(0,2000)});
+      await loadAdminApplicationMessages(selected.id);
+      notify('Link and instructions sent to '+selected.ign+' through the private application chat.');
+    }catch(error){notify(error instanceof Error?error.message:'Could not send the private message.',true);}
+    finally{setAdminMessageBusy(false);}
+  }
+  async function saveApplicantDetails(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();
+    if(!selected)return;
+    const values=new FormData(event.currentTarget);
+    const get=(key:string)=>String(values.get(key)||'').trim();
+    const email=get('contact_email').toLowerCase();
+    const levelText=get('level');
+    const level=levelText?Number(levelText):null;
+    if(!get('ign')||!get('codm_uid')||!email||!get('region')||!get('rank')||!get('main_role')||!get('preferred_mode')||!get('availability')){
+      notify('Please complete the required applicant details before saving.',true);return;
+    }
+    if(level!==null&&(!Number.isInteger(level)||level<1||level>500)){
+      notify('Enter a valid player level.',true);return;
+    }
+    setBusy(true);
+    const {data,error}=await supabase.from('asy_clan_applications').update({
+      ign:get('ign'),codm_uid:get('codm_uid'),contact_email:email,
+      discord_username:get('discord_username')||null,
+      applicant_facebook_url:get('applicant_facebook_url')||null,
+      applicant_tiktok_url:get('applicant_tiktok_url')||null,
+      streamer_mode_id:get('streamer_mode_id')||null,
+      region:get('region'),level,rank:get('rank'),main_role:get('main_role'),
+      preferred_mode:get('preferred_mode'),availability:get('availability'),
+      clan_experience:get('clan_experience')||null,reason:get('reason'),
+      referrer_name:get('referrer_name')||null,
+      referrer_facebook_url:get('referrer_facebook_url')||null,
+      updated_at:new Date().toISOString()
+    }).eq('id',selected.id).select('*').single();
+    setBusy(false);
+    if(error||!data){notify('Could not correct the applicant details. Check recruiter permissions and try again.',true);return;}
+    setSelected(data as Application);
+    await loadApplications();
+    notify('Applicant details corrected. The application code and evidence history were kept. The applicant must use the updated email when tracking, if the email changed.');
   }
 
   async function loadIntakeSettings(){
@@ -821,6 +867,7 @@ export default function App() {
           <div className="application-chat-heading"><div><small className="kicker">PRIVATE APPLICATION CHAT</small><h2>Message the recruitment team</h2><p>Ask about your application or reply to recruiter messages here.</p></div><span className="private-badge"><ShieldCheck size={13}/> Private</span></div>
           {tracked&&<div className="membership-form-chat-link"><strong>Discord access and role guide</strong><p>Join the official ASY Discord server, then follow these steps to get your role.</p><a className="primary" href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer">Join Official Discord <ArrowRight size={15}/></a><ol><li>Go to <strong>#get-role</strong> and click the 😇 Angel emoji.</li><li>Read the instructions carefully.</li><li>Click <strong>#NO ACCESS</strong> if it applies to you; otherwise proceed to <strong>#SELECT YOUR VERSION HERE</strong>.</li><li>Ask an admin to confirm your game version and wait for confirmation before proceeding.</li></ol><p><strong>Roster photo proof:</strong> Upload/post your roster photo in the official Discord as instructed by the team. Include both your Facebook name and your IGN in the caption, then submit a screenshot showing the posted photo and caption as your proof.</p></div>}
           {tracked&&applicantProgress&&['screening_gc_ready','complete'].includes(applicantProgress.application.workflow_step)&&<div className="membership-form-chat-link"><strong>Your next step: Official Membership Form</strong><p>Your requirements have been approved. Open and complete the official form using the link below.</p><a className="primary" href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer">Open Membership Form <ArrowRight size={15}/></a></div>}
+          <p className="correction-help">Wrong screenshot or application detail? For screenshots, wait for a recruiter correction request and upload a replacement. For details, message the exact correction here. Do not submit a second application.</p>
           <div className="message-thread" aria-live="polite">
             {applicantMessages.length===0&&<p className="message-empty">No messages yet. Send a message if you need help with your application.</p>}
             {applicantMessages.map(message=><article key={message.id} className={'thread-message '+message.sender_role}>
