@@ -1576,13 +1576,14 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({message:cleanQuestion,history}),
       });
-      if(!response.ok)throw new Error('AI support unavailable');
-      const data=await response.json() as {answer?:string};
+      const data=await response.json() as {answer?:string;error?:string};
+      if(!response.ok)throw new Error(data.error||'AI support unavailable');
       if(!data.answer?.trim())throw new Error('Empty AI response');
-      setMessages(old=>[...old,{role:'assistant',text:data.answer!.trim()}]);
+      setMessages(old=>[...old,{role:'assistant',text:data.answer.trim()}]);
     }catch(error){
       console.warn('Gemini support unavailable; using ASY FAQ.',error);
-      setMessages(old=>[...old,{role:'assistant',text:'AI support is temporarily unavailable. Here is the verified ASY guide:\\n\\n'+fallback.text,links:fallback.links}]);
+      const reason=error instanceof Error?error.message:'AI support unavailable';
+      setMessages(old=>[...old,{role:'assistant',text:'AI support is temporarily unavailable ('+reason+'). Here is the verified ASY guide:\n\n'+fallback.text,links:fallback.links}]);
     }finally{
       setChatBusy(false);
     }
