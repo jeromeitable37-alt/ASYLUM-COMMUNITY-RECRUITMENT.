@@ -1050,10 +1050,10 @@ export default function App() {
             </section>
             <section className="panel application-chat admin-application-chat">
               <div className="application-chat-heading"><div><small className="kicker">APPLICANT CONVERSATION</small><h2>Chat with {selected.ign}</h2><p>Private messages for this application only.</p></div><span className="private-badge"><ShieldCheck size={13}/> Recruiter only</span></div>
-              {selectedEvidence.length>0&&selectedEvidence.every(item=>item.status==='approved')&&['final_review','screening_gc_ready','complete'].includes(selected.workflow_step)&&<div className="recruiter-quick-links">
-                <p><strong>All required screenshot proofs are approved.</strong> Send next-step links manually to this applicant.</p>
-                <button type="button" className="secondary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('Your screenshot requirements have been approved. Join the official ASY Discord using this invite: https://discord.gg/HbJ5Jvw8y8\n\nAfter joining, go to #get-role and click the 😇 Angel emoji. Follow the server instructions. Use IGN ASY as your server nickname. If you see #NO ACCESS, follow its instructions; otherwise go to #SELECT YOUR VERSION HERE. Please ask an admin to confirm your game version before proceeding.')}>Send Discord invite + guide <Send size={14}/></button>
-                {['screening_gc_ready','complete'].includes(selected.workflow_step)&&<button type="button" className="primary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('Your final recruitment check is complete. Please complete the official ASY Membership Form using this link: https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform\n\nUse your correct IGN in the form and message us here after submitting so the team can confirm it.')}>Send Membership Form link <Send size={14}/></button>}
+              {((selectedEvidence.some(item=>item.requirement_key==='codm_tag_screenshot'&&item.status==='approved')&&['membership_proofs','discord_roster','final_review','screening_gc_ready','complete'].includes(selected.workflow_step))||['screening_gc_ready','complete'].includes(selected.workflow_step))&&<div className="recruiter-quick-links">
+                <p><strong>Next-step links — manual delivery.</strong> Choose the link appropriate for this applicant's current stage.</p>
+                {selectedEvidence.some(item=>item.requirement_key==='codm_tag_screenshot'&&item.status==='approved')&&['membership_proofs','discord_roster','final_review','screening_gc_ready','complete'].includes(selected.workflow_step)&&<button type="button" className="secondary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('Your CODM screenshot has been approved. You can now join the official ASY Discord using this invite: https://discord.gg/HbJ5Jvw8y8\n\nAfter joining, go to #get-role and click the 😇 Angel emoji. Follow the server instructions. Use IGN ASY as your server nickname. If you see #NO ACCESS, follow its instructions; otherwise go to #SELECT YOUR VERSION HERE. Please ask an admin to confirm your game version before proceeding.')}>Send Discord invite + guide <Send size={14}/></button>}
+                {['screening_gc_ready','complete'].includes(selected.workflow_step)&&<button type="button" className="primary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('Your required screenshots and final recruitment check have been approved. Please complete the official ASY Membership Form using this link: https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform\n\nUse your correct IGN in the form and message us here after submitting so the team can confirm it.')}>Send Membership Form link <Send size={14}/></button>}
               </div>}
               <div className="message-thread" aria-live="polite">
                 {adminApplicationMessages.length===0&&<p className="message-empty">No messages from this applicant yet.</p>}
@@ -1131,44 +1131,45 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
     <div className="guide-stage-grid">
       <article className="guide-stage">
         <div className="guide-stage-top"><span>01</span><small>CASUAL + REFERRAL</small></div>
-        <h3>CODM &amp; TikTok tags</h3>
+        <h3>Main CODM account</h3>
         <ul className="guide-list">
-          <li>Screenshot of CODM with ASY after IGN</li>
-          <li>Screenshot of TikTok with ASY after IGN</li>
-          <li><strong>Referral only:</strong> screenshot of your conversation with the referring member</li>
+          <li>Screenshot of your main CODM account showing ASY after your IGN</li>
         </ul>
-        <div className="guide-stage-foot">Recruiter approval unlocks Step 2.</div>
+        <div className="guide-stage-foot">Recruiter approval unlocks the remaining screenshot requirements and Discord invite.</div>
       </article>
       <article className="guide-stage">
         <div className="guide-stage-top"><span>02</span><small>CASUAL + REFERRAL</small></div>
-        <h3>Follow &amp; form</h3>
+        <h3>Remaining screenshot requirements</h3>
         <ul className="guide-list">
-          <li>Screenshot showing you follow the official ASY TikTok</li>
-          <li>Completed Membership Form screenshot with your IGN visible</li>
+          <li>Screenshot of your TikTok account with ASY after your IGN</li>
+          <li>Screenshot showing you follow the official ASY Community TikTok</li>
+          <li>Screenshot showing your Discord nickname as <strong>IGN ASY</strong></li>
+          <li>Roster photo following the admin reference, with your Facebook name in the caption</li>
+          <li><strong>Referral only:</strong> screenshot of your conversation with the referring member</li>
         </ul>
-        <div className="guide-stage-foot">Recruiter approval unlocks Step 3.</div>
+        <div className="guide-stage-foot">Submit all remaining proofs together. Recruiters review each item.</div>
       </article>
       <article className="guide-stage">
         <div className="guide-stage-top"><span>03</span><small>CASUAL + REFERRAL</small></div>
-        <h3>Discord &amp; roster photo</h3>
+        <h3>Final recruiter check</h3>
         <ul className="guide-list">
-          <li>Set your Discord server nickname to <strong>IGN ASY</strong></li>
-          <li>Post your roster photo in the Discord channel named by staff</li>
-          <li>Put your Facebook name in the caption, then upload the requested proof in Track application</li>
+          <li>Recruiters review all required screenshots</li>
+          <li>The team completes the manual MGC double-check and contacts you when needed</li>
+          <li>The Membership Form link is sent privately after the final check is cleared</li>
         </ul>
-        <div className="guide-stage-foot">Final MGC check and applicant contact are manual.</div>
+        <div className="guide-stage-foot">Do not create another application while waiting for review.</div>
       </article>
     </div>
     <section className="panel discord-howto">
       <div className="guide-section-heading"><small className="kicker">DISCORD NEXT STEP</small><h2>Invite sent after review</h2></div>
-      <p className="muted">Once your required screenshot proofs are approved, a recruiter will send your individual next-step instructions and official Discord invite through Private Application Chat. Then set your server nickname to <strong>IGN ASY</strong> and follow the role instructions in the server.</p>
+      <p className="muted">After your Step 1 CODM screenshot is approved, a recruiter will send your individual Discord invite through Private Application Chat so you can complete the remaining Discord and roster-photo proofs. Set your server nickname to <strong>IGN ASY</strong> and follow the role instructions in the server.</p>
     </section>
     <section className="panel guide-links">
       <div className="guide-section-heading"><small className="kicker">PUBLIC RESOURCE</small><h2>ASY Community TikTok</h2></div>
       <div className="guide-link-grid">
         <a href="https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1" target="_blank" rel="noreferrer"><b>ASY Community TikTok</b><span>Follow account <ArrowRight size={14}/></span></a>
       </div>
-      <p className="muted">The official Discord invite and Membership Form are sent individually by a recruiter through Private Application Chat after the required screenshot reviews and final checks.</p>
+      <p className="muted">The Discord invite is sent individually after CODM proof approval. The Membership Form is sent individually after all required screenshots and the final MGC check are approved.</p>
     </section>
     <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Final check</strong><p>Recruiters will contact you to double-check the Membership Form/MGC because of the reported form bug. No GC invite or acceptance is automatic.</p></div></section>
     <div className="guide-cta-row"><div><strong>Ready?</strong><p>Apply or track your current screening.</p></div><div className="guide-cta-actions"><button className="primary" type="button" onClick={onApply}>Apply <ArrowRight size={15}/></button><button className="secondary" type="button" onClick={onTrack}>Track application <ArrowRight size={15}/></button></div></div>
@@ -1234,7 +1235,7 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
     return { text: 'The official Membership Form link is provided at the end of screening. First submit your CODM screenshot, wait for recruiter approval, then upload the remaining requirements together and pass the final check. Open Track application to see your current step.' };
   }
   if (/discord|server nickname|banner photo/.test(q)) {
-    return { text: 'The official ASY Discord invite and role instructions are sent by a recruiter in your Private Application Chat after the required screenshot proofs are approved. Do not create another application while waiting.' };
+    return { text: 'The official ASY Discord invite is sent by a recruiter through Private Application Chat after your Step 1 CODM screenshot is approved, so you can complete the remaining Discord and roster-photo proofs. Do not create another application while waiting.' };
   }
   if (/track|tracking code|application status|status|pending|review|where is my application/.test(q)) {
     return { text: 'Open “Track application” on this website and enter your tracking code plus the same contact email you used when applying. The page shows the latest status saved by the recruitment team. If something is incorrect, use Private Application Chat on your tracked application and ask a recruiter to correct the same record. Do not submit a duplicate application.' };
