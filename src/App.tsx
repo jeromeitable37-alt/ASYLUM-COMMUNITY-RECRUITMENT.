@@ -9,7 +9,7 @@ const EVIDENCE_API_URL = SUPABASE_URL + '/functions/v1/asy-recruitment-evidence'
 const MESSAGING_API_URL = SUPABASE_URL + '/functions/v1/asy-community-messaging';
 const OPERATIONS_API_URL = SUPABASE_URL + '/functions/v1/asy-operations';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
+type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
 type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string; clan_name?:string|null };
@@ -97,6 +97,8 @@ export default function App() {
   const [selectedEvidence,setSelectedEvidence]=useState<Evidence[]>([]);
   const [evidenceNotes,setEvidenceNotes]=useState<Record<string,string>>({});
   const [applicantEvidenceNotes,setApplicantEvidenceNotes]=useState<Record<string,string>>({});
+  const [applicantEvidenceFiles,setApplicantEvidenceFiles]=useState<Record<string,File>>({});
+  const [applicantBulkUploading,setApplicantBulkUploading]=useState(false);
   const [announcements,setAnnouncements]=useState<Announcement[]>([]);
   const [announcementDraft,setAnnouncementDraft]=useState(emptyAnnouncementDraft);
   const [announcementBusy,setAnnouncementBusy]=useState(false);
@@ -314,7 +316,26 @@ export default function App() {
     if(error||!data){notify('Could not correct the applicant details. Check recruiter permissions and try again.',true);return;}
     setSelected(data as Application);
     await loadApplications();
-    notify('Applicant details corrected. The application code and evidence history were kept. The applicant must use the updated email when tracking, if the email changed.');
+    notify('Applicant details corrected. The application code and evidence history were kept. The details check has been reset; review and confirm the updated information before unlocking CODM.');
+  }
+
+  async function confirmApplicationDetailsChecked(app:Application){
+    if(!authorized||!session?.user.email){notify('Only an authorized recruiter can confirm applicant details.',true);return;}
+    if(app.application_details_verified){notify('Applicant details are already marked as checked.');return;}
+    const checkedAt=new Date().toISOString();
+    const reviewerEmail=session.user.email.trim().toLowerCase();
+    setBusy(true);
+    const {data,error}=await supabase.from('asy_clan_applications').update({
+      application_details_verified:true,
+      application_details_verified_by_email:reviewerEmail,
+      application_details_verified_at:checkedAt,
+      updated_at:checkedAt
+    }).eq('id',app.id).select('*').single();
+    setBusy(false);
+    if(error||!data){notify('Could not save the details review. Make sure the recruiter session is active.',true);return;}
+    setSelected(data as Application);
+    await loadApplications();
+    notify('Applicant details review recorded. You can now unlock the separate CODM screenshot step once age verification is complete.');
   }
 
   async function loadIntakeSettings(){
@@ -352,10 +373,10 @@ export default function App() {
       setEvidenceServiceConfigured(true);setApplicantProgress(data as ApplicantProgress);
     }catch{setEvidenceServiceConfigured(false);setApplicantProgress(null);}
   }
-  async function uploadRequirement(key:string,file:File){
-    if(!applicationCode.trim()||!contactEmail.trim()){notify('Check your tracking code and application email first.',true);return;}
-    if(!['image/jpeg','image/png','image/webp'].includes(file.type)){notify('Upload a JPG, PNG, or WEBP screenshot.',true);return;}
-    if(file.size>8*1024*1024){notify('Each screenshot must be 8 MB or smaller.',true);return;}
+  async function uploadRequirement(key:string,file:File,silent=false):Promise<boolean>{
+    if(!applicationCode.trim()||!contactEmail.trim()){if(!silent)notify('Check your tracking code and application email first.',true);return false;}
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)){if(!silent)notify('Upload a JPG, PNG, or WEBP screenshot.',true);return false;}
+    if(file.size>8*1024*1024){if(!silent)notify('Each screenshot must be 8 MB or smaller.',true);return false;}
     setEvidenceUploadKey(key);
     try{
       const createResponse=await fetch(EVIDENCE_API_URL,{method:'POST',headers:{apikey:SUPABASE_PUBLISHABLE_KEY,'Content-Type':'application/json'},body:JSON.stringify({action:'create-upload',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),requirement_key:key,content_type:file.type,file_size_bytes:file.size})});
@@ -367,9 +388,38 @@ export default function App() {
       const finalInfo=await finalizeResponse.json();
       if(!finalizeResponse.ok)throw new Error(finalInfo.error||'Could not submit this screenshot for review.');
       await loadApplicantProgress(applicationCode.trim(),contactEmail.trim().toLowerCase());
-      notify('Screenshot submitted privately. Wait for a recruiter to review it.');
-    }catch(error){notify(error instanceof Error?error.message:'Screenshot upload failed. Please try again.',true);}
+      if(!silent)notify('Screenshot submitted privately. Wait for a recruiter to review it.');
+      return true;
+    }catch(error){if(!silent)notify(error instanceof Error?error.message:'Screenshot upload failed. Please try again.',true);return false;}
     finally{setEvidenceUploadKey('');}
+  }
+
+  async function uploadRemainingRequirementsTogether(){
+    if(applicantBulkUploading||!applicantProgress)return;
+    const outstanding=applicantProgress.evidence.filter(item=>item.stage_number===2&&(item.status==='not_submitted'||item.status==='needs_correction'));
+    if(!outstanding.length){notify('There are no remaining screenshots waiting for upload.',true);return;}
+    const missing=outstanding.filter(item=>!applicantEvidenceFiles[item.requirement_key]);
+    if(missing.length){
+      notify('Choose a screenshot for each remaining requirement: '+missing.map(item=>item.requirement_label).join('; '),true);
+      return;
+    }
+    setApplicantBulkUploading(true);
+    let submitted=0;
+    const failed:string[]=[];
+    for(const item of outstanding){
+      const ok=await uploadRequirement(item.requirement_key,applicantEvidenceFiles[item.requirement_key],true);
+      if(ok){
+        submitted++;
+        setApplicantEvidenceFiles(old=>{const next={...old};delete next[item.requirement_key];return next;});
+      }else failed.push(item.requirement_label);
+    }
+    await loadApplicantProgress(applicationCode.trim(),contactEmail.trim().toLowerCase());
+    setApplicantBulkUploading(false);
+    if(failed.length){
+      notify(submitted+' of '+outstanding.length+' screenshots submitted. Please retry: '+failed.join('; '),true);
+    }else{
+      notify('All '+submitted+' remaining screenshots were submitted together. They are now waiting for recruiter review.');
+    }
   }
   async function loadSelectedEvidence(applicationId:string){
     const {data,error}=await supabase.from('asy_recruitment_evidence').select('*').eq('application_id',applicationId).neq('requirement_key','membership_form_screenshot').order('stage_number').order('requirement_label');
@@ -445,8 +495,12 @@ export default function App() {
     notify(labels[status]);
   }
   async function advanceApplicationWorkflow(app:Application,nextStep:'tag_proofs'|'screening_gc_ready'){
+    if(nextStep==='tag_proofs'&&!app.application_details_verified){
+      notify('Review and confirm the applicant details before unlocking the CODM screenshot upload.',true);
+      return;
+    }
     if(nextStep==='tag_proofs'&&app.age_verification_status!=='verified'){
-      notify('Verify that the applicant is at least 16 before approving eligibility.',true);
+      notify('Verify that the applicant meets the minimum age requirement before approving eligibility.',true);
       return;
     }
     if(nextStep==='screening_gc_ready'&&(app.mgc_verification_status!=='verified'||!app.mgc_applicant_contacted||!app.mgc_checked_at||!app.mgc_verification_notes?.trim())){
