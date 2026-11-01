@@ -1160,20 +1160,15 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
       </article>
     </div>
     <section className="panel discord-howto">
-      <div className="guide-section-heading"><small className="kicker">DISCORD QUICK GUIDE</small><h2>Username &amp; role</h2></div>
-      <ol className="discord-steps">
-        <li><span>01</span><div><strong>Join ASY Discord</strong><p>Use the official invite below.</p></div></li>
-        <li><span>02</span><div><strong>Set your nickname</strong><p>Open the server profile/menu and use <b>IGN ASY</b>.</p></div></li>
-        <li><span>03</span><div><strong>Get your role</strong><p>Follow the pinned staff instructions or ask a recruiter if you cannot see the right role.</p></div></li>
-      </ol>
+      <div className="guide-section-heading"><small className="kicker">DISCORD NEXT STEP</small><h2>Invite sent after review</h2></div>
+      <p className="muted">Once your required screenshot proofs are approved, a recruiter will send your individual next-step instructions and official Discord invite through Private Application Chat. Then set your server nickname to <strong>IGN ASY</strong> and follow the role instructions in the server.</p>
     </section>
     <section className="panel guide-links">
-      <div className="guide-section-heading"><small className="kicker">OFFICIAL LINKS</small><h2>Open a resource</h2></div>
+      <div className="guide-section-heading"><small className="kicker">PUBLIC RESOURCE</small><h2>ASY Community TikTok</h2></div>
       <div className="guide-link-grid">
         <a href="https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1" target="_blank" rel="noreferrer"><b>ASY Community TikTok</b><span>Follow account <ArrowRight size={14}/></span></a>
-        <a href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer"><b>Membership Form</b><span>Complete the form <ArrowRight size={14}/></span></a>
-        <a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer"><b>Official ASY Discord</b><span>Nickname &amp; role guide <ArrowRight size={14}/></span></a>
       </div>
+      <p className="muted">The official Discord invite and Membership Form are sent individually by a recruiter through Private Application Chat after the required screenshot reviews and final checks.</p>
     </section>
     <section className="panel guide-note"><ShieldCheck size={20}/><div><strong>Final check</strong><p>Recruiters will contact you to double-check the Membership Form/MGC because of the reported form bug. No GC invite or acceptance is automatic.</p></div></section>
     <div className="guide-cta-row"><div><strong>Ready?</strong><p>Apply or track your current screening.</p></div><div className="guide-cta-actions"><button className="primary" type="button" onClick={onApply}>Apply <ArrowRight size={15}/></button><button className="secondary" type="button" onClick={onTrack}>Track application <ArrowRight size={15}/></button></div></div>
@@ -1203,7 +1198,6 @@ type ChatEntry = { role: 'assistant' | 'user'; text: string; links?: ChatLink[] 
 
 const screeningLinks: ChatLink[] = [
   { label: 'ASY Community TikTok', href: 'https://www.tiktok.com/@asy.community?_t=ZS-8wNEx3vdVab&_r=1' },
-  { label: 'Official Discord', href: 'https://discord.gg/HbJ5Jvw8y8' },
 ];
 
 function normalizeSupportText(value:string) {
@@ -1240,10 +1234,10 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
     return { text: 'The official Membership Form link is provided at the end of screening. First submit your CODM screenshot, wait for recruiter approval, then upload the remaining requirements together and pass the final check. Open Track application to see your current step.' };
   }
   if (/discord|server nickname|banner photo/.test(q)) {
-    return { text: 'Join the official ASY Discord. When Step 3 unlocks in Track application, set your server nickname to IGN ASY and upload your roster photo following the admin reference. Include your Facebook name in the caption.', links: [screeningLinks[1]] };
+    return { text: 'The official ASY Discord invite and role instructions are sent by a recruiter in your Private Application Chat after the required screenshot proofs are approved. Do not create another application while waiting.' };
   }
   if (/track|tracking code|application status|status|pending|review|where is my application/.test(q)) {
-    return { text: 'Open “Track application” on this website and enter your tracking code plus the same contact email you used when applying. The page shows the latest status saved by the recruitment team. If you lost the code, contact an authorized recruiter through the official Discord; do not post your email or application details in public chat.', links: [screeningLinks[1]] };
+    return { text: 'Open “Track application” on this website and enter your tracking code plus the same contact email you used when applying. The page shows the latest status saved by the recruitment team. If something is incorrect, use Private Application Chat on your tracked application and ask a recruiter to correct the same record. Do not submit a duplicate application.' };
   }
   if (/limit|slots|capacity|how many applicants/.test(q)) {
     if (!intakeSettings) return { text: 'I could not load the current intake status. Refresh the page or check the latest official announcement before submitting.' };
