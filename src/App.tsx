@@ -1568,22 +1568,24 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
     const cleanQuestion=question.trim().slice(0,500);
     if(!cleanQuestion||chatBusy)return;
     const fallback=getRecruitmentReply(cleanQuestion,intakeSettings);
-    const normalizedQuestion=normalizeSupportText(cleanQuestion);
-    const repeatedQuestion=messages.some(item => item.role==='user' && normalizeSupportText(item.text)===normalizedQuestion);
-    const repeatedAnswer=messages.some(item => item.role==='assistant' && normalizeSupportText(item.text)===normalizeSupportText(fallback.text));
-    let answer = fallback;
-    if (repeatedQuestion || repeatedAnswer) {
-      const shortAnswer = fallback.text.length > 260 ? fallback.text.slice(0,257).trimEnd() + '…' : fallback.text;
-      answer = {
-        text: 'Quick recap (I saved the earlier conversation above): ' + shortAnswer,
-        links: fallback.links,
-      };
-    }
+    const history=messages.slice(-8).map(item=>({role:item.role,text:item.text.slice(0,500)}));
     setMessages(old=>[...old,{role:'user',text:cleanQuestion}]);
     setChatBusy(true);
-    // No external AI/API key is required. Use the verified local ASY FAQ so replies stay available.
-    setMessages(old=>[...old,{role:'assistant',...answer}]);
-    setChatBusy(false);
+    try {
+      const response=await fetch('/api/ai-support',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({message:cleanQuestion,history}),
+      });
+      if(!response.ok)throw new Error('AI support unavailable');
+      const data=await response.json() as {answer?:string};
+      if(!data.answer?.trim())throw new Error('Empty AI response');
+      setMessages(old=>[...old,{role:'assistant',text:data.answer!.trim()}]);
+    }catch(error){
+      console.warn('Gemini support unavailable; using ASY FAQ.',error);
+      setMessages(old=>[...old,{role:'assistant',text:'AI support is temporarily unavailable. Here is the verified ASY guide:\\n\\n'+fallback.text,links:fallback.links}]);
+    }finally{
+      setChatBusy(false);
+    }
   }
 
   function sendMessage(event:FormEvent) {
@@ -1599,7 +1601,7 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
       {open&&<section className="chat-panel" role="dialog" aria-label="ASY Recruitment Support">
         <header className="chat-header">
           <span className="chat-bot-icon"><Bot size={19}/></span>
-          <div><strong>ASY Recruitment Support</strong><small>Offline FAQ assistant · chat history saved</small></div>
+          <div><strong>ASY Recruitment Support</strong><small>Gemini AI + verified FAQ backup · chat history saved</small></div>
           <button type="button" aria-label="Close chat" onClick={()=>setOpen(false)}><X size={18}/></button>
         </header>
         <div className="chat-messages" aria-live="polite">
@@ -1620,7 +1622,7 @@ function ChatSupport({intakeSettings}:{intakeSettings:IntakeSettings|null}) {
           <input value={draft} onChange={event=>setDraft(event.target.value)} placeholder="Ask about ASY recruitment…" aria-label="Ask about ASY recruitment" maxLength={500} disabled={chatBusy}/>
           <button type="submit" disabled={!draft.trim()||chatBusy} aria-label="Send message"><Send size={17}/></button>
         </form>
-        <p className="chat-disclaimer">No API key needed. Replies use the saved ASY FAQ and your earlier messages on this browser. For account-specific decisions, contact management. Recruiters make final decisions.</p>
+        <p className="chat-disclaimer">AI answers general recruitment questions; if unavailable, the verified ASY FAQ is used. Do not share passwords, OTPs or private details. Chat history stays in this browser. Recruiters make final decisions.</p>
       </section>}
       <button type="button" className="chat-launcher" aria-label={open?'Close support chat':'Open support chat'} aria-expanded={open} onClick={()=>setOpen(value=>!value)}>
         {open?<X size={23}/>:<MessageCircle size={24}/>}
