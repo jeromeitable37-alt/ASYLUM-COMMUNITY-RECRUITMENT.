@@ -21,7 +21,7 @@ type MemberReviewProfile = { user_id:string; display_name:string; ign:string; co
 type IntakeSettings = { id:number; intake_open:boolean; application_limit:number|null; application_count:number; cycle_started_at:string; updated_at:string };
 type Announcement = { id:string; title:string; body:string; category:'general'|'recruitment'|'event'|'maintenance'; is_published:boolean; created_at:string; updated_at?:string; published_at?:string|null; created_by_email?:string; updated_by_email?:string|null };
 type CommunityChatMessage = { id:string; display_name:string; body:string; created_at:string };
-type ApplicationChatMessage = { id:string; application_id:string; sender_role:'applicant'|'recruiter'; sender_name:string; body:string; created_at:string; applicant_read_at?:string|null; recruiter_read_at?:string|null };
+type ApplicationChatMessage = { id:string; application_id:string; sender_role:'applicant'|'recruiter'; sender_name:string; body:string; created_at:string; attachment_url?:string|null; attachment_type?:string|null; attachment_name?:string|null; applicant_read_at?:string|null; recruiter_read_at?:string|null };
 function renderApplicationMessage(body:string){return body.split(/(https?:\/\/[^\s]+)/g).map((part,index)=>/^https?:\/\//i.test(part)?<a key={index} href={part} target="_blank" rel="noreferrer">{part}</a>:part);}
 const emptyAnnouncementDraft = {id:'',title:'',body:'',category:'general' as Announcement['category'],is_published:true};
 const statuses = ['pending','reviewing','interview','tryout','accepted','rejected','waitlisted'];
@@ -120,6 +120,8 @@ export default function App() {
   const [applicantMessageBusy,setApplicantMessageBusy]=useState(false);
   const [adminApplicationMessages,setAdminApplicationMessages]=useState<ApplicationChatMessage[]>([]);
   const [adminMessageDraft,setAdminMessageDraft]=useState('');
+  const [applicantChatFile,setApplicantChatFile]=useState<File|null>(null);
+  const [adminChatFile,setAdminChatFile]=useState<File|null>(null);
   const [adminMessageBusy,setAdminMessageBusy]=useState(false);
   const notify=(message:string,isError=false)=>{setNotice(message);setHasError(isError);};
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
@@ -271,13 +273,37 @@ export default function App() {
       notify('Community message hidden.');
     }catch(error){notify(error instanceof Error?error.message:'Could not hide message.',true);}
   }
+  async function encodeChatFile(file:File|null){
+    if(!file)return undefined;
+    if(!['image/jpeg','image/png','image/webp','video/mp4','video/webm'].includes(file.type))throw new Error('Use JPG, PNG, WebP, MP4 or WebM.');
+    const limit=file.type.startsWith('video/')?12*1024*1024:5*1024*1024;
+    if(file.size>limit)throw new Error('File too large. Images: 5 MB; videos: 12 MB.');
+    const base64=await new Promise<string>((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');
+      reader.onerror=()=>reject(new Error('Could not read attachment.'));
+      reader.readAsDataURL(file);
+    });
+    return {name:file.name,type:file.type,base64};
+  }
+  function renderChatAttachment(message:ApplicationChatMessage){
+    if(!message.attachment_url)return null;
+    return <div className="chat-media">
+      {message.attachment_type?.startsWith('image/')?<a href={message.attachment_url} target="_blank" rel="noreferrer"><img src={message.attachment_url} alt={message.attachment_name||'Chat screenshot'} loading="lazy"/></a>:
+      message.attachment_type?.startsWith('video/')?<video controls preload="metadata" src={message.attachment_url}/>:
+      <a href={message.attachment_url} target="_blank" rel="noreferrer">View attachment</a>}
+      <small>{message.attachment_name}</small>
+    </div>;
+  }
   async function sendApplicantMessage(event:FormEvent){
     event.preventDefault();
     const body=applicantMessageDraft.trim().slice(0,2000);
-    if(!tracked||!body)return;
+    if(!tracked||(!body&&!applicantChatFile))return;
     setApplicantMessageBusy(true);
     try{
-      await messagingRequest({action:'application-messages-send',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),body});
+      const attachment=await encodeChatFile(applicantChatFile);
+      await messagingRequest({action:'application-messages-send',application_code:applicationCode.trim(),contact_email:contactEmail.trim().toLowerCase(),body,attachment});
+      setApplicantChatFile(null);
       setApplicantMessageDraft('');
       await loadApplicantMessages(applicationCode,contactEmail);
     }catch(error){notify(error instanceof Error?error.message:'Could not send your message.',true);}
@@ -287,10 +313,12 @@ export default function App() {
     event.preventDefault();
     if(!selected)return;
     const body=adminMessageDraft.trim().slice(0,2000);
-    if(!body)return;
+    if(!body&&!adminChatFile)return;
     setAdminMessageBusy(true);
     try{
-      await messagingRequest({action:'admin-application-messages-send',application_id:selected.id,body});
+      const attachment=await encodeChatFile(adminChatFile);
+      await messagingRequest({action:'admin-application-messages-send',application_id:selected.id,body,attachment});
+      setAdminChatFile(null);
       setAdminMessageDraft('');
       await loadAdminApplicationMessages(selected.id);
       notify('Reply sent to applicant.');
@@ -990,7 +1018,7 @@ export default function App() {
               {communityMessages.length===0&&<p className="message-empty">No messages yet. Start the conversation respectfully.</p>}
               {communityMessages.map(message=><article className="public-chat-message" key={message.id}>
                 <div className="thread-message-meta"><strong>{message.display_name}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
-                <p>{renderApplicationMessage(message.body)}</p>
+                {message.body&&<p>{renderApplicationMessage(message.body)}</p>}{renderChatAttachment(message)}
                 {!authorized&&<button type="button" className="moderate-message" onClick={()=>void reportCommunityMessage(message)}>Report message</button>}{authorized&&<><button type="button" className="moderate-message" onClick={()=>void reportCommunityMessage(message)}>Report message</button><button type="button" className="moderate-message" onClick={()=>void hideCommunityMessage(message)}>Hide message</button></>}
               </article>)}
             </div>
@@ -1094,7 +1122,9 @@ export default function App() {
           </div>
           <form className="message-compose" onSubmit={sendApplicantMessage}>
             <Field label="Your message"><textarea rows={2} maxLength={2000} value={applicantMessageDraft} onChange={event=>setApplicantMessageDraft(event.target.value)} placeholder="Type a question or reply…" /></Field>
-            <button type="submit" className="primary" disabled={applicantMessageBusy||!applicantMessageDraft.trim()}>{applicantMessageBusy?'Sending…':'Send message'} <Send size={15}/></button>
+            <label className="chat-attachment-picker">📎 Add screenshot / video <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={e=>setApplicantChatFile(e.target.files?.[0]||null)}/></label>
+            {applicantChatFile&&<small>Selected: {applicantChatFile.name} <button type="button" onClick={()=>setApplicantChatFile(null)}>Remove</button></small>}
+            <button type="submit" className="primary" disabled={applicantMessageBusy||(!applicantMessageDraft.trim()&&!applicantChatFile)}>{applicantMessageBusy?'Sending…':'Send message'} <Send size={15}/></button>
           </form>
           <small className="message-privacy-note">Only you and authorized recruiters can access this application conversation. Never send passwords or login codes.</small>
         </section>}
@@ -1323,7 +1353,9 @@ export default function App() {
               </div>
               <form className="message-compose" onSubmit={sendAdminApplicantMessage}>
                 <Field label="Reply to applicant"><textarea rows={2} maxLength={2000} value={adminMessageDraft} onChange={event=>setAdminMessageDraft(event.target.value)} placeholder="Message about the application or MGC double-check…"/></Field>
-                <button type="submit" className="primary" disabled={adminMessageBusy||!adminMessageDraft.trim()}>{adminMessageBusy?'Sending…':'Send reply'} <Send size={15}/></button>
+                <label className="chat-attachment-picker">📎 Add screenshot / banner / video <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={e=>setAdminChatFile(e.target.files?.[0]||null)}/></label>
+                {adminChatFile&&<small>Selected: {adminChatFile.name} <button type="button" onClick={()=>setAdminChatFile(null)}>Remove</button></small>}
+                <button type="submit" className="primary" disabled={adminMessageBusy||(!adminMessageDraft.trim()&&!adminChatFile)}>{adminMessageBusy?'Sending…':'Send reply'} <Send size={15}/></button>
               </form>
             </section>
             <Field label="Private reviewer notes"><textarea rows={2} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Internal notes — not shown to applicant"/></Field>
