@@ -21,7 +21,28 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const history: Turn[] = Array.isArray(input.history) ? input.history.filter((x:unknown):x is Turn=> !!x && typeof x==='object' && ['user','assistant'].includes((x as Turn).role) && typeof (x as Turn).text==='string').slice(-8).map(x=>({role:x.role,text:x.text.slice(0,500)})) : [];
   const contents = [...history,{role:'user' as const,text:input.message.trim()}].map(x=>({role:x.role==='assistant'?'model':'user',parts:[{text:x.text}]}));
   try {
-    const modelCandidates = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+    // Discover models available to this exact API key instead of guessing model IDs.
+    const listResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100',{
+      headers:{'x-goog-api-key':key},
+      signal:AbortSignal.timeout(10000)
+    });
+    if(!listResponse.ok){
+      console.error('Gemini models.list status',listResponse.status);
+      const reason=listResponse.status===403||listResponse.status===401
+        ? 'Gemini API key does not have access. Check API restrictions and the Generative Language API in Google Cloud.'
+        : listResponse.status===429?'Gemini API quota exceeded.'
+        : 'Could not list Gemini models (HTTP '+listResponse.status+').';
+      return res.status(502).json({error:reason});
+    }
+    const modelList = await listResponse.json() as {models?:Array<{name?:string;supportedGenerationMethods?:string[]}>};
+    const modelCandidates=(modelList.models||[])
+      .filter(model=>model.name?.startsWith('models/gemini-') && model.supportedGenerationMethods?.includes('generateContent'))
+      .map(model=>model.name!.replace(/^models\//,''))
+      .sort((a,b)=>{
+        const rank=(name:string)=>name.includes('flash-lite')?0:name.includes('flash')?1:2;
+        return rank(a)-rank(b);
+      }).slice(0,4);
+    if(!modelCandidates.length) return res.status(502).json({error:'No Gemini text generation models are available to this API key. Check the Google AI Studio project and API access.'});
     let lastStatus = 0;
     for (const model of modelCandidates) {
       const controller = new AbortController();
@@ -45,6 +66,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       if(!answer) return res.status(502).json({error:'AI did not return a reply'});
       return res.status(200).json({answer:answer.slice(0,1800)});
     }
-    return res.status(502).json({error:lastStatus===404?'Gemini models returned HTTP 404. Verify the API key project has access to Gemini generateContent models.':'No Gemini model available'});
+    return res.status(502).json({error:lastStatus===404?'All Gemini models returned HTTP 404. Check API key restrictions and model availability.':'No Gemini model available'});
   } catch(error){console.error('Gemini support request failed',error instanceof Error?error.name:'unknown');return res.status(502).json({error:'AI service unavailable'});}
 }
