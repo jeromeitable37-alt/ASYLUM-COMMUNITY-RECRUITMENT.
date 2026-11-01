@@ -1,4 +1,4 @@
-const CACHE_NAME = "asy-recruitment-pwa-v2";
+const CACHE_NAME = "asy-recruitment-pwa-v3";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -69,4 +69,36 @@ self.addEventListener("fetch", (event) => {
       }
     })());
   }
+});
+
+
+// Background Web Push: browser can wake this service worker even with the site closed.
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch { /* fallback to generic alert */ }
+  const title = String(payload.title || "ASYLUM COMMUNITY").slice(0, 100);
+  const body = String(payload.body || "A recruitment update is available.").slice(0, 200);
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    icon: "https://asy-clan-recruitment-1h073y.v2.appdeploy.ai/resources/asylum-community-logo.png",
+    tag: String(payload.tag || "asy-recruitment"),
+    data: { url: "/" },
+    renotify: true,
+    requireInteraction: false
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const home = new URL("/", self.location.origin).href;
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of windows) {
+      if (new URL(client.url).origin === self.location.origin) {
+        await client.focus();
+        return;
+      }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(home);
+  })());
 });
