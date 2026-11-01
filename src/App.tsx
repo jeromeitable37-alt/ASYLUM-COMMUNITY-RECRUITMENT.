@@ -9,7 +9,7 @@ const EVIDENCE_API_URL = SUPABASE_URL + '/functions/v1/asy-recruitment-evidence'
 const MESSAGING_API_URL = SUPABASE_URL + '/functions/v1/asy-community-messaging';
 const OPERATIONS_API_URL = SUPABASE_URL + '/functions/v1/asy-operations';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
+type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; membership_form_response_verified:boolean; membership_form_response_verified_by_email:string|null; membership_form_response_verified_at:string|null; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; is_required?:boolean; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
 type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string; clan_name?:string|null };
@@ -438,12 +438,44 @@ export default function App() {
     await loadApplications();
     notify(status==='approved'?'Proof approved. The next stage opens only when all required proofs in this stage are approved.':'Correction requested. The applicant can upload a replacement screenshot.');
   }
+  async function setMembershipFormResponseVerified(app:Application,verified:boolean){
+    if(!authorized||!session?.user.email){notify('Only an authorized recruiter can verify a Membership Form response.',true);return;}
+    if(verified&&app.workflow_step!=='final_review'){notify('The form response is checked during Final Review, after all required screenshots are approved.',true);return;}
+    const reviewerEmail=session.user.email.trim().toLowerCase();
+    const checkedAt=verified?new Date().toISOString():null;
+    setBusy(true);
+    const update:Record<string,unknown>={
+      membership_form_response_verified:verified,
+      membership_form_response_verified_by_email:verified?reviewerEmail:null,
+      membership_form_response_verified_at:checkedAt,
+      updated_at:new Date().toISOString()
+    };
+    if(!verified){
+      update.mgc_verification_status='not_checked';
+      update.mgc_applicant_contacted=false;
+      update.mgc_checked_by_email=null;
+      update.mgc_checked_at=null;
+      update.mgc_verification_notes=null;
+    }
+    const {data,error}=await supabase.from('asy_clan_applications').update(update).eq('id',app.id).select('*').single();
+    setBusy(false);
+    if(error||!data){notify('Could not save the Membership Form response check.',true);return;}
+    setSelected(data as Application);
+    await loadApplications();
+    if(!verified){setMgcContactConfirmed(false);setMgcNotes('');}
+    notify(verified?'Membership Form response check recorded. You can now complete the MGC contact check.':'Membership Form response check cleared. The final MGC check has been reset.');
+  }
+
   async function saveMgcVerification(status:'contact_needed'|'issue_found'|'verified'){
     if(!selected)return;
     const note=mgcNotes.trim();
     if(!note){notify('Add a short note about the applicant contact or MGC check.',true);return;}
     if(status==='verified'&&selected.workflow_step!=='final_review'){
-      notify('Finish and approve all three screenshot stages before the final MGC check.',true);
+      notify('Finish and approve all required screenshot proofs before the final MGC check.',true);
+      return;
+    }
+    if(status==='verified'&&!selected.membership_form_response_verified){
+      notify('Open the Membership Form response, match the IGN and CODM UID, and confirm the response check first.',true);
       return;
     }
     if(status==='verified'&&!mgcContactConfirmed){
@@ -1113,13 +1145,14 @@ export default function App() {
                 <span className={'mgc-status-badge '+selected.mgc_verification_status}>{mgcStatusLabels[selected.mgc_verification_status]}</span>
               </div>
               {selected.mgc_checked_at&&<p className="mgc-audit-line">Last updated by {selected.mgc_checked_by_email||'recruiter'} · {new Date(selected.mgc_checked_at).toLocaleString()}</p>}
+              {selected.workflow_step==='final_review'&&<><label className="screening-check mgc-form-match-check"><input type="checkbox" checked={Boolean(selected.membership_form_response_verified)} disabled={busy} onChange={event=>void setMembershipFormResponseVerified(selected,event.target.checked)}/><span>I found the Membership Form response and matched the applicant’s IGN and CODM UID.</span></label>{selected.membership_form_response_verified_at&&<small className="mgc-audit-line">Form response matched by {selected.membership_form_response_verified_by_email||'recruiter'} · {new Date(selected.membership_form_response_verified_at).toLocaleString()}</small>}</>}
               <label className="screening-check mgc-contact-check"><input type="checkbox" checked={mgcContactConfirmed} onChange={event=>setMgcContactConfirmed(event.target.checked)}/><span>I have spoken with the applicant.</span></label>
               <Field label="MGC double-check note"><textarea rows={2} maxLength={1000} value={mgcNotes} onChange={event=>setMgcNotes(event.target.value)} placeholder="Example: Form response found; IGN and CODM UID matched; contacted applicant about any mismatch."/></Field>
               {selected.workflow_step!=='final_review'&&selected.workflow_step!=='screening_gc_ready'&&selected.workflow_step!=='complete'&&<p className="muted mgc-unavailable-note">Complete and approve the required proof stages before confirming MGC.</p>}
               <div className="mgc-actions">
                 <button type="button" className="secondary" disabled={busy} onClick={()=>void saveMgcVerification('contact_needed')}>Contact needed</button>
                 <button type="button" className="danger" disabled={busy} onClick={()=>void saveMgcVerification('issue_found')}>Flag form issue</button>
-                <button type="button" className="primary" disabled={busy||selected.workflow_step!=='final_review'||!mgcContactConfirmed||!mgcNotes.trim()} onClick={()=>void saveMgcVerification('verified')}>Confirm MGC checked <CheckCircle2 size={15}/></button>
+                <button type="button" className="primary" disabled={busy||selected.workflow_step!=='final_review'||!selected.membership_form_response_verified||!mgcContactConfirmed||!mgcNotes.trim()} onClick={()=>void saveMgcVerification('verified')}>Confirm MGC checked <CheckCircle2 size={15}/></button>
               </div>
             </section>
             <section className="panel application-chat admin-application-chat">
