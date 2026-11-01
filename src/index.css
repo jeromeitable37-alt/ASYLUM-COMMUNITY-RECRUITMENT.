@@ -743,3 +743,16 @@
  .guide-example-section .example-proof,.proof-example-manager .example-proof{padding:16px}
  .applicant-evidence-item>.example-proof{max-width:100%}
 }
+
+/* Clear, numbered referral instructions */
+.screening-page .guide-referral{padding:26px}
+.guide-referral-intro{max-width:850px;color:#b9b9c6;font-size:14px;line-height:1.75;margin:0 0 22px}
+.referral-steps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.referral-step{display:flex;align-items:flex-start;gap:15px;min-width:0;padding:21px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.025);border-radius:14px}
+.referral-step-number{flex:0 0 39px;display:grid;place-items:center;width:39px;height:39px;border-radius:11px;background:rgba(238,39,60,.12);color:#ff5366;font-weight:800;font-size:15px}
+.referral-step>div{min-width:0;flex:1}
+.referral-step h3{margin:1px 0 9px;font-size:16px;line-height:1.4}
+.referral-step p{margin:0;font-size:13px;line-height:1.8;color:#c6c6d1}
+.referral-step a{display:inline-block;margin-top:13px;font-size:13px;line-height:1.6}
+.referral-step:last-child{grid-column:1/-1}
+@media(max-width:760px){.screening-page .guide-referral{padding:18px}.referral-steps{grid-template-columns:1fr;gap:12px}.referral-step{padding:16px;gap:12px}.referral-step:last-child{grid-column:auto}.referral-step-number{flex-basis:34px;width:34px;height:34px}}
