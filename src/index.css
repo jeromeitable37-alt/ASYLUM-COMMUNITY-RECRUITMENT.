@@ -705,13 +705,41 @@
 .applicant-evidence-item>.example-proof{margin:12px 0;max-width:280px}
 @media(max-width:600px){.example-proof-grid{grid-template-columns:repeat(auto-fit,minmax(145px,1fr))}.applicant-evidence-item>.example-proof{max-width:100%}}
 
-/* Screening guide: shared CODM/TikTok tag example with breathing room */
-.screening-example-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:20px;margin-top:18px;align-items:start}
-.screening-tag-example-group{grid-column:1/-1;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:20px;background:rgba(255,255,255,.025)}
-.screening-tag-example-heading{margin-bottom:16px}
-.screening-tag-example-heading strong{font-size:16px}
-.screening-tag-example-heading p{margin:7px 0 0;color:#b8b8c4;line-height:1.6;font-size:13px}
-.screening-tag-example-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}
-.screening-tag-example-pair .example-proof{padding:18px;gap:14px}
-.screening-tag-example-pair .example-proof img{max-height:370px}
-@media(max-width:600px){.screening-example-grid{gap:16px}.screening-tag-example-group{padding:14px}.screening-tag-example-pair{grid-template-columns:1fr;gap:16px}.screening-tag-example-pair .example-proof{padding:14px}}
+
+/* Screening and recruiter layout refinement — independent proof cards */
+.screening-page{display:flex;flex-direction:column;gap:22px}
+.screening-page>.panel{margin-top:0;margin-bottom:0}
+.screening-page .guide-section-heading{display:flex;flex-direction:column;align-items:flex-start;gap:9px;margin-bottom:19px}
+.screening-page .guide-section-heading h2{margin:0;line-height:1.25;letter-spacing:-.015em}
+.screening-page .guide-section-heading .kicker{line-height:1.5;letter-spacing:.12em}
+.screening-page p,.screening-page li{line-height:1.75;overflow-wrap:break-word}
+.screening-page .guide-list{display:flex;flex-direction:column;gap:10px;padding-left:20px;margin:16px 0 20px}
+.screening-page .guide-list li{padding-left:3px}
+.screening-page .guide-stage-grid{gap:18px;align-items:stretch}
+.screening-page .guide-stage{display:flex;flex-direction:column;gap:13px;padding:22px;min-width:0}
+.screening-page .guide-stage h3{margin:0;line-height:1.35}
+.screening-page .guide-stage .guide-list{margin:0 0 12px}
+.screening-page .guide-stage-foot{margin-top:auto;line-height:1.65;padding-top:14px}
+.guide-example-section,.proof-example-manager{padding:24px}
+.guide-example-section>.kicker,.proof-example-manager>.kicker{display:block;margin-bottom:10px;line-height:1.5}
+.guide-example-section>h2,.proof-example-manager>h3{margin:0 0 12px;line-height:1.3}
+.proof-example-manager>p{margin:0;line-height:1.7;max-width:780px}
+.guide-example-section .example-proof-grid,.proof-example-manager .example-proof-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr));gap:22px;margin-top:22px;align-items:stretch}
+.guide-example-section .example-proof,.proof-example-manager .example-proof{padding:19px;gap:14px;border-radius:15px;min-height:100%;box-sizing:border-box}
+.guide-example-section .example-proof strong,.proof-example-manager .example-proof strong{font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.guide-example-section .example-proof img,.proof-example-manager .example-proof img{width:100%;max-height:360px;object-fit:contain;border-radius:10px}
+.guide-example-section .example-proof small,.proof-example-manager .example-proof small{display:block;font-size:12px;line-height:1.7}
+.guide-example-section .example-proof .muted,.proof-example-manager .example-proof .muted{line-height:1.7}
+.proof-example-manager .example-proof .upload-control{margin-top:auto}
+.applicant-evidence-item{min-width:0}
+.applicant-evidence-item>.example-proof{margin:18px 0;max-width:340px;padding:16px;gap:13px}
+.applicant-evidence-copy{min-width:0;overflow-wrap:anywhere}
+@media(max-width:680px){
+ .screening-page{gap:16px}
+ .screening-page .guide-stage{padding:17px;gap:11px}
+ .screening-page .guide-list{gap:9px}
+ .guide-example-section,.proof-example-manager{padding:17px}
+ .guide-example-section .example-proof-grid,.proof-example-manager .example-proof-grid{grid-template-columns:1fr;gap:16px;margin-top:17px}
+ .guide-example-section .example-proof,.proof-example-manager .example-proof{padding:16px}
+ .applicant-evidence-item>.example-proof{max-width:100%}
+}
