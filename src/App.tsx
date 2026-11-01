@@ -474,9 +474,9 @@ export default function App() {
     }
   }
   async function loadSelectedEvidence(applicationId:string){
-    const {data,error}=await supabase.from('asy_recruitment_evidence').select('*').eq('application_id',applicationId).neq('requirement_key','membership_form_screenshot').order('stage_number').order('requirement_label');
+    const {data,error}=await supabase.from('asy_recruitment_evidence').select('*').eq('application_id',applicationId).order('stage_number').order('requirement_label');
     if(error){notify('Could not load requirement evidence. Confirm recruiter permissions.',true);return;}
-    setSelectedEvidence((data||[]) as Evidence[]);
+    setSelectedEvidence(((data||[]) as Evidence[]).filter(item=>item.requirement_key!=='membership_form_screenshot'||selected?.application_type==='referral'));
   }
   async function reviewEvidence(item:Evidence,status:'approved'|'needs_correction'){
     if(!selected||!item.id)return;
@@ -1093,6 +1093,7 @@ export default function App() {
             const statusLabel=({locked:'Locked',not_submitted:'Awaiting upload',pending:'Pending recruiter review',approved:'Approved',needs_correction:'Needs correction'} as Record<string,string>)[item.status]||item.status;
             return <article className={'applicant-evidence-item '+item.status} key={item.requirement_key}>
               <div className="applicant-evidence-copy"><strong>{item.requirement_label}</strong><span className={'evidence-status '+item.status}>{statusLabel}</span>{item.file_name&&<small>Uploaded file: {item.file_name}</small>}{item.submitted_at&&<small>Submitted: {new Date(item.submitted_at).toLocaleString()}</small>}{item.reviewed_at&&<small>Reviewed: {new Date(item.reviewed_at).toLocaleString()}</small>}{item.reviewer_notes&&item.status==='needs_correction'&&<p className="correction-note">Recruiter feedback: {item.reviewer_notes}</p>}</div>
+              {(item.requirement_key==='codm_tag_screenshot'||item.requirement_key==='tiktok_tag_screenshot'||item.requirement_key==='tiktok_follow_screenshot'||item.requirement_key==='membership_form_screenshot'||item.requirement_key==='roster_photo')&&<ExampleProof kind={({codm_tag_screenshot:'codm',tiktok_tag_screenshot:'tiktok',tiktok_follow_screenshot:'following',membership_form_screenshot:'form',roster_photo:'roster'} as Record<string,string>)[item.requirement_key]}/>}
               {canUpload&&<><Field label="Optional note for recruiter"><textarea rows={2} maxLength={500} value={applicantEvidenceNotes[item.requirement_key]??item.applicant_note??''} onChange={e=>setApplicantEvidenceNotes(old=>({...old,[item.requirement_key]:e.target.value}))} placeholder="Add context for this proof, if needed…"/></Field>
                 {item.stage_number===1&&<label className="upload-control"><span>{evidenceUploadKey===item.requirement_key?'Uploading…':item.status==='needs_correction'?'Upload replacement CODM screenshot':'Choose CODM screenshot'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey||applicantBulkUploading} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadRequirement(item.requirement_key,file);e.currentTarget.value='';}}/></label>}
                 {item.stage_number===2&&<label className="upload-control"><span>{applicantEvidenceFiles[item.requirement_key]?.name||(item.status==='needs_correction'?'Choose replacement file':'Choose file for batch')}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey||applicantBulkUploading} onChange={e=>{const file=e.target.files?.[0];if(file){setApplicantEvidenceFiles(old=>({...old,[item.requirement_key]:file}));}e.currentTarget.value='';}}/></label>}
@@ -1308,6 +1309,7 @@ export default function App() {
               {selected.age_verified_at&&<small className="muted">Checked by {selected.age_verified_by_email||'recruiter'} · {new Date(selected.age_verified_at).toLocaleString()}</small>}
               <div className="action-row"><button type="button" className="primary" disabled={busy||selected.age_verification_status==='verified'} onClick={()=>void updateAgeVerification(selected,'verified')}>Confirm 16+ verified <CheckCircle2 size={15}/></button><button type="button" className="secondary" disabled={busy} onClick={()=>void updateAgeVerification(selected,'needs_confirmation')}>Needs confirmation</button><button type="button" className="secondary" disabled={busy} onClick={()=>void updateAgeVerification(selected,'underage')}>Under 16</button></div>
             </section>
+            <ProofExamplesManager/>
             <section className="panel admin-evidence">
               <small className="kicker">STEPWISE SCREENING</small><h2>Required proofs</h2><p className="muted">Approve each proof or request a correction with a note. Every required proof must be approved before the next stage opens.</p>
               {selectedEvidence.map(item=><article className="admin-evidence-item" key={item.requirement_key}>
@@ -1389,6 +1391,40 @@ function Home({intakeSettings,onApply,onRoster,onTrack,onGuide}:{intakeSettings:
   <section className="callout"><div><small>YOUR NEXT MOVE</small><h2>SHOW US WHAT YOU BRING.</h2><p>Tell us your role, your goals, and how you play.</p></div><button className="primary" onClick={onApply}>Start application <ArrowRight size={16}/></button></section>
  </>;
 }
+const EXAMPLE_PROOFS = [
+  {key:'codm',title:'CODM ASY tag example',hint:'ASY tag appears after the in-game name.'},
+  {key:'tiktok',title:'TikTok ASY tag example',hint:'ASY tag appears after the TikTok display name.'},
+  {key:'following',title:'Official TikTok follow example',hint:'Show the ASYLUM Community TikTok profile and following proof.'},
+  {key:'form',title:'Membership Form completion example',hint:'Show the recorded response with your IGN.'},
+  {key:'roster',title:'Welcome banner roster photo example',hint:'Use the admin reference and include Facebook name in the Discord caption.'},
+] as const;
+function ExampleProof({kind,manage=false}:{kind:string;manage?:boolean}){
+  const [version,setVersion]=useState(0);
+  const [available,setAvailable]=useState(false);
+  const [uploading,setUploading]=useState(false);
+  const info=EXAMPLE_PROOFS.find(item=>item.key===kind);
+  const path='references/'+kind+'.img';
+  const {data}=supabase.storage.from('asy-recruitment-examples').getPublicUrl(path);
+  const url=data.publicUrl+'?v='+version;
+  useEffect(()=>{let alive=true;fetch(url,{method:'HEAD'}).then(r=>{if(alive)setAvailable(r.ok);}).catch(()=>{if(alive)setAvailable(false);});return()=>{alive=false;};},[url]);
+  async function upload(file:File){
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>8*1024*1024){alert('Choose JPG, PNG or WebP up to 8 MB.');return;}
+    setUploading(true);
+    try{
+      const {error}=await supabase.storage.from('asy-recruitment-examples').upload(path,file,{upsert:true,contentType:file.type,cacheControl:'60'});
+      if(error)throw error;
+      setVersion(Date.now());setAvailable(true);
+    }catch(error){alert(error instanceof Error?error.message:'Could not upload example.');}
+    finally{setUploading(false);}
+  }
+  return <div className="example-proof">
+    <strong>📷 {info?.title||'Screenshot example'}</strong>
+    {available?<a href={url} target="_blank" rel="noreferrer"><img src={url} alt={info?.title||'Reference screenshot'} loading="lazy" onError={()=>setAvailable(false)}/></a>:<p className="muted">Reference image will appear here once uploaded by recruitment staff.</p>}
+    <small>{info?.hint}</small>
+    {manage&&<label className="upload-control"><span>{uploading?'Uploading example…':'Upload / replace example image'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={e=>{const file=e.target.files?.[0];if(file)void upload(file);e.currentTarget.value='';}}/></label>}
+  </div>;
+}
+function ProofExamplesManager(){return <section className="panel proof-example-manager"><small className="kicker">RECRUITER TOOLS</small><h3>Screening reference images</h3><p>Upload the official example screenshots once. They will appear beside the applicant upload fields and in the Screening Guide.</p><div className="example-proof-grid">{EXAMPLE_PROOFS.map(item=><ExampleProof key={item.key} kind={item.key} manage/>)}</div></section>;}
 function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeSettings|null;onApply:()=>void;onTrack:()=>void}) {
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   return <section className="page screening-page">
@@ -1451,6 +1487,13 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
         <div className="guide-stage-foot">Do not create another application while waiting for review.</div>
       </article>
     </div>
+    <section className="panel guide-referral">
+      <small className="kicker">REFERRAL RECRUITMENT</small><h2>Referral applicant checklist</h2>
+      <p>Referral applicants must include the conversation with their referring member, CODM and TikTok ASY tag proofs, official TikTok follow proof, completed Referral Membership Form screenshot showing IGN, Discord nickname IGN ASY, and roster photo with Facebook name in the Discord caption.</p>
+      <p>After CODM verification, choose the remaining screenshot files and send them together through Track Application. Recruiters check the referral evidence before final confirmation.</p>
+      <a href="https://docs.google.com/forms/d/e/1FAIpQLSfMRLP7A9LiERdtPNS6juLH05it3m0buT-GGzeoM4cm0M57rQ/viewform?usp=header" target="_blank" rel="noreferrer">Open Referral Membership Form ↗</a>
+    </section>
+    <section className="panel guide-example-section"><small className="kicker">OFFICIAL SCREENSHOT REFERENCES</small><h2>What correct proofs look like</h2><div className="example-proof-grid">{EXAMPLE_PROOFS.map(item=><ExampleProof key={item.key} kind={item.key}/>)}</div></section>
     <section className="panel discord-howto">
       <div className="guide-section-heading"><small className="kicker">DISCORD NEXT STEP</small><h2>Invite sent after review</h2></div>
       <p className="muted">After your Step 1 CODM screenshot is approved, a recruiter will send your individual Discord invite through Private Application Chat so you can complete the remaining Discord and roster-photo proofs. Set your server nickname to <strong>IGN ASY</strong> and follow the role instructions in the server.</p>
