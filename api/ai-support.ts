@@ -15,23 +15,23 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   if(req.method !== 'POST'){res.setHeader('Allow','POST');return res.status(405).json({error:'Method not allowed'});}
   const env = (globalThis as typeof globalThis & {process?:{env?:Record<string,string|undefined>}}).process?.env;
   const key = env?.GEMINI_API_KEY;
-  if(!key) return res.status(503).json({error:'AI support is not configured'});
+  if(!key) return res.status(503).json({error:'Gemini API key is missing from this Vercel deployment. Check GEMINI_API_KEY in this project’s Environment Variables.'});
   const input = (req.body ?? {}) as {message?:unknown;history?:unknown};
   if(typeof input.message !== 'string' || !input.message.trim() || input.message.length > 500) return res.status(400).json({error:'Invalid question'});
   const history: Turn[] = Array.isArray(input.history) ? input.history.filter((x:unknown):x is Turn=> !!x && typeof x==='object' && ['user','assistant'].includes((x as Turn).role) && typeof (x as Turn).text==='string').slice(-8).map(x=>({role:x.role,text:x.text.slice(0,500)})) : [];
   const contents = [...history,{role:'user' as const,text:input.message.trim()}].map(x=>({role:x.role==='assistant'?'model':'user',parts:[{text:x.text}]}));
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(()=>controller.abort(),12000);
+    const timeout = setTimeout(()=>controller.abort(),20000);
     let response: Response;
     try {
-      response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',{
+      response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent',{
         method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
-        body:JSON.stringify({systemInstruction:{parts:[{text:GUIDE}]},contents,generationConfig:{temperature:0.35,maxOutputTokens:450}}),
+        body:JSON.stringify({systemInstruction:{parts:[{text:GUIDE}]},contents,generationConfig:{temperature:0.35,maxOutputTokens:1000,thinkingConfig:{thinkingBudget:0}}}),
         signal:controller.signal
       });
     } finally {clearTimeout(timeout);}
-    if(!response.ok){console.error('Gemini support upstream status',response.status);return res.status(502).json({error:'AI service is temporarily unavailable'});}
+    if(!response.ok){console.error('Gemini support upstream status',response.status);const reason=response.status===429?'Gemini API quota or rate limit reached.':response.status===401||response.status===403?'Gemini API key was rejected or lacks permission.':response.status===404?'Gemini model is unavailable for this key.':'Gemini service returned an error.';return res.status(502).json({error:reason});}
     const data = await response.json() as {candidates?:Array<{content?:{parts?:Array<{text?:string}>}}>} ;
     const answer = data.candidates?.[0]?.content?.parts?.map(x=>x.text||'').join('').trim();
     if(!answer) return res.status(502).json({error:'AI did not return a reply'});
