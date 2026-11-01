@@ -782,7 +782,7 @@ export default function App() {
               {communityMessages.length===0&&<p className="message-empty">No messages yet. Start the conversation respectfully.</p>}
               {communityMessages.map(message=><article className="public-chat-message" key={message.id}>
                 <div className="thread-message-meta"><strong>{message.display_name}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
-                <p>{message.body}</p>
+                <p>{renderApplicationMessage(message.body)}</p>
                 {!authorized&&<button type="button" className="moderate-message" onClick={()=>void reportCommunityMessage(message)}>Report message</button>}{authorized&&<><button type="button" className="moderate-message" onClick={()=>void reportCommunityMessage(message)}>Report message</button><button type="button" className="moderate-message" onClick={()=>void hideCommunityMessage(message)}>Hide message</button></>}
               </article>)}
             </div>
@@ -861,18 +861,18 @@ export default function App() {
             </article>;
           })}</div>
           {!['tag_proofs','membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)&&<p className="muted">Uploads will unlock here when an authorized recruiter approves your current step.</p>}
-          {['screening_gc_ready','complete'].includes(applicantProgress.application.workflow_step)&&<div className="panel success-note"><strong>Screening approved — Membership Form unlocked.</strong><p>Complete the official form now. This link is shown only after the final recruiter check.</p><a className="primary" href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer">Open Membership Form <ArrowRight size={15}/></a></div>}
+
         </section>}
         {tracked&&<section className="panel application-chat">
           <div className="application-chat-heading"><div><small className="kicker">PRIVATE APPLICATION CHAT</small><h2>Message the recruitment team</h2><p>Ask about your application or reply to recruiter messages here.</p></div><span className="private-badge"><ShieldCheck size={13}/> Private</span></div>
-          {tracked&&<div className="membership-form-chat-link"><strong>Discord access and role guide</strong><p>Join the official ASY Discord server, then follow these steps to get your role.</p><a className="primary" href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer">Join Official Discord <ArrowRight size={15}/></a><ol><li>Go to <strong>#get-role</strong> and click the 😇 Angel emoji.</li><li>Read the instructions carefully.</li><li>Click <strong>#NO ACCESS</strong> if it applies to you; otherwise proceed to <strong>#SELECT YOUR VERSION HERE</strong>.</li><li>Ask an admin to confirm your game version and wait for confirmation before proceeding.</li></ol><p><strong>Roster photo proof:</strong> Upload/post your roster photo in the official Discord as instructed by the team. Include both your Facebook name and your IGN in the caption, then submit a screenshot showing the posted photo and caption as your proof.</p></div>}
-          {tracked&&applicantProgress&&['screening_gc_ready','complete'].includes(applicantProgress.application.workflow_step)&&<div className="membership-form-chat-link"><strong>Your next step: Official Membership Form</strong><p>Your requirements have been approved. Open and complete the official form using the link below.</p><a className="primary" href="https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform" target="_blank" rel="noreferrer">Open Membership Form <ArrowRight size={15}/></a></div>}
+
+
           <p className="correction-help">Wrong screenshot or application detail? For screenshots, wait for a recruiter correction request and upload a replacement. For details, message the exact correction here. Do not submit a second application.</p>
           <div className="message-thread" aria-live="polite">
             {applicantMessages.length===0&&<p className="message-empty">No messages yet. Send a message if you need help with your application.</p>}
             {applicantMessages.map(message=><article key={message.id} className={'thread-message '+message.sender_role}>
               <div className="thread-message-meta"><strong>{message.sender_role==='recruiter'?'ASY Recruitment': 'You'}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
-              <p>{message.body}</p>
+              <p>{renderApplicationMessage(message.body)}</p>
             </article>)}
           </div>
           <form className="message-compose" onSubmit={sendApplicantMessage}>
@@ -982,6 +982,29 @@ export default function App() {
           <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'CASUAL'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
           {selected&&<div className="panel detail"><header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
             <div className="details">{[['Application type',selected.application_type==='referral'?'Referral':'Casual'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank],['Main role',selected.main_role],['Mode',selected.preferred_mode],['Availability',selected.availability],['Community / team experience',selected.clan_experience||'Not provided']].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
+            <details className="panel admin-edit-panel" key={selected.id}>
+              <summary>Correct submitted applicant details</summary>
+              <p className="muted">Use this when an applicant confirms a typo or incorrect entry. This updates the existing application; it does not create a new record or change eligibility review decisions.</p>
+              <form className="admin-edit-grid" onSubmit={saveApplicantDetails}>
+                <Field label="IGN"><input name="ign" defaultValue={selected.ign} required /></Field>
+                <Field label="CODM UID"><input name="codm_uid" defaultValue={selected.codm_uid} required /></Field>
+                <Field label="Contact email"><input name="contact_email" type="email" defaultValue={selected.contact_email} required /></Field>
+                <Field label="Discord username"><input name="discord_username" defaultValue={selected.discord_username||''} /></Field>
+                <Field label="Facebook profile link"><input name="applicant_facebook_url" type="url" defaultValue={selected.applicant_facebook_url||''} /></Field>
+                <Field label="TikTok profile link"><input name="applicant_tiktok_url" type="url" defaultValue={selected.applicant_tiktok_url||''} /></Field>
+                <Field label="Streamer Mode ID"><input name="streamer_mode_id" defaultValue={selected.streamer_mode_id||''} /></Field>
+                <Field label="Region"><input name="region" defaultValue={selected.region} required /></Field>
+                <Field label="Player level"><input name="level" type="number" min="1" max="500" defaultValue={selected.level??''} /></Field>
+                <Field label="Rank"><input name="rank" defaultValue={selected.rank} required /></Field>
+                <Field label="Main role"><input name="main_role" defaultValue={selected.main_role} required /></Field>
+                <Field label="Preferred mode"><input name="preferred_mode" defaultValue={selected.preferred_mode} required /></Field>
+                <Field label="Availability"><input name="availability" defaultValue={selected.availability} required /></Field>
+                <Field label="Community / team experience"><input name="clan_experience" defaultValue={selected.clan_experience||''} /></Field>
+                <Field label="Reason for joining"><textarea name="reason" rows={3} defaultValue={selected.reason} /></Field>
+                {selected.application_type==='referral'&&<><Field label="Referring member"><input name="referrer_name" defaultValue={selected.referrer_name||''} /></Field><Field label="Referrer Facebook link"><input name="referrer_facebook_url" type="url" defaultValue={selected.referrer_facebook_url||''} /></Field></>}
+                <div className="admin-edit-actions"><button type="submit" className="primary" disabled={busy}>{busy?'Saving…':'Save corrected details'} <CheckCircle2 size={15}/></button></div>
+              </form>
+            </details>
             <section className="panel admin-profile-links">
               <div><small className="kicker">PROFILE LINKS</small><h3>Applicant social profiles</h3></div>
               <div className="admin-profile-link-grid">
@@ -1027,11 +1050,16 @@ export default function App() {
             </section>
             <section className="panel application-chat admin-application-chat">
               <div className="application-chat-heading"><div><small className="kicker">APPLICANT CONVERSATION</small><h2>Chat with {selected.ign}</h2><p>Private messages for this application only.</p></div><span className="private-badge"><ShieldCheck size={13}/> Recruiter only</span></div>
+              {selectedEvidence.length>0&&selectedEvidence.every(item=>item.status==='approved')&&['final_review','screening_gc_ready','complete'].includes(selected.workflow_step)&&<div className="recruiter-quick-links">
+                <p><strong>All required screenshot proofs are approved.</strong> Send next-step links manually to this applicant.</p>
+                <button type="button" className="secondary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('Your screenshot requirements have been approved. Join the official ASY Discord using this invite: https://discord.gg/HbJ5Jvw8y8\n\nAfter joining, go to #get-role and click the 😇 Angel emoji. Follow the server instructions. Use IGN ASY as your server nickname. If you see #NO ACCESS, follow its instructions; otherwise go to #SELECT YOUR VERSION HERE. Please ask an admin to confirm your game version before proceeding.')}>Send Discord invite + guide <Send size={14}/></button>
+                {['screening_gc_ready','complete'].includes(selected.workflow_step)&&<button type="button" className="primary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('Your final recruitment check is complete. Please complete the official ASY Membership Form using this link: https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform\n\nUse your correct IGN in the form and message us here after submitting so the team can confirm it.')}>Send Membership Form link <Send size={14}/></button>}
+              </div>}
               <div className="message-thread" aria-live="polite">
                 {adminApplicationMessages.length===0&&<p className="message-empty">No messages from this applicant yet.</p>}
                 {adminApplicationMessages.map(message=><article key={message.id} className={'thread-message '+message.sender_role}>
                   <div className="thread-message-meta"><strong>{message.sender_role==='recruiter'?'ASY Recruitment':selected.ign}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
-                  <p>{message.body}</p>
+                  <p>{renderApplicationMessage(message.body)}</p>
                 </article>)}
               </div>
               <form className="message-compose" onSubmit={sendAdminApplicantMessage}>
