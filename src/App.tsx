@@ -1435,7 +1435,7 @@ function ProofExamplesManager(){return <section className="panel proof-example-m
 function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeSettings|null;onApply:()=>void;onTrack:()=>void}) {
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   return <section className="page screening-page">
-    <Heading kicker="ASY RECRUITMENT" title={<>YOUR <em>CHECKLIST.</em></>} desc="Three stages. Short checklist. Upload proofs in Track application."/>
+    <Heading kicker="ASY RECRUITMENT" title={<>YOUR <em>CHECKLIST.</em></>} desc="Separate guides for Casual and Referral Recruitment. Upload proofs in Track Application."/>
     <div className={'panel guide-intake '+(intakeFull?'closed':'open')}>
       <span className="intake-dot"/>
       <div>
@@ -1458,47 +1458,49 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
       </div>
     </section>
     <div className="guide-screening-heading">
-      <small className="kicker">SCREENING / 3 STEPS</small>
+      <small className="kicker">CASUAL RECRUITMENT / 3 STEPS</small>
       <h2>What to <em>submit.</em></h2>
-      <p>Apply first. Open Track application with your tracking code and the same email. Casual: upload CODM first, then submit remaining proofs after approval. Referral: select all required screenshots and submit together in one batch.</p>
+      <p>For Casual Recruitment, follow the three steps below. Referral applicants should use the separate Referral Recruitment guide that follows.</p>
     </div>
     <div className="guide-stage-grid">
       <article className="guide-stage">
-        <div className="guide-stage-top"><span>01</span><small>CASUAL + REFERRAL</small></div>
-        <h3>Main CODM account</h3>
-        <ul className="guide-list">
-          <li>Screenshot of your main CODM account showing ASY after your IGN</li>
-        </ul>
-        <div className="guide-stage-foot">Recruiter approval unlocks the remaining screenshot requirements and Discord invite.</div>
+        <div className="guide-stage-top"><span>01</span><small>CASUAL APPLICATION</small></div>
+        <h3>Submit CODM proof</h3>
+        <ul className="guide-list"><li>Upload your main CODM account screenshot with ASY after your IGN.</li></ul>
+        <div className="guide-stage-foot">Wait for recruiter approval before proceeding to the remaining casual requirements.</div>
       </article>
       <article className="guide-stage">
-        <div className="guide-stage-top"><span>02</span><small>CASUAL + REFERRAL</small></div>
-        <h3>Remaining screenshot requirements</h3>
+        <div className="guide-stage-top"><span>02</span><small>CASUAL APPLICATION</small></div>
+        <h3>Complete remaining proofs</h3>
         <ul className="guide-list">
-          <li>Screenshot of your TikTok account with ASY after your IGN</li>
-          <li>Screenshot showing you follow the official ASY Community TikTok</li>
-          <li>Screenshot showing your Discord nickname as <strong>IGN ASY</strong></li>
-          <li>Roster photo following the admin reference, with your Facebook name in the caption</li>
-          <li><strong>Referral only:</strong> screenshot of your conversation with the referring member</li><li><strong>Referral only:</strong> screenshot of the completed Referral Membership Form showing your IGN</li>
+          <li>TikTok account screenshot showing ASY after your IGN.</li>
+          <li>Proof that you follow the official ASYLUM Community TikTok.</li>
+          <li>Discord nickname screenshot showing <strong>IGN ASY</strong>.</li>
+          <li>Roster photo for the welcome banner. Include your Facebook name in the Discord caption.</li>
         </ul>
-        <div className="guide-stage-foot">Submit all remaining proofs together. Recruiters review each item.</div>
+        <div className="guide-stage-foot">Submit these screenshots together after CODM approval.</div>
       </article>
       <article className="guide-stage">
-        <div className="guide-stage-top"><span>03</span><small>CASUAL + REFERRAL</small></div>
-        <h3>Final recruiter check</h3>
+        <div className="guide-stage-top"><span>03</span><small>CASUAL APPLICATION</small></div>
+        <h3>Final review</h3>
         <ul className="guide-list">
-          <li>Recruiters review all required screenshots</li>
-          <li>The team completes the manual MGC double-check and contacts you when needed</li>
-          <li>Casual applicants receive their Membership Form privately after screenshot approval. Referral applicants use the Referral Membership Form linked below and submit its confirmation screenshot with the remaining proofs.</li>
+          <li>Recruiters check your screenshots.</li>
+          <li>Complete the Membership Form when the recruiter sends it.</li>
+          <li>Wait for the final screening and MGC confirmation.</li>
         </ul>
-        <div className="guide-stage-foot">Do not create another application while waiting for review.</div>
+        <div className="guide-stage-foot">Keep your tracking code. Do not submit a duplicate application while under review.</div>
       </article>
     </div>
     <section className="panel guide-referral">
-      <small className="kicker">REFERRAL RECRUITMENT</small><h2>Referral applicant checklist</h2>
-      <p>Referral applicants must include the conversation with their referring member, CODM and TikTok ASY tag proofs, official TikTok follow proof, completed Referral Membership Form screenshot showing IGN, Discord nickname IGN ASY, and roster photo with Facebook name in the Discord caption.</p>
-      <p>Choose all required screenshots and send them in one batch through Track Application. Recruiters will still review CODM and the other proofs separately. Recruiters check the referral evidence before final confirmation.</p>
-      <a href="https://docs.google.com/forms/d/e/1FAIpQLSfMRLP7A9LiERdtPNS6juLH05it3m0buT-GGzeoM4cm0M57rQ/viewform?usp=header" target="_blank" rel="noreferrer">Open Referral Membership Form ↗</a><p><a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer">Join official ASYLUM Discord ↗</a> — set your nickname to IGN ASY, then upload your roster photo to the welcome-banner channel with your Facebook name in the caption.</p>
+      <div className="guide-section-heading"><small className="kicker">REFERRAL RECRUITMENT • SEPARATE PROCESS</small><h2>Referral application — step by step</h2></div>
+      <p className="guide-referral-intro">If an existing ASYLUM Community member referred you, follow these steps instead of the casual screenshot sequence.</p>
+      <div className="referral-steps">
+        <article className="referral-step"><span className="referral-step-number">01</span><div><h3>Apply as a referral</h3><p>Select <strong>Referral Recruitment</strong> in Apply to Join. Complete the required application details, submit once, and save your tracking code.</p></div></article>
+        <article className="referral-step"><span className="referral-step-number">02</span><div><h3>Prepare your account screenshots</h3><p>Take screenshots of your <strong>CODM and TikTok accounts</strong> showing ASY after your IGN. Include proof that you follow the <strong>official ASYLUM Community TikTok</strong>.</p></div></article>
+        <article className="referral-step"><span className="referral-step-number">03</span><div><h3>Complete the referral proofs</h3><p>Screenshot your conversation with the member who referred you. Fill out the Referral Membership Form and capture the confirmation showing your IGN.</p><a href="https://docs.google.com/forms/d/e/1FAIpQLSfMRLP7A9LiERdtPNS6juLH05it3m0buT-GGzeoM4cm0M57rQ/viewform?usp=header" target="_blank" rel="noreferrer">Open Referral Membership Form ↗</a></div></article>
+        <article className="referral-step"><span className="referral-step-number">04</span><div><h3>Set up your Discord and roster photo</h3><p>Join the official Discord, set your server nickname to <strong>IGN ASY</strong>, and take a screenshot. Upload your roster photo to <strong>#PICS-FOR-WELCOME-BANNER</strong> with your Facebook name in the caption.</p><a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer">Join official ASYLUM Discord ↗</a></div></article>
+        <article className="referral-step"><span className="referral-step-number">05</span><div><h3>Submit proofs together and wait for review</h3><p>Open <strong>Track Application</strong> using your tracking code and email. Upload all required screenshots in <strong>one batch</strong>. Recruiters will check your proofs and update your application status.</p></div></article>
+      </div>
     </section>
     <section className="panel guide-example-section"><small className="kicker">OFFICIAL SCREENSHOT REFERENCES</small><h2>What correct proofs look like</h2><div className="example-proof-grid">{EXAMPLE_PROOFS.map(item=><ExampleProof key={item.key} kind={item.key}/>)}</div></section>
     <section className="panel discord-howto">
