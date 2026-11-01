@@ -845,7 +845,9 @@ export default function App() {
       const { error } = await supabase.from('asy_clan_applications').insert(payload);
       if (error) {
         const message = error.message.toLowerCase();
-        if (message.includes('codm uid') && message.includes('19')) {
+        if (error.code === '23505' && (message.includes('one_active_recruitment_application_per_email') || message.includes('already have an application'))) {
+          notify('This email already has an application. Please track your existing application or contact the recruiter for corrections. You may apply again only after rejection.', true);
+        } else if (message.includes('codm uid') && message.includes('19')) {
           notify('CODM UID must contain exactly 19 digits.', true);
         } else if (message.includes('temporarily closed')) {
           notify('Recruitment is temporarily closed. Please check back later.', true);
