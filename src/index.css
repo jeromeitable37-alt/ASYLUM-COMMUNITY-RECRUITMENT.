@@ -552,3 +552,82 @@
   .account-auth-panel .form>.secondary{width:100%}
   .password-reset-panel{padding:18px}
 }
+
+
+/* 2026-11 interface spacing and responsive layout polish.
+   Presentation-only rules: application flows and database logic remain unchanged. */
+:root{--asy-space-1:6px;--asy-space-2:10px;--asy-space-3:16px;--asy-space-4:24px;--asy-space-5:32px}
+.shell{min-width:0}
+.shell main,.shell section,.shell article,.shell aside,.shell form,.shell .panel{min-width:0}
+.shell h1,.shell h2,.shell h3,.shell h4{overflow-wrap:break-word;text-wrap:balance}
+.shell p,.shell li,.shell small,.shell label{overflow-wrap:break-word}
+.shell p{line-height:1.7}
+.shell button,.shell a{max-width:100%}
+.shell button{white-space:normal;line-height:1.4;text-align:center}
+.shell button svg{flex-shrink:0}
+.page{width:100%;padding-block:clamp(32px,4.5vw,60px) clamp(64px,7vw,88px)}
+.heading{max-width:820px;margin-bottom:clamp(24px,3vw,36px)}
+.heading h1{line-height:1.07;letter-spacing:-.025em;margin:12px 0 16px}
+.heading p{max-width:680px;line-height:1.75}
+.panel{min-width:0}
+.section-title{gap:14px;margin-bottom:22px;padding-bottom:16px}
+.section-title strong{line-height:1.4}
+.section-title small{line-height:1.6}
+.form{min-width:0}
+.form-grid{gap:0 clamp(14px,2vw,22px);align-items:start}
+.field{gap:9px;margin-bottom:19px}
+.field>span{line-height:1.5}
+.field input,.field select,.field textarea{line-height:1.45;min-height:46px}
+.field textarea{min-height:110px}
+.actions,.action-row{gap:12px}
+.action-row{margin-block:20px 28px}
+.action-row>button{flex:1 1 170px;min-height:46px;padding:11px 15px}
+.admin-head{gap:20px;flex-wrap:wrap;align-items:flex-start}
+.admin-head h1{font-size:clamp(34px,4.5vw,55px);line-height:1.08;letter-spacing:-.025em}
+.admin-head p{line-height:1.7}
+.stats{gap:14px}
+.stat{min-width:0;gap:12px;padding:16px}
+.stat b,.stat small{overflow-wrap:anywhere}
+.tools{flex-wrap:wrap;gap:12px}
+.tools .search{flex:1 1 230px}
+.tools select{max-width:100%}
+.app-row{min-width:0;gap:14px;padding:15px 16px;line-height:1.55}
+.admin-edit-panel{padding:clamp(16px,2vw,22px)}
+.admin-edit-grid{gap:16px}
+.admin-edit-grid .field{margin-bottom:0}
+.recruiter-quick-links{gap:10px}
+.account-page .heading{margin-bottom:26px}
+.account-auth-panel{padding:clamp(20px,3vw,32px)}
+.account-auth-panel .form{display:flex;flex-direction:column;align-items:stretch;gap:0}
+.account-auth-panel .form>.field{margin-bottom:18px}
+.account-auth-panel .form>.primary{width:100%;min-height:46px;margin:4px 0 0}
+.account-auth-panel .form>.account-forgot-password{display:inline-flex;align-self:flex-start;justify-content:flex-start;width:auto;margin:12px 0 16px;padding:5px 0;border:0;background:transparent;box-shadow:none;color:#ff808d}
+.account-auth-panel .form>.secondary{width:100%;min-height:44px;margin:0}
+.login .recruiter-forgot-password{display:inline-flex;justify-content:flex-start;width:auto;margin:14px 0 8px;padding:5px 0;border:0;background:transparent;color:#ff808d}
+.password-reset-panel{width:100%}
+.password-reset-panel .form{display:flex;flex-direction:column;gap:4px}
+.password-reset-panel .text-link{margin-top:18px}
+@media(max-width:1000px){
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .admin-head{align-items:flex-start}
+}
+@media(max-width:700px){
+  .page{padding-inline:18px}
+  .heading h1{font-size:clamp(38px,10vw,56px)}
+  .form-grid,.admin-edit-grid{grid-template-columns:1fr}
+  .admin-edit-actions{grid-column:1}
+  .action-row>button{flex:1 1 100%;width:100%}
+  .tools select,.tools>.secondary{flex:1 1 160px}
+  .account-page .login{max-width:100%}
+  .account-auth-panel{padding:20px}
+  .login-wrap{grid-template-columns:1fr;gap:24px}
+}
+@media(max-width:420px){
+  .page{padding-inline:14px}
+  .heading h1{font-size:38px}
+  .stats{grid-template-columns:1fr}
+  .admin-head .actions{width:100%}
+  .admin-head .actions>*{flex:1 1 100%}
+  .tools>*{flex:1 1 100%}
+  .section-title{align-items:flex-start}
+}
