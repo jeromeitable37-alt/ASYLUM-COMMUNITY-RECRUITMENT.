@@ -1500,7 +1500,13 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
       <p>Choose all required screenshots and send them in one batch through Track Application. Recruiters will still review CODM and the other proofs separately. Recruiters check the referral evidence before final confirmation.</p>
       <a href="https://docs.google.com/forms/d/e/1FAIpQLSfMRLP7A9LiERdtPNS6juLH05it3m0buT-GGzeoM4cm0M57rQ/viewform?usp=header" target="_blank" rel="noreferrer">Open Referral Membership Form ↗</a><p><a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer">Join official ASYLUM Discord ↗</a> — set your nickname to IGN ASY, then upload your roster photo to the welcome-banner channel with your Facebook name in the caption.</p>
     </section>
-    <section className="panel guide-example-section"><small className="kicker">OFFICIAL SCREENSHOT REFERENCES</small><h2>What correct proofs look like</h2><div className="example-proof-grid">{EXAMPLE_PROOFS.map(item=><ExampleProof key={item.key} kind={item.key}/>)}</div></section>
+    <section className="panel guide-example-section"><small className="kicker">OFFICIAL SCREENSHOT REFERENCES</small><h2>What correct proofs look like</h2><div className="screening-example-grid">
+      <div className="screening-tag-example-group">
+        <div className="screening-tag-example-heading"><strong>CODM &amp; TikTok — ASY Tag Placement</strong><p>Same rule for both: put ASY after your IGN. These are two separate screenshots, but shown together here for easier comparison.</p></div>
+        <div className="screening-tag-example-pair"><ExampleProof kind="codm"/><ExampleProof kind="tiktok"/></div>
+      </div>
+      {EXAMPLE_PROOFS.filter(item=>item.key!=='codm'&&item.key!=='tiktok').map(item=><ExampleProof key={item.key} kind={item.key}/>)}
+    </div></section>
     <section className="panel discord-howto">
       <div className="guide-section-heading"><small className="kicker">DISCORD NEXT STEP</small><h2>Invite sent after review</h2></div>
       <p className="muted">Casual applicants receive their Discord invite after Step 1 approval. Referral applicants can use the official Discord invite in the Referral checklist above to prepare their proofs together. Set your server nickname to <strong>IGN ASY</strong> and follow the role instructions in the server.</p>
