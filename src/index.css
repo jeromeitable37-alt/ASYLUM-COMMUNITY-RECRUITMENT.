@@ -534,3 +534,21 @@
 .reset-email-icon{width:48px;height:48px;border:1px solid #62313a;border-radius:50%;display:grid;place-items:center;background:#281419;color:#f15b68}
 .account-forgot-password,.recruiter-forgot-password{display:inline-flex;align-items:center;gap:7px;align-self:flex-start;margin:2px 0 10px;padding:5px 0;color:#f07882;font-size:11px;font-weight:700;text-decoration:none}
 .account-forgot-password:hover,.recruiter-forgot-password:hover{color:#fff;text-decoration:underline}
+
+
+/* Login form action layout: keep sign-in, password recovery and sign-up separate */
+.account-auth-panel{padding:clamp(18px,3vw,30px)}
+.account-auth-panel .form{display:grid;grid-template-columns:minmax(0,1fr);gap:0;align-items:stretch}
+.account-auth-panel .form>.field{width:100%;margin-bottom:16px}
+.account-auth-panel .form>.primary,
+.account-auth-panel .form>.secondary{display:flex;width:100%;min-height:46px;margin:0;white-space:normal}
+.account-auth-panel .form>.account-forgot-password{display:flex;justify-self:start;width:max-content;max-width:100%;margin:0 0 10px;padding:8px 0;text-align:left}
+.account-auth-panel .section-heading{margin-bottom:8px}
+.login .recruiter-forgot-password{display:flex;width:max-content;max-width:100%;margin:12px 0 2px;padding:6px 0;text-align:left}
+.login>.muted:last-child{margin-top:12px}
+.password-reset-panel .text-link{width:max-content;max-width:100%;text-align:left}
+@media(max-width:600px){
+  .account-auth-panel .form>.primary,
+  .account-auth-panel .form>.secondary{width:100%}
+  .password-reset-panel{padding:18px}
+}
