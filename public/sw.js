@@ -1,4 +1,4 @@
-const CACHE_NAME = "asy-recruitment-pwa-v1";
+const CACHE_NAME = "asy-recruitment-pwa-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -39,7 +39,7 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith((async () => {
       try {
-        const response = await fetch(request);
+        const response = await fetch(request, { cache: "no-store" });
         if (response.ok) {
           const cache = await caches.open(CACHE_NAME);
           await cache.put("/", response.clone());
@@ -52,18 +52,21 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache only versioned frontend assets, never private or user-specific responses.
+  // Prefer the latest deployed frontend asset; use cached assets only when offline.
   if (url.pathname.startsWith("/assets/")) {
     event.respondWith((async () => {
-      const cached = await caches.match(request);
-      if (cached) return cached;
-
-      const response = await fetch(request);
-      if (response.ok) {
-        const cache = await caches.open(CACHE_NAME);
-        await cache.put(request, response.clone());
+      try {
+        const response = await fetch(request, { cache: "no-store" });
+        if (response.ok) {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(request, response.clone());
+        }
+        return response;
+      } catch {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+        throw new Error("Frontend asset unavailable while offline.");
       }
-      return response;
     })());
   }
 });
