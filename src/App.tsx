@@ -448,7 +448,8 @@ export default function App() {
 
   async function uploadRemainingRequirementsTogether(){
     if(applicantBulkUploading||!applicantProgress)return;
-    const outstanding=applicantProgress.evidence.filter(item=>item.stage_number===2&&(item.status==='not_submitted'||item.status==='needs_correction'));
+    const referralBatch=applicantProgress.application.application_type==='referral'&&applicantProgress.application.workflow_step==='tag_proofs';
+    const outstanding=applicantProgress.evidence.filter(item=>(referralBatch||item.stage_number===2)&&(['not_submitted','needs_correction'].includes(item.status)||(referralBatch&&item.status==='locked')));
     if(!outstanding.length){notify('There are no remaining screenshots waiting for upload.',true);return;}
     const missing=outstanding.filter(item=>!applicantEvidenceFiles[item.requirement_key]);
     if(missing.length){
@@ -1089,22 +1090,23 @@ export default function App() {
           {evidenceServiceConfigured===false&&<div className="notice bad">Private upload service is not configured yet. Your application is saved; contact management while the upload service is configured.</div>}
           <div className="applicant-evidence-list">{applicantProgress.evidence.map(item=>{
             const currentStage=({tag_proofs:1,membership_proofs:2,discord_roster:2} as Record<string,number>)[applicantProgress.application.workflow_step]||0;
-            const canUpload=currentStage===item.stage_number&&(item.status==='not_submitted'||item.status==='needs_correction');
+            const referralBatch=applicantProgress.application.application_type==='referral'&&applicantProgress.application.workflow_step==='tag_proofs';
+            const canUpload=(currentStage===item.stage_number||referralBatch)&&(['not_submitted','needs_correction'].includes(item.status)||(referralBatch&&item.status==='locked'));
             const statusLabel=({locked:'Locked',not_submitted:'Awaiting upload',pending:'Pending recruiter review',approved:'Approved',needs_correction:'Needs correction'} as Record<string,string>)[item.status]||item.status;
             return <article className={'applicant-evidence-item '+item.status} key={item.requirement_key}>
               <div className="applicant-evidence-copy"><strong>{item.requirement_label}</strong><span className={'evidence-status '+item.status}>{statusLabel}</span>{item.file_name&&<small>Uploaded file: {item.file_name}</small>}{item.submitted_at&&<small>Submitted: {new Date(item.submitted_at).toLocaleString()}</small>}{item.reviewed_at&&<small>Reviewed: {new Date(item.reviewed_at).toLocaleString()}</small>}{item.reviewer_notes&&item.status==='needs_correction'&&<p className="correction-note">Recruiter feedback: {item.reviewer_notes}</p>}</div>
               {(item.requirement_key==='codm_tag_screenshot'||item.requirement_key==='tiktok_tag_screenshot'||item.requirement_key==='tiktok_follow_screenshot'||item.requirement_key==='membership_form_screenshot'||item.requirement_key==='roster_photo')&&<ExampleProof kind={({codm_tag_screenshot:'codm',tiktok_tag_screenshot:'tiktok',tiktok_follow_screenshot:'following',membership_form_screenshot:'form',roster_photo:'roster'} as Record<string,string>)[item.requirement_key]}/>}
               {canUpload&&<><Field label="Optional note for recruiter"><textarea rows={2} maxLength={500} value={applicantEvidenceNotes[item.requirement_key]??item.applicant_note??''} onChange={e=>setApplicantEvidenceNotes(old=>({...old,[item.requirement_key]:e.target.value}))} placeholder="Add context for this proof, if needed…"/></Field>
-                {item.stage_number===1&&<label className="upload-control"><span>{evidenceUploadKey===item.requirement_key?'Uploading…':item.status==='needs_correction'?'Upload replacement CODM screenshot':'Choose CODM screenshot'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey||applicantBulkUploading} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadRequirement(item.requirement_key,file);e.currentTarget.value='';}}/></label>}
-                {item.stage_number===2&&<label className="upload-control"><span>{applicantEvidenceFiles[item.requirement_key]?.name||(item.status==='needs_correction'?'Choose replacement file':'Choose file for batch')}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey||applicantBulkUploading} onChange={e=>{const file=e.target.files?.[0];if(file){setApplicantEvidenceFiles(old=>({...old,[item.requirement_key]:file}));}e.currentTarget.value='';}}/></label>}
+                {item.stage_number===1&&!referralBatch&&<label className="upload-control"><span>{evidenceUploadKey===item.requirement_key?'Uploading…':item.status==='needs_correction'?'Upload replacement CODM screenshot':'Choose CODM screenshot'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey||applicantBulkUploading} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadRequirement(item.requirement_key,file);e.currentTarget.value='';}}/></label>}
+                {(item.stage_number===2||referralBatch)&&<label className="upload-control"><span>{applicantEvidenceFiles[item.requirement_key]?.name||(item.status==='needs_correction'?'Choose replacement file':'Choose file for batch')}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey||applicantBulkUploading} onChange={e=>{const file=e.target.files?.[0];if(file){setApplicantEvidenceFiles(old=>({...old,[item.requirement_key]:file}));}e.currentTarget.value='';}}/></label>}
               </>}
             </article>;
           })}</div>
-          {['membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)&&applicantProgress.evidence.some(item=>item.stage_number===2&&(item.status==='not_submitted'||item.status==='needs_correction'))&&<div className="bulk-evidence-submit">
+          {(['membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)||(applicantProgress.application.application_type==='referral'&&applicantProgress.application.workflow_step==='tag_proofs'))&&applicantProgress.evidence.some(item=>(item.stage_number===2||applicantProgress.application.application_type==='referral')&&(['not_submitted','needs_correction'].includes(item.status)||(applicantProgress.application.application_type==='referral'&&item.status==='locked')))&&<div className="bulk-evidence-submit">
             <p><strong>Step 2 · Submit remaining screenshots together</strong></p>
-            <p className="muted">Choose a file for every outstanding requirement above. Referral applicants will also see the referral-conversation screenshot here. When all files are selected, press one button to submit the whole set together.</p>
-            <small>{applicantProgress.evidence.filter(item=>item.stage_number===2&&(item.status==='not_submitted'||item.status==='needs_correction')&&applicantEvidenceFiles[item.requirement_key]).length} of {applicantProgress.evidence.filter(item=>item.stage_number===2&&(item.status==='not_submitted'||item.status==='needs_correction')).length} required files selected</small>
-            <button type="button" className="primary" disabled={applicantBulkUploading||!!evidenceUploadKey} onClick={()=>void uploadRemainingRequirementsTogether()}>{applicantBulkUploading?'Submitting screenshots…':'Submit all remaining screenshots together'} <ArrowRight size={15}/></button>
+            <p className="muted">Choose a file for each outstanding requirement. Referral applicants can submit CODM, TikTok, referral conversation, Membership Form, Discord nickname and roster-photo proofs together in one batch. Casual applicants submit CODM first.</p>
+            <small>{applicantProgress.evidence.filter(item=>(item.stage_number===2||(applicantProgress.application.application_type==='referral'&&applicantProgress.application.workflow_step==='tag_proofs'))&&(['not_submitted','needs_correction'].includes(item.status)||(applicantProgress.application.application_type==='referral'&&item.status==='locked'))&&applicantEvidenceFiles[item.requirement_key]).length} of {applicantProgress.evidence.filter(item=>(item.stage_number===2||(applicantProgress.application.application_type==='referral'&&applicantProgress.application.workflow_step==='tag_proofs'))&&(['not_submitted','needs_correction'].includes(item.status)||(applicantProgress.application.application_type==='referral'&&item.status==='locked'))).length} required files selected</small>
+            <button type="button" className="primary" disabled={applicantBulkUploading||!!evidenceUploadKey} onClick={()=>void uploadRemainingRequirementsTogether()}>{applicantBulkUploading?'Submitting screenshots…':'Submit screenshots together'} <ArrowRight size={15}/></button>
           </div>}
           {!['tag_proofs','membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)&&<p className="muted">Uploads will unlock here when an authorized recruiter approves your current step.</p>}
 
@@ -1453,7 +1455,7 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
     <div className="guide-screening-heading">
       <small className="kicker">SCREENING / 3 STEPS</small>
       <h2>What to <em>submit.</em></h2>
-      <p>Apply first. Open Track application with your tracking code and the same email. Upload the CODM screenshot first; after approval, select and submit all remaining screenshots together.</p>
+      <p>Apply first. Open Track application with your tracking code and the same email. Casual: upload CODM first, then submit remaining proofs after approval. Referral: select all required screenshots and submit together in one batch.</p>
     </div>
     <div className="guide-stage-grid">
       <article className="guide-stage">
@@ -1490,7 +1492,7 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
     <section className="panel guide-referral">
       <small className="kicker">REFERRAL RECRUITMENT</small><h2>Referral applicant checklist</h2>
       <p>Referral applicants must include the conversation with their referring member, CODM and TikTok ASY tag proofs, official TikTok follow proof, completed Referral Membership Form screenshot showing IGN, Discord nickname IGN ASY, and roster photo with Facebook name in the Discord caption.</p>
-      <p>After CODM verification, choose the remaining screenshot files and send them together through Track Application. Recruiters check the referral evidence before final confirmation.</p>
+      <p>Choose all required screenshots and send them in one batch through Track Application. Recruiters will still review CODM and the other proofs separately. Recruiters check the referral evidence before final confirmation.</p>
       <a href="https://docs.google.com/forms/d/e/1FAIpQLSfMRLP7A9LiERdtPNS6juLH05it3m0buT-GGzeoM4cm0M57rQ/viewform?usp=header" target="_blank" rel="noreferrer">Open Referral Membership Form ↗</a>
     </section>
     <section className="panel guide-example-section"><small className="kicker">OFFICIAL SCREENSHOT REFERENCES</small><h2>What correct proofs look like</h2><div className="example-proof-grid">{EXAMPLE_PROOFS.map(item=><ExampleProof key={item.key} kind={item.key}/>)}</div></section>
