@@ -1078,6 +1078,7 @@ export default function App() {
         {tracked&&<div className="panel tracked"><small>APPLICATION FOUND</small><span className={'pill '+tracked.status}>{labels[tracked.status]||tracked.status}</span><h2>{tracked.ign}</h2><div className="tracked-reference"><p className="muted">Tracking code: <strong>{tracked.application_code}</strong></p><button className="saved-clear" type="button" onClick={()=>void copyApplicationCode(tracked.application_code)}><Copy size={14}/> Copy code</button></div><div className="timeline">{['pending','reviewing','interview','tryout','accepted'].map((stage,index)=><div className={'step '+(statuses.indexOf(tracked.status)>=statuses.indexOf(stage)&&tracked.status!=='rejected'?'done':'')} key={stage}><b>{index+1}</b><div><strong>{labels[stage]}</strong><small>{['Application received','Recruiter review','Interview stage','Tryout stage','Welcome to the roster'][index]}</small></div></div>)}</div><p className="muted">Submitted {new Date(tracked.submitted_at).toLocaleString()}</p></div>}
         {applicantProgress&&<section className="panel applicant-progress">
           <div className="applicant-progress-head"><small className="kicker">SCREENING PROGRESS / {applicantProgress.application.application_type.toUpperCase()}</small><h2>{({eligibility_review:'Step 0 · Recruiter eligibility review',tag_proofs:'Step 1 · CODM screenshot approval',membership_proofs:'Step 2 · Upload remaining requirements together',discord_roster:'Step 2 · Upload remaining requirements together',final_review:'Final recruiter double-check',screening_gc_ready:'Requirements approved · Membership Form unlocked',complete:'Recruitment completed'} as Record<string,string>)[applicantProgress.application.workflow_step]||'Application in review'}</h2><p>Your next step unlocks after the recruiter approves all required items in the current step. Keep your tracking code and application email private.</p></div>
+          {applicantProgress.application.workflow_step==='eligibility_review'&&<div className="notice applicant-upload-help"><strong>Screening upload is waiting for recruiter eligibility approval.</strong><p>Your screenshot fields unlock when a recruiter moves your application to Step 1. Sending a picture in Private Application Chat does not count as submitting an official screening proof. Please wait for the recruiter to open Step 1.</p></div>}
           {evidenceServiceConfigured===false&&<div className="notice bad">Private upload service is not configured yet. Your application is saved; contact management while the upload service is configured.</div>}
           <div className="applicant-evidence-list">{applicantProgress.evidence.map(item=>{
             const currentStage=({tag_proofs:1,membership_proofs:2,discord_roster:2} as Record<string,number>)[applicantProgress.application.workflow_step]||0;
@@ -1111,7 +1112,8 @@ export default function App() {
             {applicantMessages.length===0&&<p className="message-empty">No messages yet. Send a message if you need help with your application.</p>}
             {applicantMessages.map(message=><article key={message.id} className={'thread-message '+message.sender_role}>
               <div className="thread-message-meta"><strong>{message.sender_role==='recruiter'?'ASY Recruitment': 'You'}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
-              <p>{renderApplicationMessage(message.body)}</p>
+              {message.body&&<p>{renderApplicationMessage(message.body)}</p>}
+              {renderChatAttachment(message)}
             </article>)}
           </div>
           <form className="message-compose" onSubmit={sendApplicantMessage}>
@@ -1343,7 +1345,8 @@ export default function App() {
                 {adminApplicationMessages.length===0&&<p className="message-empty">No messages from this applicant yet.</p>}
                 {adminApplicationMessages.map(message=><article key={message.id} className={'thread-message '+message.sender_role}>
                   <div className="thread-message-meta"><strong>{message.sender_role==='recruiter'?'ASY Recruitment':selected.ign}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
-                  <p>{renderApplicationMessage(message.body)}</p>
+                  {message.body&&<p>{renderApplicationMessage(message.body)}</p>}
+                  {renderChatAttachment(message)}
                 </article>)}
               </div>
               <form className="message-compose" onSubmit={sendAdminApplicantMessage}>
