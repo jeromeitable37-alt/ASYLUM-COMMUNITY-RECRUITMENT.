@@ -72,6 +72,8 @@ export default function App() {
   const [avatarUploading,setAvatarUploading]=useState(false);
   const [adminAccessRequests,setAdminAccessRequests]=useState<AdminAccessRequest[]>([]);
   const [memberReviewProfiles,setMemberReviewProfiles]=useState<MemberReviewProfile[]>([]);
+  const [expandedManagedUser,setExpandedManagedUser]=useState<string|null>(null);
+  const [userManagementQuery,setUserManagementQuery]=useState('');
   const [memberReviewNotes,setMemberReviewNotes]=useState<Record<string,string>>({});
   const [applications,setApplications]=useState<Application[]>([]);
   const [roster,setRoster]=useState<Roster[]>([]);
@@ -1133,7 +1135,36 @@ export default function App() {
           </section>
           <section className="panel announcement-admin">
             <div className="announcement-admin-heading"><div><small className="kicker">USER MANAGEMENT</small><h2>Manage user accounts</h2><p>Account status and role management are separate. Owner, Admin, and Management can change staff roles; only the Owner can permanently delete users.</p></div><button type="button" className="secondary compact-button" onClick={()=>void loadMemberAccountReviews()}>Refresh</button></div>
-            {memberReviewProfiles.length===0?<p className="message-empty">No user accounts found.</p>:memberReviewProfiles.map(profile=><article className="announcement-card" key={'user-'+profile.user_id}><div className="announcement-card-meta">{profile.photo_url?<img className="account-avatar small" src={profile.photo_url} alt="User avatar"/>:null}<strong>{profile.display_name||'Unnamed user'}</strong><span className={'pill '+(profile.is_disabled?'rejected':profile.role?'approved':'pending')}>{profile.is_disabled?'Disabled':profile.role||profile.approval_status}</span></div><p>{profile.email||'Email unavailable'}</p><p>IGN: {profile.ign||'Not completed'} · CODM UID: {profile.codm_uid||'Not completed'}</p><div className="actions"><span className="muted">Account status</span><button type="button" className="secondary" disabled={accountBusy} onClick={()=>void manageMemberUser(profile,profile.is_disabled?'enable':'disable')}>{profile.is_disabled?'Enable account':'Disable account'}</button></div>{['owner','admin','management'].includes((staffRole||'').toLowerCase())&&<div className="actions user-role-actions"><span className="muted">Role management</span><button type="button" className="secondary" disabled={accountBusy||profile.role==='owner'} onClick={()=>void manageMemberUser(profile,profile.role?'member':'admin')}>{profile.role?'Remove staff role':'Make Admin'}</button>{staffRole==='owner'&&<button type="button" className="secondary" disabled={accountBusy||profile.role==='owner'} onClick={()=>void manageMemberUser(profile,'delete')}>Delete user</button>}</div>}</article>)}
+            <div className="user-management-toolbar">
+              <label className="user-management-search"><Search size={16}/><input aria-label="Search user accounts" type="search" placeholder="Search name, email, IGN or CODM UID…" value={userManagementQuery} onChange={event=>setUserManagementQuery(event.target.value)}/></label>
+              <span className="muted">{memberReviewProfiles.filter(profile=>[profile.display_name,profile.email,profile.ign,profile.codm_uid,profile.role].some(value=>String(value||'').toLowerCase().includes(userManagementQuery.trim().toLowerCase()))).length} users</span>
+            </div>
+            <div className="user-management-list">
+              {memberReviewProfiles.length===0?<p className="message-empty">No user accounts found.</p>:memberReviewProfiles.filter(profile=>[profile.display_name,profile.email,profile.ign,profile.codm_uid,profile.role].some(value=>String(value||'').toLowerCase().includes(userManagementQuery.trim().toLowerCase()))).length===0?<p className="message-empty">No users match your search.</p>:memberReviewProfiles.filter(profile=>[profile.display_name,profile.email,profile.ign,profile.codm_uid,profile.role].some(value=>String(value||'').toLowerCase().includes(userManagementQuery.trim().toLowerCase()))).map(profile=>{
+                const expanded=expandedManagedUser===profile.user_id;
+                return <article className={'user-management-item'+(expanded?' expanded':'')} key={'user-'+profile.user_id}>
+                  <div className="user-management-row">
+                    <button type="button" className="user-management-person" aria-expanded={expanded} aria-controls={'managed-user-'+profile.user_id} onClick={()=>setExpandedManagedUser(expanded?null:profile.user_id)}>
+                      {profile.photo_url?<img className="user-management-avatar" src={profile.photo_url} alt=""/>:<span className="user-management-avatar user-management-placeholder">{(profile.display_name||profile.email||'?').charAt(0).toUpperCase()}</span>}
+                      <span className="user-management-identity"><strong>{profile.display_name||'Unnamed user'}</strong><small>{profile.email||'Email unavailable'}</small></span>
+                    </button>
+                    <div className="user-management-badges"><span className={'pill '+(profile.is_disabled?'rejected':profile.role?'approved':'pending')}>{profile.is_disabled?'Disabled':profile.role||'Member'}</span>{!profile.is_disabled&&<span className="user-management-active">Active</span>}</div>
+                    <div className="user-management-controls">
+                      {['owner','admin','management'].includes((staffRole||'').toLowerCase())&&<button type="button" className="secondary compact-button" disabled={accountBusy||profile.role==='owner'} onClick={()=>void manageMemberUser(profile,profile.role?'member':'admin')}>{profile.role?'Remove role':'Make Admin'}</button>}
+                      <button type="button" className="secondary compact-button" disabled={accountBusy} onClick={()=>void manageMemberUser(profile,profile.is_disabled?'enable':'disable')}>{profile.is_disabled?'Activate':'Deactivate'}</button>
+                      <button type="button" className="secondary compact-button user-management-expand" aria-label={expanded?'Collapse user details':'Expand user details'} aria-expanded={expanded} onClick={()=>setExpandedManagedUser(expanded?null:profile.user_id)}>{expanded?'Close':'Details'} <ArrowRight size={14}/></button>
+                    </div>
+                  </div>
+                  {expanded&&<div className="user-management-details" id={'managed-user-'+profile.user_id}>
+                    <div><small>In-game name</small><strong>{profile.ign||'Not completed'}</strong></div>
+                    <div><small>CODM UID</small><strong>{profile.codm_uid||'Not completed'}</strong></div>
+                    <div><small>Member approval</small><strong>{profile.approval_status||'Unknown'}</strong></div>
+                    <div><small>Staff role</small><strong>{profile.role||'Member'}</strong></div>
+                    {staffRole==='owner'&&profile.role!=='owner'&&<div className="user-management-danger"><button type="button" className="danger compact-button" disabled={accountBusy} onClick={()=>void manageMemberUser(profile,'delete')}>Delete user permanently</button></div>}
+                  </div>}
+                </article>;
+              })}
+            </div>
           </section>
           <section className="panel announcement-admin">
             <div className="announcement-admin-heading"><div><small className="kicker">COMMUNITY UPDATES</small><h2>Announcements</h2><p>Publish updates that appear on the public Community page.</p></div><span className="private-badge"><ShieldCheck size={13}/> Recruiter managed</span></div>
