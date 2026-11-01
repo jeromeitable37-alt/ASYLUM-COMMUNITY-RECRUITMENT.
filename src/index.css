@@ -827,3 +827,16 @@
  .screening-page .guide-example-section .example-proof{padding:15px}
  .screening-page .guide-list{gap:8px}
 }
+
+/* Private application chat: attached screenshots and videos */
+.message-thread .thread-message{max-width:min(88%,680px);min-width:0;overflow-wrap:anywhere}
+.message-thread .thread-message .chat-media{display:flex;flex-direction:column;gap:8px;margin-top:10px;max-width:100%;min-width:0}
+.message-thread .thread-message .chat-media a{display:block;max-width:100%;overflow:hidden;border-radius:10px}
+.message-thread .thread-message .chat-media img{display:block;max-width:100%;width:auto;height:auto;max-height:340px;object-fit:contain;border-radius:10px}
+.message-thread .thread-message .chat-media video{display:block;width:min(100%,460px);max-height:360px;border-radius:10px}
+.message-thread .thread-message .chat-media small{font-size:11px;line-height:1.5;overflow-wrap:anywhere;opacity:.8}
+.message-thread .thread-message:has(.chat-media){min-width:min(280px,85%)}
+.applicant-upload-help{margin:16px 0;padding:16px 18px;line-height:1.6}
+.applicant-upload-help strong{display:block;margin-bottom:6px}
+.applicant-upload-help p{margin:0;font-size:13px;line-height:1.7}
+@media(max-width:600px){.message-thread .thread-message{max-width:96%}.message-thread .thread-message:has(.chat-media){min-width:min(240px,95%)}.message-thread .thread-message .chat-media img{max-height:280px}}
