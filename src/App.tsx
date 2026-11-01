@@ -1256,15 +1256,15 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
     return { text: 'For your safety, never send your password, OTP, or login code to this chat or any ASY staff member. Use the official account recovery process for the platform involved. ASY recruitment only needs the information and proof requested by the website.' };
   }
   if (/dashboard|website|bug|error|not working|does not work|cannot|can't|cant|problem|issue/.test(q)) {
-    return { text: 'Sorry you’re having trouble with the dashboard. Try refreshing the page and checking that you entered the correct tracking code and the same application email. If it still fails, take a screenshot of the error (hide personal details) and send it to management through the official Discord. Never share passwords or login codes.' , links: [screeningLinks[1]] };
+    return { text: 'Sorry you’re having trouble with the dashboard. Try refreshing the page and checking that you entered the correct tracking code and the same application email. If it still fails, use the Private Application Chat on your tracked application to contact recruitment. Never share passwords or login codes in public chat.' };
   }
   if (/human|admin|recruiter|staff|help|assist|contact/.test(q)) {
-    return { text: 'I can answer common ASY questions, but a recruiter or management member must handle account-specific issues and final decisions. Contact the team through the official Discord and follow the admins’ instructions.', links: [screeningLinks[1]] };
+    return { text: 'I can answer common ASY questions, but a recruiter or management member must handle account-specific issues and final decisions. Open Track application with your tracking code and application email, then message the recruitment team through Private Application Chat.' };
   }
   if (/apply|application|join|recruitment/.test(q)) {
     return { text: 'To join ASY, open “Apply to join” on this website and complete the application honestly. Save the ASYLUM tracking code shown after submission, then use “Track application” to check your status. Submit only one application and wait for recruiter review.' };
   }
-  return { text: 'I don’t have a verified answer for that exact question yet, so I don’t want to guess. I can help with eligibility, applying, tracking your application, screening proofs, referral requirements, Casual Groups, scrims, and basic dashboard issues. For anything else, contact management through the official Discord.', links: [screeningLinks[1]] };
+  return { text: 'I don’t have a verified answer for that exact question yet, so I don’t want to guess. I can help with eligibility, applying, tracking your application, screening proofs, referral requirements, Casual Groups, scrims, and basic dashboard issues. For account-specific questions, use Private Application Chat on your tracked application.' };
 }
 
 const SUPPORT_HISTORY_KEY = 'asy-recruitment-support-history-v1';
