@@ -142,8 +142,7 @@ Deno.serve(async (req: Request) => {
       return json(409, { error: "Referral-only screenshots are not required for Direct Application." });
     }
     const activeStage = STAGE_BY_STEP[application.workflow_step];
-    const referralBatch = application.application_type === "referral" && application.workflow_step === "tag_proofs" && requirement.stage_number === 2;
-    if ((!activeStage || activeStage !== requirement.stage_number || requirement.status === "locked") && !referralBatch) {
+    if (!activeStage || activeStage !== requirement.stage_number || requirement.status === "locked") {
       return json(409, { error: "This step is locked until a recruiter approves the previous step." });
     }
     if (["pending", "approved"].includes(requirement.status)) {
@@ -201,7 +200,7 @@ Deno.serve(async (req: Request) => {
         })
         .eq("application_id", application.id)
         .eq("requirement_key", key)
-        .in("status", referralBatch ? ["locked", "not_submitted", "needs_correction"] : ["not_submitted", "needs_correction"])
+        .in("status", ["not_submitted", "needs_correction"])
         .select("requirement_key, status, file_name, submitted_at")
         .maybeSingle();
       if (error || !saved) return json(409, { error: "This requirement changed while uploading. Refresh progress and try again." });
