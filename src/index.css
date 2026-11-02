@@ -895,3 +895,10 @@
   .proof-tools-action{font-size:11px;gap:7px}
   .proof-tools-heading strong{font-size:13px}
 }
+
+/* Clear, persistent feedback for recruiter correction saves. */
+.admin-edit-feedback{grid-column:1/-1;margin:2px 0 0;padding:12px 14px;border:1px solid #45414b;border-radius:9px;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
+.admin-edit-feedback.success{background:rgba(23,133,79,.12);border-color:rgba(62,188,120,.45);color:#a6efc3}
+.admin-edit-feedback.error{background:rgba(215,45,65,.12);border-color:rgba(232,79,96,.55);color:#ffb6bd}
+.admin-edit-feedback.info{background:rgba(117,126,145,.12);color:#e1dfe7}
+.admin-edit-hint{grid-column:1/-1;margin:0;padding:9px 12px;border-left:3px solid #9b5660;color:#ded0d3;font-size:12px;line-height:1.6}
