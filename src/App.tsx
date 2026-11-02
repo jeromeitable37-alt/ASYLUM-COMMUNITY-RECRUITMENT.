@@ -81,6 +81,7 @@ export default function App() {
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState('all');
   const [selected,setSelected]=useState<Application|null>(null);
+  const [editApplicationType,setEditApplicationType]=useState<'casual'|'referral'>('casual');
   const [notes,setNotes]=useState('');
   const [mgcNotes,setMgcNotes]=useState('');
   const [mgcContactConfirmed,setMgcContactConfirmed]=useState(false);
@@ -394,6 +395,11 @@ export default function App() {
     const values=new FormData(event.currentTarget);
     const get=(key:string)=>String(values.get(key)||'').trim();
     const email=get('contact_email').toLowerCase();
+    const routeChanged=editApplicationType!==selected.application_type;
+    const routeEditable=!['rejected','accepted'].includes(selected.status)&&['eligibility_review','tag_proofs','membership_proofs','discord_roster'].includes(selected.workflow_step);
+    if(routeChanged&&!routeEditable){notify('Application type can only be changed before final review or a final decision.',true);return;}
+    if(editApplicationType==='referral'&&(!get('referrer_name')||!get('referrer_facebook_url'))){notify('Referral Application requires the referring member name and Facebook profile link.',true);return;}
+    if(editApplicationType==='referral'&&!isAllowedProfileUrl(get('referrer_facebook_url'),['facebook.com','fb.com'])){notify('Enter a valid Facebook profile link for the referring member.',true);return;}
     const levelText=get('level');
     const level=levelText?Number(levelText):null;
     if(!get('ign')||!get('codm_uid')||!email||!get('region')||!get('rank')||!get('main_role')||!get('preferred_mode')||!get('availability')||get('reason').length<10){
@@ -404,6 +410,7 @@ export default function App() {
     }
     setBusy(true);
     const {data,error}=await supabase.from('asy_clan_applications').update({
+      application_type:editApplicationType,
       ign:get('ign'),codm_uid:get('codm_uid'),contact_email:email,
       discord_username:get('discord_username')||null,
       applicant_facebook_url:get('applicant_facebook_url')||null,
@@ -412,15 +419,17 @@ export default function App() {
       region:get('region'),level,rank:get('rank'),main_role:get('main_role'),
       preferred_mode:get('preferred_mode'),availability:get('availability'),
       clan_experience:get('clan_experience')||null,reason:get('reason'),
-      referrer_name:get('referrer_name')||null,
-      referrer_facebook_url:get('referrer_facebook_url')||null,
+      referrer_name:editApplicationType==='referral'?get('referrer_name'):null,
+      referrer_facebook_url:editApplicationType==='referral'?get('referrer_facebook_url'):null,
       updated_at:new Date().toISOString()
     }).eq('id',selected.id).select('*').single();
     setBusy(false);
-    if(error||!data){notify('Could not correct the applicant details. Check recruiter permissions and try again.',true);return;}
+    if(error||!data){notify(error?.message||'Could not correct the applicant details. Check recruiter permissions and try again.',true);return;}
     setSelected(data as Application);
+    setEditApplicationType(data.application_type as 'casual'|'referral');
     await loadApplications();
-    notify('Applicant details corrected. The application code and evidence history were kept. The details check has been reset; review and confirm the updated information before unlocking CODM.');
+    await loadSelectedEvidence(data.id,data.application_type);
+    notify(routeChanged?'Application type changed to '+(data.application_type==='referral'?'Referral':'Direct')+' Application. Tracking code and earlier proofs were preserved; review the updated required screenshots.':'Applicant details corrected. The application code and evidence history were kept. The details check has been reset; review and confirm the updated information before unlocking CODM.');
   }
 
   async function confirmApplicationDetailsChecked(app:Application){
@@ -526,10 +535,10 @@ export default function App() {
       notify('All '+submitted+' remaining screenshots were submitted together. They are now waiting for recruiter review.');
     }
   }
-  async function loadSelectedEvidence(applicationId:string){
+  async function loadSelectedEvidence(applicationId:string,applicationType?:string){
     const {data,error}=await supabase.from('asy_recruitment_evidence').select('*').eq('application_id',applicationId).order('stage_number').order('requirement_label');
     if(error){notify('Could not load requirement evidence. Confirm recruiter permissions.',true);return;}
-    setSelectedEvidence(((data||[]) as Evidence[]).filter(item=>item.requirement_key!=='membership_form_screenshot'||selected?.application_type==='referral'));
+    setSelectedEvidence(((data||[]) as Evidence[]).filter(item=>(applicationType||selected?.application_type)==='referral'||!['membership_form_screenshot','referral_conversation_screenshot'].includes(item.requirement_key)));
   }
   async function reviewEvidence(item:Evidence,status:'approved'|'needs_correction'){
     if(!selected||!item.id)return;
@@ -926,8 +935,8 @@ export default function App() {
       const { error } = await supabase.from('asy_clan_applications').insert(payload);
       if (error) {
         const message = error.message.toLowerCase();
-        if (error.code === '23505' && (message.includes('one_active_recruitment_application_per_email') || message.includes('already have an application'))) {
-          notify('This email already has an application. Please track your existing application or contact the recruiter for corrections. You may apply again only after rejection.', true);
+        if (error.code === '23505' && (message.includes('one_active_recruitment_application_per_email') || message.includes('asy_one_active_application_per_email') || message.includes('active application') || message.includes('already have an application'))) {
+          notify('There is still an active application for this email. You can submit again after that application is rejected, or ask staff to correct its application type without rejecting.', true);
         } else if (message.includes('codm uid') && message.includes('19')) {
           notify('CODM UID must contain exactly 19 digits.', true);
         } else if (message.includes('temporarily closed')) {
@@ -1140,7 +1149,7 @@ export default function App() {
       {page==='status'&&<section className="page narrow"><Heading kicker="02 / APPLICATION STATUS" title={<>CHECK YOUR <em>STATUS.</em></>} desc="Check your progress with your tracking code and the same email address used on your application."/>
         {savedApplication&&<div className="panel saved-reference"><div className="saved-reference-head"><div><small className="kicker">SAVED ON THIS DEVICE</small><h2>Your tracking code</h2><p>We saved your latest application reference here so you can find it again after you leave the site.</p></div><span className="saved-reference-icon"><ClipboardList size={20}/></span></div><div className="reference-code-row"><code>{savedApplication.application_code}</code><button className="secondary" type="button" onClick={()=>void copyApplicationCode(savedApplication.application_code)}><Copy size={15}/> Copy code</button></div><p className="saved-email"><Mail size={15}/> Email used: <strong>{savedApplication.contact_email}</strong></p><p className="saved-help">Using another device? Contact an ASy recruiter with your in-game name and the email you applied with. Do not post your UID or email publicly.</p><button className="saved-clear" type="button" onClick={clearSavedApplication}>Forget saved details on this device</button></div>}
         <form className="panel form" onSubmit={checkStatus}><Field label="Application code"><input required value={applicationCode} onChange={e=>{setApplicationCode(e.target.value.toUpperCase());setTracked(null);setApplicantProgress(null);setApplicantMessages([]);}} placeholder="ASYLUM-XXXXXXXX"/></Field><Field label="Contact email"><input required type="email" value={contactEmail} onChange={e=>{setContactEmail(e.target.value);setTracked(null);setApplicantProgress(null);setApplicantMessages([]);}} placeholder="Email used in your application"/></Field><button className="primary full" disabled={busy}>{busy?'Checking…':'Check application'} <ArrowRight size={16}/></button></form>
-        {tracked&&<div className="panel tracked"><small>APPLICATION FOUND</small><span className={'pill '+tracked.status}>{labels[tracked.status]||tracked.status}</span><h2>{tracked.ign}</h2><div className="tracked-reference"><p className="muted">Tracking code: <strong>{tracked.application_code}</strong></p><button className="saved-clear" type="button" onClick={()=>void copyApplicationCode(tracked.application_code)}><Copy size={14}/> Copy code</button></div><div className="timeline">{['pending','reviewing','interview','tryout','accepted'].map((stage,index)=><div className={'step '+(statuses.indexOf(tracked.status)>=statuses.indexOf(stage)&&tracked.status!=='rejected'?'done':'')} key={stage}><b>{index+1}</b><div><strong>{labels[stage]}</strong><small>{['Application received','Recruiter review','Interview stage','Tryout stage','Welcome to the roster'][index]}</small></div></div>)}</div><p className="muted">Submitted {new Date(tracked.submitted_at).toLocaleString()}</p></div>}
+        {tracked&&<div className="panel tracked"><small>APPLICATION FOUND</small><span className={'pill '+tracked.status}>{labels[tracked.status]||tracked.status}</span><h2>{tracked.ign}</h2><div className="tracked-reference"><p className="muted">Tracking code: <strong>{tracked.application_code}</strong></p><button className="saved-clear" type="button" onClick={()=>void copyApplicationCode(tracked.application_code)}><Copy size={14}/> Copy code</button></div><div className="timeline">{['pending','reviewing','interview','tryout','accepted'].map((stage,index)=><div className={'step '+(statuses.indexOf(tracked.status)>=statuses.indexOf(stage)&&tracked.status!=='rejected'?'done':'')} key={stage}><b>{index+1}</b><div><strong>{labels[stage]}</strong><small>{['Application received','Recruiter review','Interview stage','Tryout stage','Welcome to the roster'][index]}</small></div></div>)}</div><p className="muted">Submitted {new Date(tracked.submitted_at).toLocaleString()}</p>{tracked.status==='rejected'&&<div className="notice"><strong>Application rejected</strong><p>Your previous application and tracking code stay in your history. You may submit a new Direct or Referral Application using the same email if you do not have another active application.</p><button type="button" className="primary" onClick={()=>{setForm(blankForm);setPage('apply');}}>Apply again <ArrowRight size={15}/></button></div>}</div>
         {applicantProgress&&<section className="panel applicant-progress">
           <div className="applicant-progress-head"><small className="kicker">SCREENING PROGRESS / {applicantProgress.application.application_type.toUpperCase()}</small><h2>{({eligibility_review:'Step 0 · Recruiter eligibility review',tag_proofs:'Step 1 · CODM screenshot approval',membership_proofs:'Step 2 · Upload remaining requirements together',discord_roster:'Step 2 · Upload remaining requirements together',final_review:'Final recruiter double-check',screening_gc_ready:'Requirements approved · Membership Form unlocked',complete:'Recruitment completed'} as Record<string,string>)[applicantProgress.application.workflow_step]||'Application in review'}</h2><p>Your next step unlocks after the recruiter approves all required items in the current step. Keep your tracking code and application email private.</p></div>
           {applicantProgress.application.workflow_step==='eligibility_review'&&<div className="notice applicant-upload-help"><strong>Screening upload is waiting for recruiter eligibility approval.</strong><p>Your screenshot fields unlock when a recruiter moves your application to Step 1. Sending a picture in Private Application Chat does not count as submitting an official screening proof. Please wait for the recruiter to open Step 1.</p></div>}
@@ -1318,7 +1327,7 @@ export default function App() {
               </div>
             </section>
           <div className="tools"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search IGN, UID, email, code…"/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All statuses</option>{statuses.map(stage=><option key={stage} value={stage}>{labels[stage]}</option>)}</select><button className="secondary" onClick={()=>void loadApplications()}>Refresh</button></div>
-          <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'DIRECT'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
+          <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setEditApplicationType(app.application_type);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'DIRECT'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
           {selected&&<div className="panel detail"><header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
             <div className="details">{[['Application type',selected.application_type==='referral'?'Referral Application':'Direct Application'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank],['Main role',selected.main_role],['Mode',selected.preferred_mode],['Availability',selected.availability],['Community / team experience',selected.clan_experience||'Not provided']].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
             <section className="panel application-details-review">
@@ -1334,8 +1343,9 @@ export default function App() {
             </section>
             <details className="panel admin-edit-panel" key={selected.id}>
               <summary>Correct submitted applicant details</summary>
-              <p className="muted">Use this when an applicant confirms a typo or incorrect entry. This updates the existing application and keeps its code and evidence history. Any corrected detail automatically resets the first-review confirmation, so check and confirm the details again before Step 1 is unlocked.</p>
+              <p className="muted">Correct details or change Direct ↔ Referral Application without rejection. The tracking code and existing proofs stay intact; referral requirements update automatically. Route changes are available before final review and reset verification checks.</p>
               <form className="admin-edit-grid" onSubmit={saveApplicantDetails}>
+                <Field label="Application type"><select value={editApplicationType} onChange={event=>setEditApplicationType(event.target.value as 'casual'|'referral')} disabled={busy||['accepted','rejected'].includes(selected.status)||!['eligibility_review','tag_proofs','membership_proofs','discord_roster'].includes(selected.workflow_step)}><option value="casual">Direct Application</option><option value="referral">Referral Application</option></select></Field>
                 <Field label="IGN"><input name="ign" defaultValue={selected.ign} required /></Field>
                 <Field label="CODM UID"><input name="codm_uid" defaultValue={selected.codm_uid} required /></Field>
                 <Field label="Contact email"><input name="contact_email" type="email" defaultValue={selected.contact_email} required /></Field>
@@ -1351,7 +1361,7 @@ export default function App() {
                 <Field label="Availability"><input name="availability" defaultValue={selected.availability} required /></Field>
                 <Field label="Community / team experience"><input name="clan_experience" defaultValue={selected.clan_experience||''} /></Field>
                 <Field label="Reason for joining"><textarea name="reason" rows={3} defaultValue={selected.reason} /></Field>
-                {selected.application_type==='referral'&&<><Field label="Referring member"><input name="referrer_name" defaultValue={selected.referrer_name||''} /></Field><Field label="Referrer Facebook link"><input name="referrer_facebook_url" type="url" defaultValue={selected.referrer_facebook_url||''} /></Field></>}
+                {editApplicationType==='referral'&&<><Field label="Referring member"><input name="referrer_name" defaultValue={selected.referrer_name||''} required /></Field><Field label="Referrer Facebook link"><input name="referrer_facebook_url" type="url" defaultValue={selected.referrer_facebook_url||''} required /></Field></>}
                 <div className="admin-edit-actions"><button type="submit" className="primary" disabled={busy}>{busy?'Saving…':'Save corrected details'} <CheckCircle2 size={15}/></button></div>
               </form>
             </details>
