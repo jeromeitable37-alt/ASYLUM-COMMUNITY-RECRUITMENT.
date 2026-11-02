@@ -1505,7 +1505,25 @@ function ExampleProof({kind,manage=false}:{kind:string;manage?:boolean}){
     {manage&&<label className="upload-control"><span>{uploading?'Uploading example…':'Upload / replace example image'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={e=>{const file=e.target.files?.[0];if(file)void upload(file);e.currentTarget.value='';}}/></label>}
   </div>;
 }
-function ProofExamplesManager(){return <section className="panel proof-example-manager"><small className="kicker">RECRUITER TOOLS</small><h3>Screening reference images</h3><p>Upload the official example screenshots once. They will appear beside the applicant upload fields and in the Screening Guide.</p><div className="example-proof-grid">{EXAMPLE_PROOFS.map(item=><ExampleProof key={item.key} kind={item.key} manage/>)}</div></section>;}
+function ProofExamplesManager(){
+  return <details className="panel proof-example-manager">
+    <summary className="proof-example-manager-toggle">
+      <span className="proof-tools-heading">
+        <small className="kicker">RECRUITER TOOLS</small>
+        <strong>Screening reference images</strong>
+      </span>
+      <span className="proof-tools-action" aria-hidden="true">
+        <span className="proof-tools-show">Show examples</span>
+        <span className="proof-tools-hide">Hide examples</span>
+        <span className="proof-tools-chevron"/>
+      </span>
+    </summary>
+    <div className="proof-example-manager-content">
+      <p>Upload the official example screenshots once. They will appear beside the applicant upload fields and in the Screening Guide.</p>
+      <div className="example-proof-grid">{EXAMPLE_PROOFS.map(item=><ExampleProof key={item.key} kind={item.key} manage/>)}</div>
+    </div>
+  </details>;
+}
 function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeSettings|null;onApply:()=>void;onTrack:()=>void}) {
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   return <section className="page screening-page">
