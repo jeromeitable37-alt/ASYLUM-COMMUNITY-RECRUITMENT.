@@ -402,7 +402,7 @@ export default function App() {
     if(editApplicationType==='referral'&&!isAllowedProfileUrl(get('referrer_facebook_url'),['facebook.com','fb.com'])){notify('Enter a valid Facebook profile link for the referring member.',true);return;}
     const levelText=get('level');
     const level=levelText?Number(levelText):null;
-    if(!get('ign')||!get('codm_uid')||!email||!get('region')||!get('rank')||!get('main_role')||!get('preferred_mode')||!get('availability')||get('reason').length<10){
+    if(!get('ign')||!get('codm_uid')||!email||!get('region')||!get('rank')||get('reason').length<10){
       notify('Please complete the required applicant details and enter a reason of at least 10 characters before saving.',true);return;
     }
     if(level!==null&&(!Number.isInteger(level)||level<1||level>500)){
@@ -416,9 +416,7 @@ export default function App() {
       applicant_facebook_url:get('applicant_facebook_url')||null,
       applicant_tiktok_url:get('applicant_tiktok_url')||null,
       streamer_mode_id:get('streamer_mode_id')||null,
-      region:get('region'),level,rank:get('rank'),main_role:get('main_role'),
-      preferred_mode:get('preferred_mode'),availability:get('availability'),
-      clan_experience:get('clan_experience')||null,reason:get('reason'),
+      region:get('region'),level,rank:get('rank'),reason:get('reason'),
       referrer_name:editApplicationType==='referral'?get('referrer_name'):null,
       referrer_facebook_url:editApplicationType==='referral'?get('referrer_facebook_url'):null,
       updated_at:new Date().toISOString()
@@ -1329,7 +1327,7 @@ export default function App() {
           <div className="tools"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search IGN, UID, email, code…"/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All statuses</option>{statuses.map(stage=><option key={stage} value={stage}>{labels[stage]}</option>)}</select><button className="secondary" onClick={()=>void loadApplications()}>Refresh</button></div>
           <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setEditApplicationType(app.application_type);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'DIRECT'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
           {selected&&<div className="panel detail"><header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
-            <div className="details">{[['Application type',selected.application_type==='referral'?'Referral Application':'Direct Application'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank],['Main role',selected.main_role],['Mode',selected.preferred_mode],['Availability',selected.availability],['Community / team experience',selected.clan_experience||'Not provided']].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
+            <div className="details">{[['Application type',selected.application_type==='referral'?'Referral Application':'Direct Application'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank]].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
             <section className="panel application-details-review">
               <small className="kicker">FIRST REVIEW · BEFORE CODM</small>
               <h3>Check the applicant's details first</h3>
@@ -1356,10 +1354,6 @@ export default function App() {
                 <Field label="Region"><input name="region" defaultValue={selected.region} required /></Field>
                 <Field label="Player level"><input name="level" type="number" min="1" max="500" defaultValue={selected.level??''} /></Field>
                 <Field label="Rank"><input name="rank" defaultValue={selected.rank} required /></Field>
-                <Field label="Main role"><input name="main_role" defaultValue={selected.main_role} required /></Field>
-                <Field label="Preferred mode"><input name="preferred_mode" defaultValue={selected.preferred_mode} required /></Field>
-                <Field label="Availability"><input name="availability" defaultValue={selected.availability} required /></Field>
-                <Field label="Community / team experience"><input name="clan_experience" defaultValue={selected.clan_experience||''} /></Field>
                 <Field label="Reason for joining"><textarea name="reason" rows={3} defaultValue={selected.reason} /></Field>
                 {editApplicationType==='referral'&&<><Field label="Referring member"><input name="referrer_name" defaultValue={selected.referrer_name||''} required /></Field><Field label="Referrer Facebook link"><input name="referrer_facebook_url" type="url" defaultValue={selected.referrer_facebook_url||''} required /></Field></>}
                 <div className="admin-edit-actions"><button type="submit" className="primary" disabled={busy}>{busy?'Saving…':'Save corrected details'} <CheckCircle2 size={15}/></button></div>
