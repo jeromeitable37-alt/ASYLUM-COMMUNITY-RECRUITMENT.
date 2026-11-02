@@ -82,6 +82,7 @@ export default function App() {
   const [filter,setFilter]=useState('all');
   const [selected,setSelected]=useState<Application|null>(null);
   const [editApplicationType,setEditApplicationType]=useState<'casual'|'referral'>('casual');
+  const [editSaveFeedback,setEditSaveFeedback]=useState<{applicationId:string;kind:'success'|'error'|'info';message:string}|null>(null);
   const [notes,setNotes]=useState('');
   const [mgcNotes,setMgcNotes]=useState('');
   const [mgcContactConfirmed,setMgcContactConfirmed]=useState(false);
@@ -392,23 +393,28 @@ export default function App() {
   async function saveApplicantDetails(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
     if(!selected)return;
+    const applicationId=selected.id;
+    const editError=(message:string)=>{setEditSaveFeedback({applicationId,kind:'error',message});notify(message,true);};
+    setEditSaveFeedback(null);
     const values=new FormData(event.currentTarget);
     const get=(key:string)=>String(values.get(key)||'').trim();
     const email=get('contact_email').toLowerCase();
     const routeChanged=editApplicationType!==selected.application_type;
     const routeEditable=!['rejected','accepted'].includes(selected.status)&&['eligibility_review','tag_proofs','membership_proofs','discord_roster'].includes(selected.workflow_step);
-    if(routeChanged&&!routeEditable){notify('Application type can only be changed before final review or a final decision.',true);return;}
-    if(editApplicationType==='referral'&&(!get('referrer_name')||!get('referrer_facebook_url'))){notify('Referral Application requires the referring member name and Facebook profile link.',true);return;}
-    if(editApplicationType==='referral'&&!isAllowedProfileUrl(get('referrer_facebook_url'),['facebook.com','fb.com'])){notify('Enter a valid Facebook profile link for the referring member.',true);return;}
+    if(routeChanged&&!routeEditable){editError('Application type can only be changed before final review or a final decision. Other fields can still be corrected.');return;}
+    if(editApplicationType==='referral'&&(!get('referrer_name')||!get('referrer_facebook_url'))){editError('Referral Application requires the referring member name and Facebook profile link.');return;}
+    if(editApplicationType==='referral'&&!isAllowedProfileUrl(get('referrer_facebook_url'),['facebook.com','fb.com'])){editError('Enter a valid Facebook profile link for the referring member.');return;}
     const levelText=get('level');
     const level=levelText?Number(levelText):null;
     if(!get('ign')||!get('codm_uid')||!email||!get('region')||!get('rank')||get('reason').length<10){
-      notify('Please complete the required applicant details and enter a reason of at least 10 characters before saving.',true);return;
+      editError('Please complete the required applicant details and enter a reason of at least 10 characters before saving.');return;
     }
     if(level!==null&&(!Number.isInteger(level)||level<1||level>500)){
-      notify('Enter a valid player level.',true);return;
+      editError('Enter a valid player level.');return;
     }
+    setEditSaveFeedback({applicationId,kind:'info',message:'Saving changes to the recruitment database…'});
     setBusy(true);
+    try {
     const {data,error}=await supabase.from('asy_clan_applications').update({
       application_type:editApplicationType,
       ign:get('ign'),codm_uid:get('codm_uid'),contact_email:email,
@@ -421,13 +427,35 @@ export default function App() {
       referrer_facebook_url:editApplicationType==='referral'?get('referrer_facebook_url'):null,
       updated_at:new Date().toISOString()
     }).eq('id',selected.id).select('*').single();
-    setBusy(false);
-    if(error||!data){notify(error?.message||'Could not correct the applicant details. Check recruiter permissions and try again.',true);return;}
-    setSelected(data as Application);
-    setEditApplicationType(data.application_type as 'casual'|'referral');
+    if(error||!data){editError(error?.message||'Database did not confirm the update. Check recruiter permissions and try again.');return;}
+    // A second read prevents displaying a misleading success if the saved values were overridden.
+    const {data:readBack,error:readError}=await supabase.from('asy_clan_applications').select('*').eq('id',applicationId).maybeSingle();
+    const saved=(readBack||data) as Application;
+    if(readBack&&(
+      readBack.application_type!==editApplicationType ||
+      readBack.ign!==get('ign') ||
+      readBack.codm_uid!==get('codm_uid') ||
+      readBack.contact_email!==email ||
+      (readBack.referrer_name||'')!==(editApplicationType==='referral'?get('referrer_name'):'') ||
+      (readBack.referrer_facebook_url||'')!==(editApplicationType==='referral'?get('referrer_facebook_url'):'')
+    )){
+      editError('The database returned different values than you submitted. Refresh the applicant and try again.');
+      return;
+    }
+    setSelected(saved);
+    setEditApplicationType(saved.application_type);
     await loadApplications();
-    await loadSelectedEvidence(data.id,data.application_type);
-    notify(routeChanged?'Application type changed to '+(data.application_type==='referral'?'Referral':'Direct')+' Application. Tracking code and earlier proofs were preserved; review the updated required screenshots.':'Applicant details corrected. The application code and evidence history were kept. The details check has been reset; review and confirm the updated information before unlocking CODM.');
+    if(routeChanged)await loadSelectedEvidence(saved.id,saved.application_type);
+    const message=routeChanged
+      ? 'Saved: Application type changed to '+(saved.application_type==='referral'?'Referral':'Direct')+' Application. Tracking code kept; review required screenshots.'
+      : 'Saved: Applicant details updated. Tracking code kept; review any changed details before the next step.';
+    setEditSaveFeedback({applicationId,kind:'success',message:readError?message+' Database read-back was unavailable; initial save was confirmed.':message+' Verified in Supabase.'});
+    notify(message);
+    } catch(error) {
+      editError(error instanceof Error?error.message:'Could not complete the save. Try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function confirmApplicationDetailsChecked(app:Application){
@@ -1325,7 +1353,7 @@ export default function App() {
               </div>
             </section>
           <div className="tools"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search IGN, UID, email, code…"/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All statuses</option>{statuses.map(stage=><option key={stage} value={stage}>{labels[stage]}</option>)}</select><button className="secondary" onClick={()=>void loadApplications()}>Refresh</button></div>
-          <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setEditApplicationType(app.application_type);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'DIRECT'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
+          <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setEditApplicationType(app.application_type);setEditSaveFeedback(null);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'DIRECT'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
           {selected&&<div className="panel detail"><header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
             <div className="details">{[['Application type',selected.application_type==='referral'?'Referral Application':'Direct Application'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank]].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
             <section className="panel application-details-review">
@@ -1342,7 +1370,8 @@ export default function App() {
             <details className="panel admin-edit-panel" key={selected.id}>
               <summary>Correct submitted applicant details</summary>
               <p className="muted">Correct details or change Direct ↔ Referral Application without rejection. The tracking code and existing proofs stay intact; referral requirements update automatically. Route changes are available before final review and reset verification checks.</p>
-              <form className="admin-edit-grid" onSubmit={saveApplicantDetails}>
+              <form className="admin-edit-grid" key={selected.id+':'+selected.updated_at} onSubmit={saveApplicantDetails} onInvalidCapture={event=>{const field=event.target as HTMLInputElement;setEditSaveFeedback({applicationId:selected.id,kind:'error',message:'Please correct the highlighted '+(field.name||'required')+' field before saving.'});}}>
+                {(['accepted','rejected'].includes(selected.status)||!['eligibility_review','tag_proofs','membership_proofs','discord_roster'].includes(selected.workflow_step))&&<p className="admin-edit-hint">Application type is locked after final review or a final decision. Other application details can still be corrected.</p>}
                 <Field label="Application type"><select value={editApplicationType} onChange={event=>setEditApplicationType(event.target.value as 'casual'|'referral')} disabled={busy||['accepted','rejected'].includes(selected.status)||!['eligibility_review','tag_proofs','membership_proofs','discord_roster'].includes(selected.workflow_step)}><option value="casual">Direct Application</option><option value="referral">Referral Application</option></select></Field>
                 <Field label="IGN"><input name="ign" defaultValue={selected.ign} required /></Field>
                 <Field label="CODM UID"><input name="codm_uid" defaultValue={selected.codm_uid} required /></Field>
@@ -1354,9 +1383,10 @@ export default function App() {
                 <Field label="Region"><input name="region" defaultValue={selected.region} required /></Field>
                 <Field label="Player level"><input name="level" type="number" min="1" max="500" defaultValue={selected.level??''} /></Field>
                 <Field label="Rank"><input name="rank" defaultValue={selected.rank} required /></Field>
-                <Field label="Reason for joining"><textarea name="reason" rows={3} defaultValue={selected.reason} /></Field>
+                <Field label="Reason for joining"><textarea name="reason" rows={3} required minLength={10} maxLength={1000} defaultValue={selected.reason} /></Field>
                 {editApplicationType==='referral'&&<><Field label="Referring member"><input name="referrer_name" defaultValue={selected.referrer_name||''} required /></Field><Field label="Referrer Facebook link"><input name="referrer_facebook_url" type="url" defaultValue={selected.referrer_facebook_url||''} required /></Field></>}
                 <div className="admin-edit-actions"><button type="submit" className="primary" disabled={busy}>{busy?'Saving…':'Save corrected details'} <CheckCircle2 size={15}/></button></div>
+                {editSaveFeedback?.applicationId===selected.id&&<p className={'admin-edit-feedback '+editSaveFeedback.kind} role="status" aria-live="polite">{editSaveFeedback.message}</p>}
               </form>
             </details>
             <section className="panel admin-profile-links">
