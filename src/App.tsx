@@ -215,6 +215,13 @@ export default function App() {
     return()=>window.clearInterval(timer);
   },[page,tracked?.application_code,applicationCode,contactEmail]);
   useEffect(()=>{
+    if(page!=='status'||!tracked)return;
+    const timer=window.setInterval(()=>{
+      void loadApplicantProgress(applicationCode.trim(),contactEmail.trim().toLowerCase());
+    },20000);
+    return()=>window.clearInterval(timer);
+  },[page,tracked?.application_code,applicationCode,contactEmail]);
+  useEffect(()=>{
     if(page!=='admin'||!selected||!authorized){setAdminApplicationMessages([]);return;}
     void loadAdminApplicationMessages(selected.id);
     const timer=window.setInterval(()=>void loadAdminApplicationMessages(selected.id),10000);
