@@ -1087,8 +1087,21 @@ export default function App() {
       {page==='apply'&&<section className="page"><Heading kicker="01 / RECRUITMENT FORM" title={<>YOUR RUN <em>STARTS HERE.</em></>} desc="Complete the form honestly. Required fields are marked *. No account needed."/>
         <div className={'panel intake-banner '+(intakeFull?'closed':'open')}><div><strong>{intakeFull?(!intakeSettings?.intake_open?'Applications are temporarily closed':'Application limit reached'):'Recruitment intake is open'}</strong><p>{intakeSettings?.application_limit!==null&&intakeSettings?`${intakeSettings.application_count} of ${intakeSettings.application_limit} applications used this intake.`:'Check the eligibility requirements and complete the form once. Recruiters review applications individually.'}</p></div><span className="intake-dot"/></div>
         <form className="panel form" onSubmit={submitApplication}>
-          <Section n="00" title="Application route" sub="Choose Casual or Referral."/>
-          <Field label="Application type *"><select value={form.applicationType} onChange={e=>updateForm('applicationType',e.target.value)}><option value="casual">Casual Recruitment</option><option value="referral">Referral Recruitment</option></select></Field>
+          <Section n="00" title="Application route" sub="Select Direct Application or Referral Application."/>
+          <fieldset className="application-route-group">
+            <legend>Application type <span aria-hidden="true">*</span></legend>
+            <div className="application-route-options">
+              <label className={'application-route-option'+(form.applicationType==='casual'?' selected':'')}>
+                <input type="checkbox" name="direct-application" checked={form.applicationType==='casual'} onChange={()=>updateForm('applicationType','casual')}/>
+                <span>Direct Application</span>
+              </label>
+              <label className={'application-route-option'+(form.applicationType==='referral'?' selected':'')}>
+                <input type="checkbox" name="referral-application" checked={form.applicationType==='referral'} onChange={()=>updateForm('applicationType','referral')}/>
+                <span>Referral Application</span>
+              </label>
+            </div>
+            <small className="application-route-hint">Select one application type only.</small>
+          </fieldset>
           {form.applicationType==='referral'&&<div className="form-grid">
             <Field label="Referring member name *"><input required value={form.referrerName} onChange={e=>updateForm('referrerName',e.target.value)} placeholder="Member who referred you"/></Field>
             <Field label="Referring member Facebook profile link *"><input required type="url" value={form.referrerFacebookUrl} onChange={e=>updateForm('referrerFacebookUrl',e.target.value)} placeholder="https://facebook.com/…"/></Field>
@@ -1305,9 +1318,9 @@ export default function App() {
               </div>
             </section>
           <div className="tools"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search IGN, UID, email, code…"/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All statuses</option>{statuses.map(stage=><option key={stage} value={stage}>{labels[stage]}</option>)}</select><button className="secondary" onClick={()=>void loadApplications()}>Refresh</button></div>
-          <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'CASUAL'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
+          <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'DIRECT'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
           {selected&&<div className="panel detail"><header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
-            <div className="details">{[['Application type',selected.application_type==='referral'?'Referral':'Casual'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank],['Main role',selected.main_role],['Mode',selected.preferred_mode],['Availability',selected.availability],['Community / team experience',selected.clan_experience||'Not provided']].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
+            <div className="details">{[['Application type',selected.application_type==='referral'?'Referral Application':'Direct Application'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank],['Main role',selected.main_role],['Mode',selected.preferred_mode],['Availability',selected.availability],['Community / team experience',selected.clan_experience||'Not provided']].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
             <section className="panel application-details-review">
               <small className="kicker">FIRST REVIEW · BEFORE CODM</small>
               <h3>Check the applicant's details first</h3>
@@ -1437,7 +1450,7 @@ function Home({intakeSettings,onApply,onRoster,onTrack,onGuide}:{intakeSettings:
     <article className="community-tool"><span className="community-tool-icon"><Swords size={20}/></span><small className="tool-state planned">PLANNED</small><h3>Scrim hub</h3><p>Centralize scrim schedules, team requests, and match results when management is ready.</p><span className="tool-note">Scheduling and match records are not enabled yet.</span></article>
     <article className="community-tool"><span className="community-tool-icon"><ShieldCheck size={20}/></span><small className="tool-state planned">PLANNED</small><h3>Player reports</h3><p>A structured report form with evidence, context, and private management review.</p><span className="tool-note">Use the current official staff channel until this tool is enabled.</span></article>
   </div></section>
-  <section className="journey"><div className="journey-heading"><small>HOW RECRUITMENT WORKS</small><h2>APPLY. <em>UPLOAD. GET REVIEWED.</em></h2><p>Three simple steps. Recruiters guide you through the rest.</p></div><div className="journey-grid"><article className="journey-card"><span className="journey-number">01</span><ClipboardList size={22}/><h3>Apply</h3><p>Choose Casual or Referral and send your details.</p></article><article className="journey-card"><span className="journey-number">02</span><Upload size={22}/><h3>Upload proofs</h3><p>Track your application and upload each stage when it unlocks.</p></article><article className="journey-card"><span className="journey-number">03</span><ShieldCheck size={22}/><h3>Final check</h3><p>Recruiters review your proofs and contact you for the MGC double-check.</p></article></div><div className="journey-footer"><p><ShieldCheck size={17}/> Keep your tracking code private. Applying does not guarantee acceptance.</p><button className="text-link" onClick={onTrack}>Already applied? Track your application <ArrowRight size={15}/></button></div></section>
+  <section className="journey"><div className="journey-heading"><small>HOW RECRUITMENT WORKS</small><h2>APPLY. <em>UPLOAD. GET REVIEWED.</em></h2><p>Three simple steps. Recruiters guide you through the rest.</p></div><div className="journey-grid"><article className="journey-card"><span className="journey-number">01</span><ClipboardList size={22}/><h3>Apply</h3><p>Choose Direct Application or Referral Application and send your details.</p></article><article className="journey-card"><span className="journey-number">02</span><Upload size={22}/><h3>Upload proofs</h3><p>Track your application and upload each stage when it unlocks.</p></article><article className="journey-card"><span className="journey-number">03</span><ShieldCheck size={22}/><h3>Final check</h3><p>Recruiters review your proofs and contact you for the MGC double-check.</p></article></div><div className="journey-footer"><p><ShieldCheck size={17}/> Keep your tracking code private. Applying does not guarantee acceptance.</p><button className="text-link" onClick={onTrack}>Already applied? Track your application <ArrowRight size={15}/></button></div></section>
   <section className="callout"><div><small>YOUR NEXT MOVE</small><h2>SHOW US WHAT YOU BRING.</h2><p>Tell us your role, your goals, and how you play.</p></div><button className="primary" onClick={onApply}>Start application <ArrowRight size={16}/></button></section>
  </>;
 }
@@ -1492,7 +1505,7 @@ function ProofExamplesManager(){return <section className="panel proof-example-m
 function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeSettings|null;onApply:()=>void;onTrack:()=>void}) {
   const intakeFull=Boolean(intakeSettings && (!intakeSettings.intake_open || (intakeSettings.application_limit!==null && intakeSettings.application_count>=intakeSettings.application_limit)));
   return <section className="page screening-page">
-    <Heading kicker="ASY RECRUITMENT" title={<>YOUR <em>CHECKLIST.</em></>} desc="Separate guides for Casual and Referral Recruitment. Upload proofs in Track Application."/>
+    <Heading kicker="ASY RECRUITMENT" title={<>YOUR <em>CHECKLIST.</em></>} desc="Separate guides for Direct Application and Referral Application. Upload proofs in Track Application."/>
     <div className={'panel guide-intake '+(intakeFull?'closed':'open')}>
       <span className="intake-dot"/>
       <div>
@@ -1515,9 +1528,9 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
       </div>
     </section>
     <div className="guide-screening-heading">
-      <small className="kicker">CASUAL RECRUITMENT / 3 STEPS</small>
+      <small className="kicker">DIRECT APPLICATION / 3 STEPS</small>
       <h2>What to <em>submit.</em></h2>
-      <p>For Casual Recruitment, follow the three steps below. Referral applicants should use the separate Referral Recruitment guide that follows.</p>
+      <p>For Direct Application, follow the three steps below. Referral applicants should use the separate Referral Application guide that follows.</p>
     </div>
     <div className="guide-stage-grid">
       <article className="guide-stage">
@@ -1549,10 +1562,10 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
       </article>
     </div>
     <section className="panel guide-referral">
-      <div className="guide-section-heading"><small className="kicker">REFERRAL RECRUITMENT • SEPARATE PROCESS</small><h2>Referral application — step by step</h2></div>
-      <p className="guide-referral-intro">If an existing ASYLUM Community member referred you, follow these steps instead of the casual screenshot sequence.</p>
+      <div className="guide-section-heading"><small className="kicker">REFERRAL APPLICATION • SEPARATE PROCESS</small><h2>Referral application — step by step</h2></div>
+      <p className="guide-referral-intro">If an existing ASYLUM Community member referred you, follow these steps instead of the direct application screenshot sequence.</p>
       <div className="referral-steps">
-        <article className="referral-step"><span className="referral-step-number">01</span><div><h3>Apply as a referral</h3><p>Select <strong>Referral Recruitment</strong> in Apply to Join. Complete the required application details, submit once, and save your tracking code.</p></div></article>
+        <article className="referral-step"><span className="referral-step-number">01</span><div><h3>Apply as a referral</h3><p>Select <strong>Referral Application</strong> in Apply to Join. Complete the required application details, submit once, and save your tracking code.</p></div></article>
         <article className="referral-step"><span className="referral-step-number">02</span><div><h3>Prepare your account screenshots</h3><p>Take screenshots of your <strong>CODM and TikTok accounts</strong> showing ASY after your IGN. Include proof that you follow the <strong>official ASYLUM Community TikTok</strong>.</p></div></article>
         <article className="referral-step"><span className="referral-step-number">03</span><div><h3>Complete the referral proofs</h3><p>Screenshot your conversation with the member who referred you. Fill out the Referral Membership Form and capture the confirmation showing your IGN.</p><a href="https://docs.google.com/forms/d/e/1FAIpQLSfMRLP7A9LiERdtPNS6juLH05it3m0buT-GGzeoM4cm0M57rQ/viewform" target="_blank" rel="noreferrer">Open Referral Membership Form ↗</a></div></article>
         <article className="referral-step"><span className="referral-step-number">04</span><div><h3>Set up your Discord and roster photo</h3><p>Join the official Discord, set your server nickname to <strong>IGN ASY</strong>, and take a screenshot. Upload your roster photo to <strong>#PICS-FOR-WELCOME-BANNER</strong> with your Facebook name in the caption.</p><a href="https://discord.gg/HbJ5Jvw8y8" target="_blank" rel="noreferrer">Join official ASYLUM Discord ↗</a></div></article>
@@ -1612,7 +1625,7 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
   }
   if (/referral|referred|referrer/.test(q)) {
     return {
-      text: 'For Referral Recruitment, choose “Referral Recruitment” in the application form and enter your referrer’s name plus Facebook profile link. Referral applicants complete the usual eligibility checks and screening proof stages, plus a screenshot of the conversation with the referring member. Upload it with your other remaining screenshots in Step 2, after the CODM screenshot is approved. A referral does not guarantee acceptance.',
+      text: 'For Referral Application, choose “Referral Application” in the application form and enter your referrer’s name plus Facebook profile link. Referral applicants complete the usual eligibility checks and screening proof stages, plus a screenshot of the conversation with the referring member. Upload it with your other remaining screenshots in Step 2, after the CODM screenshot is approved. A referral does not guarantee acceptance.',
       links: screeningLinks,
     };
   }
