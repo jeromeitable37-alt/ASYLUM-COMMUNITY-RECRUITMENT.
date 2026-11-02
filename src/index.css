@@ -865,3 +865,33 @@
 .application-route-option span{min-width:0;overflow-wrap:anywhere}
 .application-route-hint{display:block;margin-top:9px;color:#978c9b;font-size:11px;line-height:1.5}
 @media(max-width:560px){.application-route-options{grid-template-columns:1fr;gap:10px}.application-route-option{min-height:54px;padding:13px 15px}}
+
+
+/* Compact, collapsible recruiter screenshot reference tools. */
+.proof-example-manager{margin:18px 0;padding:0;overflow:hidden}
+.proof-example-manager-toggle{
+  display:flex;justify-content:space-between;align-items:center;gap:16px;
+  min-height:80px;padding:16px 20px;cursor:pointer;list-style:none;
+}
+.proof-example-manager-toggle::-webkit-details-marker{display:none}
+.proof-example-manager-toggle::marker{content:""}
+.proof-example-manager-toggle:hover{background:rgba(239,53,68,.055)}
+.proof-example-manager-toggle:focus-visible{outline:2px solid #fa5966;outline-offset:-3px}
+.proof-tools-heading{min-width:0;display:flex;flex-direction:column;gap:5px}
+.proof-tools-heading .kicker{font-size:10px;line-height:1.3;letter-spacing:1.5px;color:#ff5263}
+.proof-tools-heading strong{font-size:15px;line-height:1.4;color:#f8f5f8}
+.proof-tools-action{display:flex;align-items:center;gap:10px;flex-shrink:0;color:#ffa3ac;font-size:12px;font-weight:700}
+.proof-tools-hide{display:none}
+.proof-example-manager[open] .proof-tools-hide{display:inline}
+.proof-example-manager[open] .proof-tools-show{display:none}
+.proof-tools-chevron{height:9px;width:9px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .18s}
+.proof-example-manager[open] .proof-tools-chevron{transform:rotate(225deg)}
+.proof-example-manager[open] .proof-example-manager-toggle{border-bottom:1px solid #302b35}
+.proof-example-manager-content{padding:18px 20px 22px}
+.proof-example-manager-content>p{margin:0;max-width:780px;line-height:1.7}
+@media(max-width:600px){
+  .proof-example-manager-toggle{min-height:70px;padding:13px 15px}
+  .proof-example-manager-content{padding:15px}
+  .proof-tools-action{font-size:11px;gap:7px}
+  .proof-tools-heading strong{font-size:13px}
+}
