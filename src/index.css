@@ -850,3 +850,18 @@
 .staff-alert-settings details summary{cursor:pointer}
 .staff-alert-settings details ul{max-height:190px;overflow:auto;line-height:1.8;padding-left:18px}
 @media(max-width:600px){.staff-alert-settings{padding:14px}.staff-alert-settings button{max-width:100%}}
+
+
+/* Recruitment route: clear, mutually exclusive checkbox choices. */
+.application-route-group{border:0;min-width:0;margin:0 0 22px;padding:0}
+.application-route-group legend{display:block;padding:0 0 11px;color:#e3dde6;font-size:11px;font-weight:700}
+.application-route-group legend span{color:#ff6b78}
+.application-route-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.application-route-option{display:flex;align-items:center;gap:12px;min-width:0;min-height:58px;padding:15px 17px;border:1px solid #3e3942;border-radius:7px;background:#0e0e13;color:#e6e0e8;font-size:13px;font-weight:650;line-height:1.5;cursor:pointer;transition:border-color .2s,background .2s}
+.application-route-option:hover{border-color:#a94552;background:#1b141a}
+.application-route-option.selected{border-color:#ef3544;background:#261319;box-shadow:inset 0 0 0 1px #ef35441a}
+.application-route-option:focus-within{outline:2px solid #ff8190;outline-offset:2px}
+.application-route-option input[type="checkbox"]{appearance:auto;accent-color:#ef3544;width:19px;height:19px;min-width:19px;min-height:19px;flex:0 0 19px;margin:0;cursor:pointer}
+.application-route-option span{min-width:0;overflow-wrap:anywhere}
+.application-route-hint{display:block;margin-top:9px;color:#978c9b;font-size:11px;line-height:1.5}
+@media(max-width:560px){.application-route-options{grid-template-columns:1fr;gap:10px}.application-route-option{min-height:54px;padding:13px 15px}}
