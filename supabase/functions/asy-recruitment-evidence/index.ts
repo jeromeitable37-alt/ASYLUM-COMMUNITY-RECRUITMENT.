@@ -96,7 +96,6 @@ Deno.serve(async (req: Request) => {
         .from("asy_recruitment_evidence")
         .select("requirement_key, requirement_label, stage_number, status, file_name, applicant_note, reviewer_notes, submitted_at, reviewed_at")
         .eq("application_id", application.id)
-        .neq("requirement_key", "membership_form_screenshot")
         .order("stage_number")
         .order("requirement_label");
       if (error) throw error;
@@ -110,7 +109,7 @@ Deno.serve(async (req: Request) => {
           application_type: application.application_type,
           submitted_at: application.submitted_at,
         },
-        evidence: evidence || [],
+        evidence: (evidence || []).filter(item => !["membership_form_screenshot", "referral_conversation_screenshot"].includes(item.requirement_key) || application.application_type === "referral"),
       });
     }
 
@@ -139,8 +138,12 @@ Deno.serve(async (req: Request) => {
       .eq("requirement_key", key)
       .maybeSingle();
     if (requirementError || !requirement) return json(404, { error: "This requirement was not found for your application." });
+    if (application.application_type !== "referral" && ["membership_form_screenshot", "referral_conversation_screenshot"].includes(key)) {
+      return json(409, { error: "Referral-only screenshots are not required for Direct Application." });
+    }
     const activeStage = STAGE_BY_STEP[application.workflow_step];
-    if (!activeStage || activeStage !== requirement.stage_number || requirement.status === "locked") {
+    const referralBatch = application.application_type === "referral" && application.workflow_step === "tag_proofs" && requirement.stage_number === 2;
+    if ((!activeStage || activeStage !== requirement.stage_number || requirement.status === "locked") && !referralBatch) {
       return json(409, { error: "This step is locked until a recruiter approves the previous step." });
     }
     if (["pending", "approved"].includes(requirement.status)) {
@@ -198,7 +201,7 @@ Deno.serve(async (req: Request) => {
         })
         .eq("application_id", application.id)
         .eq("requirement_key", key)
-        .in("status", ["not_submitted", "needs_correction"])
+        .in("status", referralBatch ? ["locked", "not_submitted", "needs_correction"] : ["not_submitted", "needs_correction"])
         .select("requirement_key, status, file_name, submitted_at")
         .maybeSingle();
       if (error || !saved) return json(409, { error: "This requirement changed while uploading. Refresh progress and try again." });
