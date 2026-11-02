@@ -271,15 +271,20 @@ export function ApplicantNotificationPanel({ applicationCode, contactEmail, onNo
     if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : 'Could not load notifications.');
     return data;
   }
-  async function load() {
+  async function load(silent=false) {
     try { const data = await request({ action: 'notifications-list', application_code: applicationCode, contact_email: contactEmail }); setItems(Array.isArray(data.notifications) ? data.notifications : []); }
-    catch (error) { onNotify(error instanceof Error ? error.message : 'Could not load applicant notifications.', true); }
+    catch (error) { if(!silent)onNotify(error instanceof Error ? error.message : 'Could not load applicant notifications.', true); }
   }
-  useEffect(() => { void load(); }, [applicationCode, contactEmail]);
+  useEffect(() => {
+    void load();
+    const refresh=window.setInterval(()=>void load(true),15000);
+    return ()=>window.clearInterval(refresh);
+  }, [applicationCode, contactEmail]);
   const unread = items.filter(item => !item.is_read).length;
+  useEffect(()=>{if(unread>0)setOpen(true);},[unread]);
   async function markRead(item: Notice) {
     try { await request({ action: 'notification-read', application_code: applicationCode, contact_email: contactEmail, id: item.id }); await load(); }
     catch (error) { onNotify(error instanceof Error ? error.message : 'Could not mark notification read.', true); }
   }
-  return <section className="panel applicant-notifications"><div className="ops-section-title"><div><small className="kicker">TRACKING UPDATES</small><h2>Notifications {unread > 0 && <span className="ops-count">{unread}</span>}</h2></div><button type="button" className="secondary compact-button" onClick={() => { setOpen(v => !v); if (!open) void load(); }}>{open ? 'Hide' : 'Show updates'}</button></div>{open && (items.length ? <div className="ops-notice-list">{items.map(item => <article className={'ops-notice ' + (!item.is_read ? 'unread' : '')} key={item.id}><div><span className="ops-chip">{pretty(item.notification_type)}</span><h3>{item.title}</h3><p>{item.body}</p><small>{when(item.created_at)}</small></div>{!item.is_read && <button type="button" className="secondary compact-button" onClick={() => void markRead(item)}><Check size={14}/> Mark read</button>}</article>)}</div> : <p className="message-empty">No notifications yet.</p>)}</section>;
+  return <section className="panel applicant-notifications"><div className="ops-section-title"><div><small className="kicker">CHECK BEFORE UPLOADING · AUTO-REFRESHES</small><h2>Recruiter notifications {unread > 0 && <span className="ops-count">{unread} unread</span>}</h2></div><button type="button" className="secondary compact-button" onClick={() => { setOpen(v => !v); if (!open) void load(); }}>{open ? 'Hide updates' : 'Show updates'}</button></div>{open && (items.length ? <div className="ops-notice-list">{items.map(item => <article className={'ops-notice ' + (!item.is_read ? 'unread' : '')} key={item.id}><div><span className="ops-chip">{pretty(item.notification_type)}</span><h3>{item.title}</h3><p>{item.body}</p><small>{when(item.created_at)}</small></div>{!item.is_read && <button type="button" className="secondary compact-button" onClick={() => void markRead(item)}><Check size={14}/> Mark read</button>}</article>)}</div> : <p className="message-empty">No notifications yet.</p>)}</section>;
 }
