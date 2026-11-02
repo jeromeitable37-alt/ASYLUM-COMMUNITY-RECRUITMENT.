@@ -10,7 +10,7 @@ const EVIDENCE_API_URL = SUPABASE_URL + '/functions/v1/asy-recruitment-evidence'
 const MESSAGING_API_URL = SUPABASE_URL + '/functions/v1/asy-community-messaging';
 const OPERATIONS_API_URL = SUPABASE_URL + '/functions/v1/asy-operations';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; membership_form_response_verified:boolean; membership_form_response_verified_by_email:string|null; membership_form_response_verified_at:string|null; legendary_series_count:number; workflow_step:string; submitted_at:string; updated_at:string };
+type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; membership_form_response_verified:boolean; membership_form_response_verified_by_email:string|null; membership_form_response_verified_at:string|null; legendary_series_count:number; legendary_series_mp:number|null; legendary_series_br:number|null; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; is_required?:boolean; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
 type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string; clan_name?:string|null };
@@ -27,7 +27,7 @@ function renderApplicationMessage(body:string){return body.split(/(https?:\/\/[^
 const emptyAnnouncementDraft = {id:'',title:'',body:'',category:'general' as Announcement['category'],is_published:true};
 const statuses = ['pending','reviewing','interview','tryout','accepted','rejected','waitlisted'];
 const labels: Record<string,string> = { pending:'Pending review', reviewing:'In review', interview:'Interview', tryout:'Tryout', accepted:'Accepted', rejected:'Rejected', waitlisted:'Waitlisted' };
-const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', ageConfirmed:'', legendarySeriesCount:'6', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
+const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', ageConfirmed:'', legendaryMpCount:'0', legendaryBrCount:'0', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
 const createCode = () => { const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const bytes=new Uint8Array(8); crypto.getRandomValues(bytes); return 'ASYLUM-'+Array.from(bytes,b=>alphabet[b%alphabet.length]).join(''); };
 const isAllowedProfileUrl=(value:string,domains:string[])=>{
   if(!value.trim())return true;
@@ -404,6 +404,17 @@ export default function App() {
     if(routeChanged&&!routeEditable){editError('Application type can only be changed before final review or a final decision. Other fields can still be corrected.');return;}
     if(editApplicationType==='referral'&&(!get('referrer_name')||!get('referrer_facebook_url'))){editError('Referral Application requires the referring member name and Facebook profile link.');return;}
     if(editApplicationType==='referral'&&!isAllowedProfileUrl(get('referrer_facebook_url'),['facebook.com','fb.com'])){editError('Enter a valid Facebook profile link for the referring member.');return;}
+    const mpInput=get('legendary_series_mp');
+    const brInput=get('legendary_series_br');
+    const hasLegendaryBreakdown=mpInput!==''||brInput!=='';
+    const legendaryMp=Number(mpInput);
+    const legendaryBr=Number(brInput);
+    if(hasLegendaryBreakdown&&(
+      mpInput===''||brInput===''||!Number.isInteger(legendaryMp)||!Number.isInteger(legendaryBr)||
+      legendaryMp<0||legendaryBr<0||legendaryMp+legendaryBr<6||legendaryMp+legendaryBr>100)){
+      editError('Please enter valid MP and BR Legendary Series (0 if none). The combined total must be at least 6 and no more than 100.');
+      return;
+    }
     const levelText=get('level');
     const level=levelText?Number(levelText):null;
     if(!get('ign')||!get('codm_uid')||!email||!get('region')||!get('rank')||get('reason').length<10){
@@ -423,6 +434,7 @@ export default function App() {
       applicant_tiktok_url:get('applicant_tiktok_url')||null,
       streamer_mode_id:get('streamer_mode_id')||null,
       region:get('region'),level,rank:get('rank'),reason:get('reason'),
+      ...(hasLegendaryBreakdown?{legendary_series_mp:legendaryMp,legendary_series_br:legendaryBr}:{}),
       referrer_name:editApplicationType==='referral'?get('referrer_name'):null,
       referrer_facebook_url:editApplicationType==='referral'?get('referrer_facebook_url'):null,
       updated_at:new Date().toISOString()
@@ -436,6 +448,7 @@ export default function App() {
       readBack.ign!==get('ign') ||
       readBack.codm_uid!==get('codm_uid') ||
       readBack.contact_email!==email ||
+      (hasLegendaryBreakdown&&(readBack.legendary_series_mp!==legendaryMp||readBack.legendary_series_br!==legendaryBr)) ||
       (readBack.referrer_name||'')!==(editApplicationType==='referral'?get('referrer_name'):'') ||
       (readBack.referrer_facebook_url||'')!==(editApplicationType==='referral'?get('referrer_facebook_url'):'')
     )){
@@ -906,8 +919,14 @@ export default function App() {
       notify('Confirm that you are at least 16 years old before applying.', true);
       return;
     }
-    if (Number(form.legendarySeriesCount) < 6) {
-      notify('You need at least 6 Legendary Series in BR or MP to apply.', true);
+    const legendaryMp=Number(form.legendaryMpCount);
+    const legendaryBr=Number(form.legendaryBrCount);
+    const legendaryTotal=legendaryMp+legendaryBr;
+    if(!form.legendaryMpCount.trim()||!form.legendaryBrCount.trim()||
+       !Number.isInteger(legendaryMp)||!Number.isInteger(legendaryBr)||
+       legendaryMp<0||legendaryBr<0||legendaryMp>100||legendaryBr>100||
+       legendaryTotal<6||legendaryTotal>100){
+      notify('Enter MP and BR Legendary Series separately (0 if none). At least 6 in total are required.', true);
       return;
     }
     if (!form.facebookNameAppropriate || !form.willingToAddTag || !form.willingToSubmitPhoto) {
@@ -935,7 +954,9 @@ export default function App() {
         referrer_name: form.applicationType === 'referral' ? form.referrerName.trim() : null,
         referrer_facebook_url: form.applicationType === 'referral' ? form.referrerFacebookUrl.trim() : null,
         meets_age_requirement: form.ageConfirmed === 'yes',
-        legendary_series_count: Number(form.legendarySeriesCount),
+        legendary_series_mp: legendaryMp,
+        legendary_series_br: legendaryBr,
+        legendary_series_count: legendaryTotal,
         facebook_name_appropriate: form.facebookNameAppropriate,
         willing_to_add_asy_tag: form.willingToAddTag,
         willing_to_submit_roster_photo: form.willingToSubmitPhoto,
@@ -1144,9 +1165,10 @@ export default function App() {
           <Section n="01" title="Eligibility" sub="Check the minimum requirements."/>
           <label className="screening-check eligibility-check"><input type="checkbox" required checked={form.ageConfirmed==='yes'} onChange={e=>updateForm('ageConfirmed',e.target.checked?'yes':'')}/><span>I confirm that I am at least 16 years old.</span></label>
           <div className="form-grid">
-            <Field label="Legendary Series achieved (BR or MP) *"><input type="number" min="6" max="100" required value={form.legendarySeriesCount} onChange={e=>updateForm('legendarySeriesCount',e.target.value)} placeholder="At least 6"/></Field>
+            <Field label="MP Legendary Series *"><input type="number" min="0" max="100" step="1" inputMode="numeric" required value={form.legendaryMpCount} onChange={e=>updateForm('legendaryMpCount',e.target.value)} placeholder="0 if none"/></Field>
+            <Field label="BR Legendary Series *"><input type="number" min="0" max="100" step="1" inputMode="numeric" required value={form.legendaryBrCount} onChange={e=>updateForm('legendaryBrCount',e.target.value)} placeholder="0 if none"/></Field>
           </div>
-          <p className="muted form-helper">At least 6 Legendary Series in BR or MP. We never ask for social account passwords.</p>
+          <p className="muted form-helper">Combined Legendary Series: <strong>{Number(form.legendaryMpCount||0)+Number(form.legendaryBrCount||0)}</strong> / 6 minimum. Enter 0 for a mode you have not reached Legendary in. We never ask for social account passwords.</p>
           <div className="eligibility-confirmations">
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.facebookNameAppropriate} onChange={e=>setForm(old=>({...old,facebookNameAppropriate:e.target.checked}))}/><span>I confirm that my Facebook name is appropriate and not random or inappropriate.</span></label>
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.willingToAddTag} onChange={e=>setForm(old=>({...old,willingToAddTag:e.target.checked}))}/><span>I agree to put the ASY tag AFTER my IGN on my main CODM and TikTok accounts.</span></label>
@@ -1355,7 +1377,7 @@ export default function App() {
           <div className="tools"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search IGN, UID, email, code…"/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All statuses</option>{statuses.map(stage=><option key={stage} value={stage}>{labels[stage]}</option>)}</select><button className="secondary" onClick={()=>void loadApplications()}>Refresh</button></div>
           <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setEditApplicationType(app.application_type);setEditSaveFeedback(null);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'DIRECT'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span><span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
           {selected&&<div className="panel detail"><header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
-            <div className="details">{[['Application type',selected.application_type==='referral'?'Referral Application':'Direct Application'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['Legendary Series (BR/MP)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank]].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
+            <div className="details">{[['Application type',selected.application_type==='referral'?'Referral Application':'Direct Application'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['MP Legendary Series',selected.legendary_series_mp===null?'Not recorded separately':String(selected.legendary_series_mp)],['BR Legendary Series',selected.legendary_series_br===null?'Not recorded separately':String(selected.legendary_series_br)],['Legendary Series (total)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank]].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
             <section className="panel application-details-review">
               <small className="kicker">FIRST REVIEW · BEFORE CODM</small>
               <h3>Check the applicant's details first</h3>
@@ -1383,6 +1405,9 @@ export default function App() {
                 <Field label="Region"><input name="region" defaultValue={selected.region} required /></Field>
                 <Field label="Player level"><input name="level" type="number" min="1" max="500" defaultValue={selected.level??''} /></Field>
                 <Field label="Rank"><input name="rank" defaultValue={selected.rank} required /></Field>
+                <Field label="MP Legendary Series"><input name="legendary_series_mp" type="number" min="0" max="100" step="1" defaultValue={selected.legendary_series_mp??''} placeholder="0 if none" /></Field>
+                <Field label="BR Legendary Series"><input name="legendary_series_br" type="number" min="0" max="100" step="1" defaultValue={selected.legendary_series_br??''} placeholder="0 if none" /></Field>
+                {selected.legendary_series_mp===null&&selected.legendary_series_br===null&&<p className="admin-edit-hint">Legacy application: previously recorded total is {selected.legendary_series_count}, but MP/BR split was not captured. Enter both counts to correct it; leave both blank to keep the original total.</p>}
                 <Field label="Reason for joining"><textarea name="reason" rows={3} required minLength={10} maxLength={1000} defaultValue={selected.reason} /></Field>
                 {editApplicationType==='referral'&&<><Field label="Referring member"><input name="referrer_name" defaultValue={selected.referrer_name||''} required /></Field><Field label="Referrer Facebook link"><input name="referrer_facebook_url" type="url" defaultValue={selected.referrer_facebook_url||''} required /></Field></>}
                 <div className="admin-edit-actions"><button type="submit" className="primary" disabled={busy}>{busy?'Saving…':'Save corrected details'} <CheckCircle2 size={15}/></button></div>
@@ -1573,7 +1598,7 @@ function ScreeningGuide({intakeSettings,onApply,onTrack}:{intakeSettings:IntakeS
       </div>
       <div className="eligibility-grid">
         <article className="eligibility-item"><span>01</span><div><strong>Age 16+</strong><p>Confirm you meet the minimum age.</p></div></article>
-        <article className="eligibility-item"><span>02</span><div><strong>6 Legendary Series</strong><p>In BR or MP.</p></div></article>
+        <article className="eligibility-item"><span>02</span><div><strong>6 Legendary Series</strong><p>MP + BR total.</p></div></article>
         <article className="eligibility-item"><span>03</span><div><strong>Facebook name</strong><p>Use an appropriate name.</p></div></article>
         <article className="eligibility-item"><span>04</span><div><strong>ASY tag</strong><p>After your IGN on CODM and TikTok.</p></div></article>
         <article className="eligibility-item"><span>05</span><div><strong>Roster photo</strong><p>Use the admin reference.</p></div></article>
@@ -1689,7 +1714,7 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
   }
   if (/eligible|eligibility|age|16|leg series|legendary series|requirements|minimum rank/.test(q)) {
     return {
-      text: 'The current basic ASY recruitment requirements are:\n\n• At least 16 years old.\n• At least 6 Legendary Series in BR or MP.\n• An appropriate Facebook name.\n• Willing to add the ASY tag after your IGN on your main CODM and TikTok accounts.\n• Willing to provide a proper roster photo when requested.\n\nMeeting the minimum requirements does not guarantee acceptance; the recruitment team reviews applications.',
+      text: 'The current basic ASY recruitment requirements are:\n\n• At least 16 years old.\n• At least 6 Legendary Series combined across MP and BR. Enter each mode separately.\n• An appropriate Facebook name.\n• Willing to add the ASY tag after your IGN on your main CODM and TikTok accounts.\n• Willing to provide a proper roster photo when requested.\n\nMeeting the minimum requirements does not guarantee acceptance; the recruitment team reviews applications.',
       links: screeningLinks,
     };
   }
