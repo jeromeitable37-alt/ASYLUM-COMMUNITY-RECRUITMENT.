@@ -326,7 +326,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    if (action === "notifications-list" || action === "notification-read") {
+    if (action === "notifications-list" || action === "notification-read" || action === "notification-read-all") {
       const code = clean(body.application_code, 80);
       const email = clean(body.contact_email, 254).toLowerCase();
       let recipientRole: "applicant" | "recruiter" = "applicant";
@@ -348,6 +348,20 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await query;
         if (error) throw error;
         return json(200, { notifications: data || [] });
+      }
+      if (action === "notification-read-all") {
+        let query = db.from("asy_recruitment_notifications")
+          .update({ is_read: true }, { count: "exact" })
+          .eq("recipient_role", recipientRole)
+          .eq("is_read", false);
+        if (applicationId) query = query.eq("application_id", applicationId);
+        const { error, count } = await query;
+        if (error) throw error;
+        const updated = count ?? 0;
+        if (actor !== "applicant" && updated > 0) {
+          await audit(actor, "notification.read_all", "notification", null, "Staff marked " + updated + " recruitment notifications as read.");
+        }
+        return json(200, { success: true, marked_read: updated });
       }
       const id = clean(body.id, 80);
       if (!id) return json(400, { error: "Notification ID is required." });
