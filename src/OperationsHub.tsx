@@ -6,7 +6,7 @@ import './operations.css';
 const OPS_API_URL = 'https://tyhszzztltamrohhyykh.supabase.co/functions/v1/asy-operations';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn';
 
-type Props = { mode: 'public' | 'staff'; session: Session | null; authorized: boolean; onNotify: (message: string, isError?: boolean) => void };
+type Props = { mode: 'public' | 'staff'; session: Session | null; authorized: boolean; onNotify: (message: string, isError?: boolean) => void; onOpenApplication?: (applicationId: string) => void };
 type TeamMember = { team_id: string; roster_id: string; team_position: string; member: { id: string; ign: string; main_role: string; rank: string; member_status: string } | null };
 type Team = { id: string; name: string; division: string; description: string; captain_roster_id: string | null; is_active: boolean; members: TeamMember[] };
 type Scrim = { id: string; title: string; opponent: string; game_mode: string; team_id: string | null; starts_at: string; visibility: string; status: string; details: string; asy_teams?: { name: string; division: string } | null };
@@ -21,13 +21,14 @@ const when = (value: string) => new Date(value).toLocaleString([], { dateStyle: 
 const toLocalDateTimeInput = (value: string) => { const date = new Date(value); const offset = date.getTimezoneOffset(); return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16); };
 const pretty = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 
-export function OperationsHub({ mode, session, authorized, onNotify }: Props) {
+export function OperationsHub({ mode, session, authorized, onNotify, onOpenApplication }: Props) {
   const [tab, setTab] = useState(mode === 'public' ? 'teams' : 'dashboard');
   const [summary, setSummary] = useState<any>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [events, setEvents] = useState<Scrim[]>([]);
   const [roster, setRoster] = useState<Member[]>([]);
   const [notifications, setNotifications] = useState<Notice[]>([]);
+  const [readingAllNotifications, setReadingAllNotifications] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [teamDraft, setTeamDraft] = useState(emptyTeam);
@@ -150,6 +151,20 @@ export function OperationsHub({ mode, session, authorized, onNotify }: Props) {
     try { await request({ action: 'notification-read', id: note.id }); await loadNotifications(); }
     catch (error) { onNotify(error instanceof Error ? error.message : 'Could not mark notification read.', true); }
   }
+  async function readAllNotifications() {
+    if (!authorized || readingAllNotifications || !notifications.some(note => !note.is_read)) return;
+    setReadingAllNotifications(true);
+    try {
+      const result = await request({ action: 'notification-read-all' });
+      await loadNotifications();
+      await loadDashboard();
+      onNotify((result.marked_read ?? 0) + ' staff notifications marked as read.');
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : 'Could not mark all notifications as read.', true);
+    } finally {
+      setReadingAllNotifications(false);
+    }
+  }
   async function syncMemberDirectory() {
     if (!authorized || !session?.access_token) { onNotify('Sign in with an authorized staff account first.', true); return; }
     if (!window.confirm('Sync the public member directory from the latest Google Sheet? Only IGN, CODM UID (stored privately), clan name, and form timestamp are used. Birthdates and social links are ignored. Existing members missing from the sheet will not be deleted.')) return;
@@ -252,7 +267,25 @@ export function OperationsHub({ mode, session, authorized, onNotify }: Props) {
           <div className="ops-event-list">{events.map(eventItem => <article className="panel ops-event-admin" key={eventItem.id}><div className="ops-event-copy"><span className="ops-chip">{eventItem.game_mode} · {eventItem.visibility} · {eventItem.status}</span><h3>{eventItem.title}</h3><p>{when(eventItem.starts_at)}{eventItem.opponent ? ' · vs ' + eventItem.opponent : ''}</p>{eventItem.details && <small>{eventItem.details}</small>}</div><div className="ops-inline-actions"><button type="button" className="secondary compact-button" onClick={() => setScrimDraft({ id: eventItem.id, title: eventItem.title, opponent: eventItem.opponent, game_mode: eventItem.game_mode, team_id: eventItem.team_id || '', starts_at: toLocalDateTimeInput(eventItem.starts_at), visibility: eventItem.visibility, status: eventItem.status, details: eventItem.details })}>Edit</button><button type="button" className="danger compact-button" onClick={() => void deleteScrim(eventItem)}>Delete</button></div></article>)}</div>
         </div>}
 
-        {tab === 'notifications' && <div className="ops-workspace"><div className="ops-workspace-head"><div><small className="kicker">STAFF INBOX</small><h2>Notifications</h2><p>{unread} unread notification(s).</p></div><button className="secondary compact-button" onClick={() => void loadNotifications()}><RefreshCw size={14}/> Refresh</button></div>{notifications.length === 0 && <p className="message-empty">No notifications yet. New submissions and applicant messages will show here.</p>}<div className="ops-notice-list">{notifications.map(note => <article className={'ops-notice ' + (!note.is_read ? 'unread' : '')} key={note.id}><div><span className="ops-chip">{pretty(note.notification_type)}</span><h3>{note.title}</h3><p>{note.body}</p><small>{when(note.created_at)}</small></div>{!note.is_read && <button type="button" className="secondary compact-button" onClick={() => void readNotification(note)}><Check size={14}/> Mark read</button>}</article>)}</div></div>}
+        {tab === 'notifications' && <div className="ops-workspace">
+          <div className="ops-workspace-head">
+            <div><small className="kicker">STAFF INBOX</small><h2>Notifications</h2><p>{unread} unread notification(s). New applications and messages include the applicant IGN.</p></div>
+            <div className="ops-notification-actions">
+              <button type="button" className="secondary compact-button" disabled={readingAllNotifications || unread === 0} onClick={() => void readAllNotifications()}><Check size={14}/>{readingAllNotifications ? 'Marking all…' : 'Mark all as read'}</button>
+              <button type="button" className="secondary compact-button" onClick={() => void loadNotifications()}><RefreshCw size={14}/> Refresh</button>
+            </div>
+          </div>
+          {notifications.length === 0 && <p className="message-empty">No notifications yet. New submissions and applicant messages will show here.</p>}
+          <div className="ops-notice-list">
+            {notifications.map(note => <article className={'ops-notice ' + (!note.is_read ? 'unread' : '')} key={note.id}>
+              <div><span className="ops-chip">{pretty(note.notification_type)}</span><h3>{note.title}</h3><p>{note.body}</p><small>{when(note.created_at)}</small></div>
+              <div className="ops-notification-actions">
+                {note.application_id && onOpenApplication && <button type="button" className="secondary compact-button" onClick={() => onOpenApplication(note.application_id!)}>View application</button>}
+                {!note.is_read && <button type="button" className="secondary compact-button" onClick={() => void readNotification(note)}><Check size={14}/> Mark read</button>}
+              </div>
+            </article>)}
+          </div>
+        </div>}
 
         {tab === 'reports' && <div className="ops-workspace"><div className="ops-workspace-head"><div><small className="kicker">COMMUNITY SAFETY</small><h2>Reported messages</h2><p>{pendingReports} report(s) need review.</p></div><button className="secondary compact-button" onClick={() => void loadReports()}><RefreshCw size={14}/> Refresh</button></div>{reports.length === 0 && <p className="message-empty">No reports in the moderation queue.</p>}<div className="ops-report-list">{reports.map(report => <article className="ops-report-card" key={report.id}><div><span className="ops-chip">{pretty(report.reason)} · {pretty(report.status)}</span><h3>{report.reporter_name}</h3><p>{report.details || 'No extra details supplied.'}</p><small>{when(report.created_at)} · Message ID: {report.message_id || 'unavailable'}</small></div>{report.status === 'pending' && <div className="ops-inline-actions"><button className="secondary compact-button" onClick={() => void updateReport(report, 'reviewed')}>Mark reviewed</button><button className="danger compact-button" onClick={() => void updateReport(report, 'dismissed')}>Dismiss</button></div>}</article>)}</div></div>}
 
@@ -265,6 +298,7 @@ export function OperationsHub({ mode, session, authorized, onNotify }: Props) {
 export function ApplicantNotificationPanel({ applicationCode, contactEmail, onNotify }: { applicationCode: string; contactEmail: string; onNotify: (message: string, isError?: boolean) => void }) {
   const [items, setItems] = useState<Notice[]>([]);
   const [open, setOpen] = useState(false);
+  const [readingAll, setReadingAll] = useState(false);
   async function request(payload: Record<string, unknown>) {
     const response = await fetch(OPS_API_URL, { method: 'POST', headers: { apikey: SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(payload), cache: 'no-store' });
     const data = await response.json().catch(() => ({}));
@@ -286,5 +320,16 @@ export function ApplicantNotificationPanel({ applicationCode, contactEmail, onNo
     try { await request({ action: 'notification-read', application_code: applicationCode, contact_email: contactEmail, id: item.id }); await load(); }
     catch (error) { onNotify(error instanceof Error ? error.message : 'Could not mark notification read.', true); }
   }
-  return <section className="panel applicant-notifications"><div className="ops-section-title"><div><small className="kicker">CHECK BEFORE UPLOADING · AUTO-REFRESHES</small><h2>Recruiter notifications {unread > 0 && <span className="ops-count">{unread} unread</span>}</h2></div><button type="button" className="secondary compact-button" onClick={() => { setOpen(v => !v); if (!open) void load(); }}>{open ? 'Hide updates' : 'Show updates'}</button></div>{open && (items.length ? <div className="ops-notice-list">{items.map(item => <article className={'ops-notice ' + (!item.is_read ? 'unread' : '')} key={item.id}><div><span className="ops-chip">{pretty(item.notification_type)}</span><h3>{item.title}</h3><p>{item.body}</p><small>{when(item.created_at)}</small></div>{!item.is_read && <button type="button" className="secondary compact-button" onClick={() => void markRead(item)}><Check size={14}/> Mark read</button>}</article>)}</div> : <p className="message-empty">No notifications yet.</p>)}</section>;
+  async function markAllRead() {
+    if (readingAll || !items.some(item => !item.is_read)) return;
+    setReadingAll(true);
+    try {
+      await request({ action: 'notification-read-all', application_code: applicationCode, contact_email: contactEmail });
+      await load();
+      onNotify('All application notifications marked as read.');
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : 'Could not mark all notifications as read.', true);
+    } finally { setReadingAll(false); }
+  }
+  return <section className="panel applicant-notifications"><div className="ops-section-title"><div><small className="kicker">CHECK BEFORE UPLOADING · AUTO-REFRESHES</small><h2>Recruiter notifications {unread > 0 && <span className="ops-count">{unread} unread</span>}</h2></div><div className="ops-notification-actions"><button type="button" className="secondary compact-button" disabled={unread === 0 || readingAll} onClick={() => void markAllRead()}><Check size={14}/>{readingAll ? 'Marking all…' : 'Mark all as read'}</button><button type="button" className="secondary compact-button" onClick={() => { setOpen(v => !v); if (!open) void load(); }}>{open ? 'Hide updates' : 'Show updates'}</button></div></div>{open && (items.length ? <div className="ops-notice-list">{items.map(item => <article className={'ops-notice ' + (!item.is_read ? 'unread' : '')} key={item.id}><div><span className="ops-chip">{pretty(item.notification_type)}</span><h3>{item.title}</h3><p>{item.body}</p><small>{when(item.created_at)}</small></div>{!item.is_read && <button type="button" className="secondary compact-button" onClick={() => void markRead(item)}><Check size={14}/> Mark read</button>}</article>)}</div> : <p className="message-empty">No notifications yet.</p>)}</section>;
 }
