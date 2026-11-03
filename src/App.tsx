@@ -19,7 +19,7 @@ type MemberAccount = { user_id:string; display_name:string; ign:string; codm_uid
 type LinkedMemberApplication = { application_code:string; ign:string; status:string; workflow_step:string; submitted_at:string; updated_at:string };
 type AdminAccessRequest = { id:string; user_id:string; email:string; display_name:string; reason:string; status:'pending'|'approved'|'rejected'; reviewed_by_email:string|null; reviewed_at:string|null; created_at:string };
 type MemberReviewProfile = { user_id:string; display_name:string; ign:string; codm_uid:string; discord_username:string; photo_url:string; approval_status:'pending'|'approved'|'rejected'; review_note:string|null; linked_application_id:string|null; created_at:string; updated_at:string; email?:string; role?:string|null; is_disabled?:boolean };
-type IntakeSettings = { id:number; intake_open:boolean; application_limit:number|null; application_count:number; cycle_started_at:string; updated_at:string };
+type IntakeSettings = { id:number; intake_open:boolean; application_limit:number|null; application_count:number; cycle_started_at:string; updated_at:string; screening_admin_url:string };
 type Announcement = { id:string; title:string; body:string; category:'general'|'recruitment'|'event'|'maintenance'; is_published:boolean; created_at:string; updated_at?:string; published_at?:string|null; created_by_email?:string; updated_by_email?:string|null };
 type CommunityChatMessage = { id:string; display_name:string; body:string; created_at:string };
 type ApplicationChatMessage = { id:string; application_id:string; sender_role:'applicant'|'recruiter'; sender_name:string; body:string; created_at:string; attachment_url?:string|null; attachment_type?:string|null; attachment_name?:string|null; applicant_read_at?:string|null; recruiter_read_at?:string|null };
@@ -28,7 +28,6 @@ const emptyAnnouncementDraft = {id:'',title:'',body:'',category:'general' as Ann
 const statuses = ['pending','reviewing','interview','tryout','accepted','rejected','waitlisted'];
 const labels: Record<string,string> = { pending:'Pending review', reviewing:'In review', interview:'Interview', tryout:'Tryout', accepted:'Accepted', rejected:'Rejected', waitlisted:'Waitlisted' };
 const DEFAULT_SCREENING_ADMIN_URL = 'https://www.facebook.com/Shallow.Laren/';
-const SCREENING_ADMIN_STORAGE_KEY = 'asy-recruitment:screening-admin-contact';
 const isValidScreeningAdminUrl = (value:string) => {
   try {
     const url = new URL(value.trim());
@@ -203,15 +202,6 @@ export default function App() {
   const updateForm=(key:keyof typeof form,value:string)=>setForm(old=>({...old,[key]:value}));
 
   useEffect(()=>{void loadIntakeSettings();void loadAnnouncements();},[]);
-  useEffect(()=>{
-    try {
-      const saved = localStorage.getItem(SCREENING_ADMIN_STORAGE_KEY);
-      if(saved && isValidScreeningAdminUrl(saved)){
-        setScreeningAdminUrl(saved);
-        setScreeningAdminDraft(saved);
-      }
-    } catch { /* Storage may be unavailable on private devices. */ }
-  },[]);
   useEffect(()=>{try{const raw=localStorage.getItem('asy-recruitment:last-application');if(raw){const saved=JSON.parse(raw) as SavedApplication;if(saved.application_code&&saved.contact_email){setSavedApplication(saved);setApplicationCode(saved.application_code);setContactEmail(saved.contact_email);}}}catch{}},[]);
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>setSession(data.session));
@@ -230,7 +220,7 @@ export default function App() {
     return()=>listener.subscription.unsubscribe();
   },[]);
   useEffect(()=>{if(session?.user.email) void checkAdmin(session.user.email);else setAuthorized(false);},[session]);
-  useEffect(()=>{if(page==='roster')void loadRoster();if(page==='account'&&session)void loadMemberAccount();if(page==='admin'&&session&&authorized){void loadApplications();void loadAnnouncements();void loadMemberAccountReviews();if(staffRole==='owner')void loadAdminAccessRequests();}},[page,session,authorized,staffRole]);
+  useEffect(()=>{if(page==='roster')void loadRoster();if(page==='account'&&session)void loadMemberAccount();if(page==='admin'&&session&&authorized){void loadIntakeSettings();void loadApplications();void loadAnnouncements();void loadMemberAccountReviews();if(staffRole==='owner')void loadAdminAccessRequests();}},[page,session,authorized,staffRole]);
   useEffect(()=>{if(page==='community'){void loadAnnouncements();void loadCommunityMessages();}},[page,authorized,session?.access_token]);
   useEffect(()=>{
     if(page!=='community')return;
@@ -416,41 +406,52 @@ export default function App() {
     finally{setAdminMessageBusy(false);}
   }
 
-  function saveScreeningAdminContact(event:FormEvent<HTMLFormElement>){
-    event.preventDefault();
+  async function updateSharedScreeningAdminContact(link:string){
     if(!authorized || !session?.user.email){
       notify('Sign in as an authorized recruiter to change the screening contact.',true);
       return;
     }
-    const link=screeningAdminDraft.trim();
     if(!isValidScreeningAdminUrl(link)){
       notify('Enter a valid HTTPS Facebook profile link for the Screening Admin.',true);
       return;
     }
     setScreeningAdminSaving(true);
     try {
-      localStorage.setItem(SCREENING_ADMIN_STORAGE_KEY,link);
-      setScreeningAdminUrl(link);
-      notify('Screening Admin link saved on this browser. Other admins/devices will still have their own link until shared Supabase settings are enabled.');
-    } catch {
-      setScreeningAdminUrl(link);
-      notify('Screening Admin link updated for this session, but this browser blocked saving it for future visits.',true);
-    } finally { setScreeningAdminSaving(false); }
+      const {data,error}=await supabase.from('asy_recruitment_settings')
+        .update({screening_admin_url:link,updated_at:new Date().toISOString()})
+        .eq('id',1).select('screening_admin_url,updated_at').single();
+      if(error||!data)throw new Error(error?.message||'Database did not confirm the change.');
+      setScreeningAdminUrl(data.screening_admin_url);
+      setScreeningAdminDraft(data.screening_admin_url);
+      setIntakeSettings(old=>old?{...old,screening_admin_url:data.screening_admin_url,updated_at:data.updated_at}:old);
+      notify('Screening Admin Facebook contact saved in Supabase. All authorized recruiters now use this shared link.');
+    } catch(error) {
+      notify(error instanceof Error?error.message:'Unable to save Screening Admin contact to Supabase.',true);
+    } finally {
+      setScreeningAdminSaving(false);
+    }
   }
-  function resetScreeningAdminContact(){
-    setScreeningAdminDraft(DEFAULT_SCREENING_ADMIN_URL);
-    setScreeningAdminUrl(DEFAULT_SCREENING_ADMIN_URL);
-    try { localStorage.removeItem(SCREENING_ADMIN_STORAGE_KEY); } catch { /* optional persistence */ }
-    notify('Default Screening Admin contact restored for this browser.');
+  async function saveScreeningAdminContact(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();
+    await updateSharedScreeningAdminContact(screeningAdminDraft.trim());
+  }
+  async function resetScreeningAdminContact(){
+    await updateSharedScreeningAdminContact(DEFAULT_SCREENING_ADMIN_URL);
   }
   async function sendScreeningAdminContact(){
-    if(!isValidScreeningAdminUrl(screeningAdminUrl)){
-      notify('Please save a valid Screening Admin Facebook link first.',true);
+    // Read the latest shared setting before sending so an old browser session
+    // cannot accidentally send an outdated admin's Facebook profile.
+    const {data,error}=await supabase.from('asy_recruitment_settings')
+      .select('screening_admin_url').eq('id',1).single();
+    if(error||!data||!isValidScreeningAdminUrl(data.screening_admin_url)){
+      notify('Could not verify the current Screening Admin link. Refresh the dashboard and try again.',true);
       return;
     }
+    setScreeningAdminUrl(data.screening_admin_url);
+    setScreeningAdminDraft(data.screening_admin_url);
     await sendAdminQuickMessage(
       'Hello! If your request to join the main ASYLUM Community screening group chat is not being approved through Messenger, kindly send a message directly to the Screening Admin at the Facebook account below so they can add you manually.\n\n'+
-      screeningAdminUrl+'\n\n'+
+      data.screening_admin_url+'\n\n'+
       'When contacting the admin, mention your ASY application IGN. Do not send passwords or verification codes.\n\n'+
       'Thank you for your understanding and cooperation!'
     );
@@ -566,9 +567,9 @@ export default function App() {
   }
 
   async function loadIntakeSettings(){
-    const {data,error}=await supabase.from('asy_recruitment_settings').select('id,intake_open,application_limit,application_count,cycle_started_at,updated_at').eq('id',1).maybeSingle();
+    const {data,error}=await supabase.from('asy_recruitment_settings').select('id,intake_open,application_limit,application_count,cycle_started_at,updated_at,screening_admin_url').eq('id',1).maybeSingle();
     if(error){console.error('Could not load recruitment intake settings.',error.message);return;}
-    if(data){const settings=data as IntakeSettings;setIntakeSettings(settings);setIntakeLimitDraft(settings.application_limit===null?'':String(settings.application_limit));setIntakeOpenDraft(settings.intake_open);}
+    if(data){const settings=data as IntakeSettings;setIntakeSettings(settings);setIntakeLimitDraft(settings.application_limit===null?'':String(settings.application_limit));setIntakeOpenDraft(settings.intake_open);if(isValidScreeningAdminUrl(settings.screening_admin_url)){setScreeningAdminUrl(settings.screening_admin_url);setScreeningAdminDraft(settings.screening_admin_url);}}
   }
   async function saveIntakeSettings(event:FormEvent){
     event.preventDefault();
@@ -1594,13 +1595,13 @@ export default function App() {
               {((selectedEvidence.some(item=>item.requirement_key==='codm_tag_screenshot'&&item.status==='approved')&&['membership_proofs','discord_roster','final_review','screening_gc_ready','complete'].includes(selected.workflow_step))||['screening_gc_ready','complete'].includes(selected.workflow_step))&&<><div className="panel staff-alert-settings"><div><strong>🔔 Recruitment notifications</strong><p>New applications and messages from the open applicant conversation. Alerts work while this page is open.</p></div><button type="button" className="secondary" onClick={()=>void enableStaffAlerts()}>{desktopAlerts?'Notifications enabled':'Enable notifications + sound'}</button><span>Unread alerts: {alertCount}</span>{alertCount>0&&<button type="button" className="secondary" onClick={()=>setAlertCount(0)}>Mark read</button>}{alertHistory.length>0&&<details><summary>Recent alerts</summary><ul>{alertHistory.map((item,index)=><li key={index}>{item}</li>)}</ul></details>}</div><div className="recruiter-quick-links">
                 <p><strong>Next-step links — manual delivery.</strong> Choose the link appropriate for this applicant's current stage. Messenger group-request issues can be handled using the Screening Admin contact below.</p>
                 <form className="screening-admin-contact-form" onSubmit={saveScreeningAdminContact}>
-                  <label htmlFor="screening-admin-facebook-url"><strong>Screening Admin Facebook contact</strong><span>Editable for the recruiter using this browser.</span></label>
+                  <label htmlFor="screening-admin-facebook-url"><strong>Screening Admin Facebook contact</strong><span>Shared across all recruiter accounts and devices.</span></label>
                   <div className="screening-admin-contact-controls">
                     <input id="screening-admin-facebook-url" type="url" required maxLength={500} placeholder="https://www.facebook.com/ScreeningAdmin/" value={screeningAdminDraft} onChange={event=>setScreeningAdminDraft(event.target.value)} aria-label="Screening Admin Facebook profile link"/>
                     <button type="submit" className="secondary" disabled={screeningAdminSaving}>{screeningAdminSaving?'Saving…':'Save link'}</button>
-                    <button type="button" className="secondary" onClick={resetScreeningAdminContact} disabled={screeningAdminSaving}>Use default</button>
+                    <button type="button" className="secondary" onClick={()=>void resetScreeningAdminContact()} disabled={screeningAdminSaving}>Use default</button>
                   </div>
-                  <small>This link is saved for this browser only, not shared across recruiter accounts/devices. A shared setting requires the ASYLUM Supabase project connection.</small>
+                  <small>Saved securely in the ASYLUM Supabase project. Authorized recruiters see the same link; changes apply to the next message sent.</small>
                 </form>
                 {selectedEvidence.some(item=>item.requirement_key==='codm_tag_screenshot'&&item.status==='approved')&&['membership_proofs','discord_roster','final_review','screening_gc_ready','complete'].includes(selected.workflow_step)&&<button type="button" className="secondary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('Your CODM screenshot has been approved. You can now join the official ASY Discord using this invite: https://discord.gg/HbJ5Jvw8y8\n\nAfter joining, go to #get-role and click the 😇 Angel emoji. Follow the server instructions. Use IGN ASY as your server nickname. If you see #NO ACCESS, follow its instructions; otherwise go to #SELECT YOUR VERSION HERE. Please ask an admin to confirm your game version before proceeding.')}>Send Discord invite + guide <Send size={14}/></button>}
                 {selectedEvidence.some(item=>item.requirement_key==='codm_tag_screenshot'&&item.status==='approved')&&['membership_proofs','discord_roster','final_review','screening_gc_ready','complete'].includes(selected.workflow_step)&&<button type="button" className="secondary" disabled={adminMessageBusy} onClick={()=>void sendScreeningAdminContact()}>Send Screening Admin contact <Send size={14}/></button>}
