@@ -949,3 +949,19 @@
 .duplicate-uid-warning{margin-bottom:14px;border-color:rgba(247,153,69,.55)}
 .duplicate-uid-warning strong{color:#ffd0a2}
 @media(max-width:600px){.duplicate-uid-flag{padding:4px 6px;font-size:9px}}
+
+/* Recruiter manual Messenger/Screening Admin contact editor. */
+.screening-admin-contact-form{display:flex;flex-direction:column;gap:8px;flex:1 1 100%;width:100%;min-width:0;padding:12px;border:1px solid #3d303b;border-radius:8px;background:#111015}
+.screening-admin-contact-form>label{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;color:#f2e7ec;font-size:12px}
+.screening-admin-contact-form>label span{color:#ab9eac;font-size:10px;font-weight:400}
+.screening-admin-contact-controls{display:flex;align-items:stretch;flex-wrap:wrap;gap:8px;min-width:0}
+.screening-admin-contact-controls input{flex:1 1 260px;width:100%;min-width:0;border:1px solid #4b424c;border-radius:5px;padding:11px 12px;background:#0d0b10;color:#fff;font-size:12px;overflow-wrap:anywhere}
+.screening-admin-contact-controls input:focus-visible{outline:2px solid #df4050;outline-offset:1px}
+.screening-admin-contact-controls button{flex:0 0 auto;padding:10px 12px;min-width:90px}
+.screening-admin-contact-form>small{color:#a69da9;font-size:10px;line-height:1.6}
+@media(max-width:640px){
+  .screening-admin-contact-form{padding:11px}
+  .screening-admin-contact-controls{display:grid;grid-template-columns:1fr 1fr;width:100%;min-width:0}
+  .screening-admin-contact-controls input{grid-column:1/-1;width:100%;max-width:100%;min-width:0}
+  .screening-admin-contact-controls button{width:100%;min-width:0}
+}
