@@ -27,6 +27,17 @@ function renderApplicationMessage(body:string){return body.split(/(https?:\/\/[^
 const emptyAnnouncementDraft = {id:'',title:'',body:'',category:'general' as Announcement['category'],is_published:true};
 const statuses = ['pending','reviewing','interview','tryout','accepted','rejected','waitlisted'];
 const labels: Record<string,string> = { pending:'Pending review', reviewing:'In review', interview:'Interview', tryout:'Tryout', accepted:'Accepted', rejected:'Rejected', waitlisted:'Waitlisted' };
+const DEFAULT_SCREENING_ADMIN_URL = 'https://www.facebook.com/Shallow.Laren/';
+const SCREENING_ADMIN_STORAGE_KEY = 'asy-recruitment:screening-admin-contact';
+const isValidScreeningAdminUrl = (value:string) => {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'https:' &&
+      ['facebook.com','www.facebook.com','m.facebook.com','fb.com','www.fb.com'].includes(url.hostname.toLowerCase()) &&
+      url.pathname.length > 1 &&
+      !url.username && !url.password;
+  } catch { return false; }
+};
 const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', ageConfirmed:'', legendaryMpCount:'0', legendaryBrCount:'0', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
 const createCode = () => { const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const bytes=new Uint8Array(8); crypto.getRandomValues(bytes); return 'ASYLUM-'+Array.from(bytes,b=>alphabet[b%alphabet.length]).join(''); };
 const isAllowedProfileUrl=(value:string,domains:string[])=>{
@@ -103,6 +114,9 @@ export default function App() {
   const [intakeLimitDraft,setIntakeLimitDraft]=useState('');
   const [intakeOpenDraft,setIntakeOpenDraft]=useState(true);
   const [settingsBusy,setSettingsBusy]=useState(false);
+  const [screeningAdminUrl,setScreeningAdminUrl]=useState(DEFAULT_SCREENING_ADMIN_URL);
+  const [screeningAdminDraft,setScreeningAdminDraft]=useState(DEFAULT_SCREENING_ADMIN_URL);
+  const [screeningAdminSaving,setScreeningAdminSaving]=useState(false);
   const [applicantProgress,setApplicantProgress]=useState<ApplicantProgress|null>(null);
   const [evidenceServiceConfigured,setEvidenceServiceConfigured]=useState<boolean|null>(null);
   const [evidenceUploadKey,setEvidenceUploadKey]=useState('');
@@ -189,6 +203,15 @@ export default function App() {
   const updateForm=(key:keyof typeof form,value:string)=>setForm(old=>({...old,[key]:value}));
 
   useEffect(()=>{void loadIntakeSettings();void loadAnnouncements();},[]);
+  useEffect(()=>{
+    try {
+      const saved = localStorage.getItem(SCREENING_ADMIN_STORAGE_KEY);
+      if(saved && isValidScreeningAdminUrl(saved)){
+        setScreeningAdminUrl(saved);
+        setScreeningAdminDraft(saved);
+      }
+    } catch { /* Storage may be unavailable on private devices. */ }
+  },[]);
   useEffect(()=>{try{const raw=localStorage.getItem('asy-recruitment:last-application');if(raw){const saved=JSON.parse(raw) as SavedApplication;if(saved.application_code&&saved.contact_email){setSavedApplication(saved);setApplicationCode(saved.application_code);setContactEmail(saved.contact_email);}}}catch{}},[]);
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>setSession(data.session));
@@ -393,6 +416,45 @@ export default function App() {
     finally{setAdminMessageBusy(false);}
   }
 
+  function saveScreeningAdminContact(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();
+    if(!authorized || !session?.user.email){
+      notify('Sign in as an authorized recruiter to change the screening contact.',true);
+      return;
+    }
+    const link=screeningAdminDraft.trim();
+    if(!isValidScreeningAdminUrl(link)){
+      notify('Enter a valid HTTPS Facebook profile link for the Screening Admin.',true);
+      return;
+    }
+    setScreeningAdminSaving(true);
+    try {
+      localStorage.setItem(SCREENING_ADMIN_STORAGE_KEY,link);
+      setScreeningAdminUrl(link);
+      notify('Screening Admin link saved on this browser. Other admins/devices will still have their own link until shared Supabase settings are enabled.');
+    } catch {
+      setScreeningAdminUrl(link);
+      notify('Screening Admin link updated for this session, but this browser blocked saving it for future visits.',true);
+    } finally { setScreeningAdminSaving(false); }
+  }
+  function resetScreeningAdminContact(){
+    setScreeningAdminDraft(DEFAULT_SCREENING_ADMIN_URL);
+    setScreeningAdminUrl(DEFAULT_SCREENING_ADMIN_URL);
+    try { localStorage.removeItem(SCREENING_ADMIN_STORAGE_KEY); } catch { /* optional persistence */ }
+    notify('Default Screening Admin contact restored for this browser.');
+  }
+  async function sendScreeningAdminContact(){
+    if(!isValidScreeningAdminUrl(screeningAdminUrl)){
+      notify('Please save a valid Screening Admin Facebook link first.',true);
+      return;
+    }
+    await sendAdminQuickMessage(
+      'Hello! If your request to join the main ASYLUM Community screening group chat is not being approved through Messenger, kindly send a message directly to the Screening Admin at the Facebook account below so they can add you manually.\n\n'+
+      screeningAdminUrl+'\n\n'+
+      'When contacting the admin, mention your ASY application IGN. Do not send passwords or verification codes.\n\n'+
+      'Thank you for your understanding and cooperation!'
+    );
+  }
   async function sendAdminQuickMessage(body:string){
     if(!selected||!body.trim())return;
     setAdminMessageBusy(true);
@@ -1530,8 +1592,18 @@ export default function App() {
             <section className="panel application-chat admin-application-chat">
               <div className="application-chat-heading"><div><small className="kicker">APPLICANT CONVERSATION</small><h2>Chat with {selected.ign}</h2><p>Private messages for this application only.</p></div><span className="private-badge"><ShieldCheck size={13}/> Recruiter only</span></div>
               {((selectedEvidence.some(item=>item.requirement_key==='codm_tag_screenshot'&&item.status==='approved')&&['membership_proofs','discord_roster','final_review','screening_gc_ready','complete'].includes(selected.workflow_step))||['screening_gc_ready','complete'].includes(selected.workflow_step))&&<><div className="panel staff-alert-settings"><div><strong>🔔 Recruitment notifications</strong><p>New applications and messages from the open applicant conversation. Alerts work while this page is open.</p></div><button type="button" className="secondary" onClick={()=>void enableStaffAlerts()}>{desktopAlerts?'Notifications enabled':'Enable notifications + sound'}</button><span>Unread alerts: {alertCount}</span>{alertCount>0&&<button type="button" className="secondary" onClick={()=>setAlertCount(0)}>Mark read</button>}{alertHistory.length>0&&<details><summary>Recent alerts</summary><ul>{alertHistory.map((item,index)=><li key={index}>{item}</li>)}</ul></details>}</div><div className="recruiter-quick-links">
-                <p><strong>Next-step links — manual delivery.</strong> Choose the link appropriate for this applicant's current stage.</p>
+                <p><strong>Next-step links — manual delivery.</strong> Choose the link appropriate for this applicant's current stage. Messenger group-request issues can be handled using the Screening Admin contact below.</p>
+                <form className="screening-admin-contact-form" onSubmit={saveScreeningAdminContact}>
+                  <label htmlFor="screening-admin-facebook-url"><strong>Screening Admin Facebook contact</strong><span>Editable for the recruiter using this browser.</span></label>
+                  <div className="screening-admin-contact-controls">
+                    <input id="screening-admin-facebook-url" type="url" required maxLength={500} placeholder="https://www.facebook.com/ScreeningAdmin/" value={screeningAdminDraft} onChange={event=>setScreeningAdminDraft(event.target.value)} aria-label="Screening Admin Facebook profile link"/>
+                    <button type="submit" className="secondary" disabled={screeningAdminSaving}>{screeningAdminSaving?'Saving…':'Save link'}</button>
+                    <button type="button" className="secondary" onClick={resetScreeningAdminContact} disabled={screeningAdminSaving}>Use default</button>
+                  </div>
+                  <small>This link is saved for this browser only, not shared across recruiter accounts/devices. A shared setting requires the ASYLUM Supabase project connection.</small>
+                </form>
                 {selectedEvidence.some(item=>item.requirement_key==='codm_tag_screenshot'&&item.status==='approved')&&['membership_proofs','discord_roster','final_review','screening_gc_ready','complete'].includes(selected.workflow_step)&&<button type="button" className="secondary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('Your CODM screenshot has been approved. You can now join the official ASY Discord using this invite: https://discord.gg/HbJ5Jvw8y8\n\nAfter joining, go to #get-role and click the 😇 Angel emoji. Follow the server instructions. Use IGN ASY as your server nickname. If you see #NO ACCESS, follow its instructions; otherwise go to #SELECT YOUR VERSION HERE. Please ask an admin to confirm your game version before proceeding.')}>Send Discord invite + guide <Send size={14}/></button>}
+                {selectedEvidence.some(item=>item.requirement_key==='codm_tag_screenshot'&&item.status==='approved')&&['membership_proofs','discord_roster','final_review','screening_gc_ready','complete'].includes(selected.workflow_step)&&<button type="button" className="secondary" disabled={adminMessageBusy} onClick={()=>void sendScreeningAdminContact()}>Send Screening Admin contact <Send size={14}/></button>}
                 {selected.application_type!=='referral'&&selected.workflow_step==='final_review'&&selectedEvidence.length>0&&selectedEvidence.every(item=>!item.is_required||item.status==='approved')&&<button type="button" className="primary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('All required screenshot proofs have been approved. Please complete the official ASY Membership Form using this link: https://docs.google.com/forms/d/e/1FAIpQLSfNfTuj1lu9m6uG1OVyppUUwI-T5GdQNIJJNQjjBnN2SVGhGw/viewform\n\nUse the same IGN and CODM UID from your application. After submitting, reply here with “Submitted” so the recruiter can check your response before the final MGC confirmation.')}>Send Membership Form (Non-Referral) <Send size={14}/></button>}
                 {selected.application_type==='referral'&&<button type="button" className="primary" disabled={adminMessageBusy} onClick={()=>void sendAdminQuickMessage('Hello! Thank you for applying to ASYLUM Community through Referral Recruitment. Please complete the Referral Membership Form using this link: https://docs.google.com/forms/d/e/1FAIpQLSfMRLP7A9LiERdtPNS6juLH05it3m0buT-GGzeoM4cm0M57rQ/viewform\n\nUse the same IGN as your application. Once completed, send a screenshot of the form confirmation showing your IGN together with your referral conversation proof and other required screenshots in Track Application. Thank you!')}>Send Membership Form (Referral) <Send size={14}/></button>}
               </div></>}
