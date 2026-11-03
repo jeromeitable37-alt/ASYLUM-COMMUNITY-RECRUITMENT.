@@ -49,9 +49,13 @@ async function sendDevice(sub: any, notification: any, config: any) {
   const title = String(notification.title || "ASYLUM Recruitment").slice(0, 90);
   const body = String(notification.body || "You have a new recruitment update.").slice(0, 180);
   const tag = "asy-recruitment-" + notification.id;
+  const appId = typeof notification.application_id === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(notification.application_id)
+      ? notification.application_id : null;
+  const url = appId ? "/?open_application=" + encodeURIComponent(appId) : "/";
   await webpush.sendNotification({
     endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth },
-  }, JSON.stringify({ title, body, tag, url: "/" }), { TTL: 3600, urgency: "normal" });
+  }, JSON.stringify({ title, body, tag, url }), { TTL: 3600, urgency: "normal" });
 }
 async function dispatch(config: any) {
   // Retry failed interrupted workers; never resend an already-sent delivery.
@@ -76,7 +80,7 @@ async function dispatch(config: any) {
     try {
       const [s,n] = await Promise.all([
         db.from("asy_webpush_subscriptions").select("id,user_id,endpoint,p256dh,auth,enabled").eq("id",job.subscription_id).maybeSingle(),
-        db.from("asy_recruitment_notifications").select("id,title,body,recipient_role,notification_type").eq("id",job.notification_id).maybeSingle(),
+        db.from("asy_recruitment_notifications").select("id,title,body,application_id,recipient_role,notification_type").eq("id",job.notification_id).maybeSingle(),
       ]);
       if (s.error || n.error || !s.data || !n.data) throw new Error("Missing subscription or notification");
       if (!s.data.enabled || n.data.recipient_role !== "recruiter") {
