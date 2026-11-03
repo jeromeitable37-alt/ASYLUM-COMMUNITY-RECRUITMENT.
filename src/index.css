@@ -447,6 +447,42 @@
   .announcement-preview-grid>.announcement-card:last-child:nth-child(odd){grid-column:auto}
   .community-layout{gap:13px}
   .community-announcements,.community-chat-panel,.announcement-admin{padding:15px}
+  /* Stack the heading and Refresh on phones. The generic compact-button
+     width:100% rule previously squeezed the heading to one character wide. */
+  .community-panel-heading,
+  .community-chat-panel .community-panel-heading{
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    justify-content:flex-start;
+    gap:12px;
+    min-width:0;
+  }
+  .community-panel-heading>div{
+    width:100%;
+    min-width:0;
+    flex:0 1 auto;
+  }
+  .community-panel-heading .kicker,
+  .community-panel-heading h2,
+  .community-panel-heading p{
+    overflow-wrap:normal;
+    word-break:normal;
+  }
+  .community-panel-heading>.compact-button{
+    align-self:flex-end;
+    flex:none;
+    width:auto;
+    max-width:100%;
+    min-width:90px;
+    padding:9px 13px;
+  }
+  .community-announcements>.announcement-card,
+  .community-chat-panel .public-chat-thread,
+  .community-chat-panel .community-chat-compose{
+    min-width:0;
+    width:100%;
+  }
   .announcement-form{padding:12px}
   .announcement-form-actions{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
   .announcement-form-actions>button{width:100%}
