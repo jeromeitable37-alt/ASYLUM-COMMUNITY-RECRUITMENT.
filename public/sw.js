@@ -82,7 +82,7 @@ self.addEventListener("push", (event) => {
     body,
     icon: "https://asy-clan-recruitment-1h073y.v2.appdeploy.ai/resources/asylum-community-logo.png",
     tag: String(payload.tag || "asy-recruitment"),
-    data: { url: "/" },
+    data: { url: typeof payload.url === "string" && /^\/\?open_application=[0-9a-f-]{36}$/i.test(payload.url) ? payload.url : "/" },
     renotify: true,
     requireInteraction: false
   }));
@@ -91,14 +91,16 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil((async () => {
-    const home = new URL("/", self.location.origin).href;
+    const relative = event.notification.data?.url || "/";
+    const target = new URL(relative, self.location.origin).href;
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const client of windows) {
       if (new URL(client.url).origin === self.location.origin) {
+        if (client.navigate) await client.navigate(target);
         await client.focus();
         return;
       }
     }
-    if (self.clients.openWindow) await self.clients.openWindow(home);
+    if (self.clients.openWindow) await self.clients.openWindow(target);
   })());
 });
