@@ -131,7 +131,7 @@ export default function App() {
   const [alertHistory,setAlertHistory]=useState<string[]>([]);
   const appSeen=useRef<Set<string>|null>(null);
   const messageSeen=useRef<Map<string,Set<string>>>(new Map());
-  function playStaffAlert(title:string,body:string){
+  function playStaffAlert(title:string,body:string,applicationId?:string){
     setAlertCount(v=>v+1);
     setAlertHistory(v=>[title+' — '+body,...v].slice(0,20));
     if(!desktopAlerts)return;
@@ -140,7 +140,10 @@ export default function App() {
       if(AudioContextClass){const ctx=new AudioContextClass();const oscillator=ctx.createOscillator();const gain=ctx.createGain();oscillator.type='sine';oscillator.frequency.value=780;gain.gain.value=.07;oscillator.connect(gain);gain.connect(ctx.destination);oscillator.start();oscillator.stop(ctx.currentTime+.16);oscillator.onended=()=>void ctx.close();}
     }catch{}
     if('Notification' in window&&Notification.permission==='granted'){
-      try{new Notification(title,{body,icon:'/favicon.ico',tag:'asy-'+Date.now()});}catch{}
+      try{
+        const notification=new Notification(title,{body,icon:'/favicon.ico',tag:'asy-'+Date.now()});
+        notification.onclick=()=>{window.focus();if(applicationId)void openStaffNotificationApplication(applicationId);notification.close();};
+      }catch{}
     }
   }
   async function enableStaffAlerts(){
@@ -158,7 +161,10 @@ export default function App() {
       const ids=new Set((data||[]).map(row=>row.id as string));
       if(appSeen.current!==null){
         const added=(data||[]).filter(row=>!appSeen.current?.has(row.id));
-        if(added.length)playStaffAlert('New ASYLUM application',added.length===1?(added[0].ign||'New applicant')+' submitted an application.':added.length+' new applications received.');
+        if(added.length){
+          if(added.length===1)playStaffAlert('New application: '+(added[0].ign||'Applicant'),'Open Recruiter Dashboard to review.',added[0].id);
+          else playStaffAlert(added.length+' new applications','Open Recruiter Dashboard to review them.');
+        }
       }
       appSeen.current=ids;
     }
@@ -173,7 +179,7 @@ export default function App() {
     const seen=messageSeen.current.get(appId);
     if(seen&&current.size){
       const fresh=adminApplicationMessages.filter(message=>message.sender_role==='applicant'&&!seen.has(message.id));
-      if(fresh.length)playStaffAlert('New applicant message',selected.ign+' sent '+fresh.length+' message'+(fresh.length>1?'s':'')+'.');
+      if(fresh.length)playStaffAlert('Message from '+selected.ign,selected.ign+' sent '+fresh.length+' private message'+(fresh.length>1?'s':'')+'.',selected.id);
     }
     messageSeen.current.set(appId,current);
   },[adminApplicationMessages,selected?.id,page,authorized]);
@@ -1054,6 +1060,37 @@ export default function App() {
   async function copyApplicationCode(codeToCopy=savedApplication?.application_code||applicationCode){if(!codeToCopy){notify('There is no tracking code to copy yet.',true);return;}try{await navigator.clipboard.writeText(codeToCopy);notify('Tracking code copied. Keep it private with your application email.');}catch{notify('Copy is unavailable in this browser. Select the code and copy it manually.',true);}}
   function clearSavedApplication(){try{localStorage.removeItem('asy-recruitment:last-application');}catch{}setSavedApplication(null);setApplicationCode('');setContactEmail('');setTracked(null);notify('Saved tracking details cleared from this device.');}
   async function loadApplications(){const {data,error}=await supabase.from('asy_clan_applications').select('*').order('submitted_at',{ascending:false});if(error)notify('Unable to load applications. Confirm recruiter access.',true);else setApplications((data||[]) as Application[]);}
+  async function openStaffNotificationApplication(applicationId:string){
+    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(applicationId))return;
+    setPage('admin');
+    if(!session||!authorized){
+      notify('Sign in with your authorized recruiter account to open this application.');
+      return;
+    }
+    const {data,error}=await supabase.from('asy_clan_applications').select('*').eq('id',applicationId).maybeSingle();
+    if(error||!data){
+      notify('Application unavailable. Your recruiter account may not have permission to view it.',true);
+      return;
+    }
+    const app=data as Application;
+    setSelected(app);
+    setEditApplicationType(app.application_type);
+    setEditSaveFeedback(null);
+    setNotes(app.reviewer_notes||'');
+    window.setTimeout(()=>document.getElementById('recruiter-application-detail')?.scrollIntoView({behavior:'smooth',block:'start'}),250);
+    notify('Opened '+app.ign+' application.');
+  }
+  useEffect(()=>{
+    const url=new URL(window.location.href);
+    const applicationId=url.searchParams.get('open_application');
+    if(!applicationId||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(applicationId))return;
+    if(!session){setPage('admin');return;}
+    if(!authorized)return;
+    void openStaffNotificationApplication(applicationId).finally(()=>{
+      url.searchParams.delete('open_application');
+      window.history.replaceState(null,'',url.pathname+url.search+url.hash);
+    });
+  },[authorized,session?.user.id]);
   async function loadRoster(){const {data,error}=await supabase.from('asy_clan_roster_public').select('id,ign,main_role,rank,member_status,joined_at,clan_name').eq('member_status','active').order('joined_at');if(error)notify('Could not load the roster right now.',true);else setRoster((data||[]) as Roster[]);}
   async function updateApplication(app:Application,status:string){setBusy(true);const {error}=await supabase.from('asy_clan_applications').update({status,reviewer_notes:notes.trim()||null,updated_at:new Date().toISOString()}).eq('id',app.id);if(error){setBusy(false);notify('Could not save this review. Check recruiter permissions.',true);return;}if(status==='accepted'){const {error:rosterError}=await supabase.from('asy_clan_roster').upsert({application_id:app.id,ign:app.ign,codm_uid:app.codm_uid,main_role:app.main_role,rank:app.rank,discord_username:app.discord_username,member_status:'active'},{onConflict:'application_id'});if(rosterError)notify('Status updated, but roster sync failed. Check whether this UID already exists.',true);}setBusy(false);setSelected(null);await loadApplications();notify(status==='accepted'?'Applicant accepted and added to community members.':status==='rejected'?'Application rejected and removed from the active queue. They can reapply if no other active application exists for their email or CODM UID.':'Application review saved.');}
   async function scheduleInterview(event:FormEvent){event.preventDefault();if(!selected||!interviewAt)return;setBusy(true);const {error}=await supabase.from('asy_recruitment_interviews').insert({application_id:selected.id,scheduled_at:new Date(interviewAt).toISOString(),channel:interviewChannel,meeting_details:interviewDetails.trim()||null,created_by:session?.user.email||null});setBusy(false);if(error)notify('Interview could not be saved.',true);else{await updateApplication(selected,'interview');setInterviewAt('');setInterviewDetails('');notify('Interview scheduled.');}}
@@ -1303,7 +1340,7 @@ export default function App() {
       {page==='screening'&&<ScreeningGuide intakeSettings={intakeSettings} onApply={()=>setPage('apply')} onTrack={()=>setPage('status')}/> }
       {page==='roster'&&<RosterPage roster={roster} onApply={()=>setPage('apply')}/>}
       {page==='teams'&&<OperationsHub mode="public" session={session} authorized={authorized} onNotify={notify}/>}
-      {page==='operations'&&<OperationsHub mode="staff" session={session} authorized={authorized} onNotify={notify}/>}
+      {page==='operations'&&<OperationsHub mode="staff" session={session} authorized={authorized} onNotify={notify} onOpenApplication={id=>void openStaffNotificationApplication(id)}/>} 
       {page==='admin'&&<section className="page admin-page">
         {!session?<div className="login-wrap"><div><small className="kicker">RESTRICTED AREA</small><h1>RECRUITER<br/><em>COMMAND.</em></h1><p className="muted">Sign in with an authorized Asylum Community recruitment account to review applications, schedule interviews and track tryouts.</p><div className="secure"><ShieldCheck/> ACCESS CONTROLLED BY SUPABASE AUTH</div></div><form className="panel login" onSubmit={signIn}><div className="login-icon"><ShieldCheck/></div><h2>Recruiter sign in</h2><p className="muted">Only approved recruiter emails can access applicant data.</p><Field label="Email"><input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="jeromeitable37@gmail.com"/></Field><Field label="Password"><input required type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Your password"/></Field><button className="primary full" disabled={busy}>{busy?'Signing in…':'Sign in securely'} <LogIn size={16}/></button><button type="button" className="text-link recruiter-forgot-password" onClick={()=>openPasswordReset('recruiter')}>Forgot password? <ArrowRight size={14}/></button><small className="muted">Account must exist in Supabase Auth and be added to the Asylum Community recruiter allowlist.</small></form></div>
         :!authorized?<div className="panel empty"><ShieldCheck size={38}/><h2>Account not authorized</h2><p>Signed in as {session.user.email}, but this email is not on the recruiter allowlist.</p><button className="secondary" onClick={()=>void signOut()}><LogOut size={15}/> Sign out</button></div>
@@ -1406,7 +1443,7 @@ export default function App() {
             </section>
           <div className="tools"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search IGN, UID, email, code…"/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All statuses</option>{statuses.map(stage=><option key={stage} value={stage}>{labels[stage]}</option>)}</select><button className="secondary" onClick={()=>void loadApplications()}>Refresh</button></div>
           <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setEditApplicationType(app.application_type);setEditSaveFeedback(null);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'DIRECT'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span>{app.status!=='rejected'&&duplicateActiveUids.has(app.codm_uid.replace(/[^0-9]/g,''))&&<span className="duplicate-uid-flag" title="Another active application uses this CODM UID">Duplicate UID</span>}<span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
-          {selected&&<div className="panel detail">{selected.status!=='rejected'&&duplicateActiveUids.has(selected.codm_uid.replace(/[^0-9]/g,''))&&<div className="notice bad duplicate-uid-warning"><strong>Possible duplicate application</strong><p>Another active application uses this CODM UID. Compare both records and confirm with the applicant before deciding which submission to keep. No application has been automatically deleted or rejected.</p></div>}<header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
+          {selected&&<div className="panel detail" id="recruiter-application-detail">{selected.status!=='rejected'&&duplicateActiveUids.has(selected.codm_uid.replace(/[^0-9]/g,''))&&<div className="notice bad duplicate-uid-warning"><strong>Possible duplicate application</strong><p>Another active application uses this CODM UID. Compare both records and confirm with the applicant before deciding which submission to keep. No application has been automatically deleted or rejected.</p></div>}<header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
             <div className="details">{[['Application type',selected.application_type==='referral'?'Referral Application':'Direct Application'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['MP Legendary Series',selected.legendary_series_mp===null?'Not recorded separately':String(selected.legendary_series_mp)],['BR Legendary Series',selected.legendary_series_br===null?'Not recorded separately':String(selected.legendary_series_br)],['Legendary Series (total)',String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank]].map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
             <section className="panel application-details-review">
               <small className="kicker">FIRST REVIEW · BEFORE CODM</small>
