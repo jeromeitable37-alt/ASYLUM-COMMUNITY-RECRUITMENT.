@@ -118,7 +118,9 @@ function pilotGoLive_(props){
     if(count<10)throw Error('Private directory bridge did not return enough members.');
     const file=DriveApp.getFileById(ASY_CASUAL_SYNC.spreadsheetId);
     if(file.getSharingAccess()!==DriveApp.Access.PRIVATE){
-      file.setSharing(DriveApp.Access.PRIVATE,DriveApp.Permission.NONE);
+      // Keep the current link permission value while removing the public class.
+      // Google rejects Permission.NONE in this combination.
+      file.setSharing(DriveApp.Access.PRIVATE,file.getSharingPermission());
     }
     if(file.getSharingAccess()!==DriveApp.Access.PRIVATE)
       throw Error('Google Sheet remains link-shared; refusing LIVE activation.');
@@ -185,5 +187,14 @@ function doPost(e){
     // Do not log applicant details, birthdate or token.
     return pilotReply_({ok:false,error:String(error&&error.message||'Sync failed').slice(0,130)});
   }
+}
+function authorizeSecureSync(){
+  // Safe local authorization check; this never changes sharing settings
+  // or applicant records. Run it once in the Apps Script editor after
+  // replacing Code.gs so Google can request the newly required Drive scope.
+  const file=DriveApp.getFileById(ASY_CASUAL_SYNC.spreadsheetId);
+  const book=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId);
+  if(!book.getSheetByName(ASY_CASUAL_SYNC.liveTab))throw Error('SCREENING tab missing.');
+  Logger.log('Secure sync authorization completed. Current access: '+file.getSharingAccess());
 }
 function doGet(){return pilotReply_({ok:false,message:'POST only. ASY Direct connector.'});}
