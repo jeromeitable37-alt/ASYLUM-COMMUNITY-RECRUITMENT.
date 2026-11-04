@@ -14,12 +14,6 @@ const ALLOWED_TYPES: Record<string, string> = {
   "image/png": "png",
   "image/webp": "webp",
 };
-const STAGE_BY_STEP: Record<string, number> = {
-  tag_proofs: 1,
-  membership_proofs: 2,
-  // Legacy in-progress applications may still have this step name; their remaining proofs now belong to stage 2.
-  discord_roster: 2,
-};
 
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 function limited(ip: string) {
@@ -141,12 +135,13 @@ Deno.serve(async (req: Request) => {
     if (application.application_type !== "referral" && ["membership_form_screenshot", "referral_conversation_screenshot"].includes(key)) {
       return json(409, { error: "Referral-only screenshots are not required for Direct Application." });
     }
-    const activeStage = STAGE_BY_STEP[application.workflow_step];
-    if (!activeStage || activeStage !== requirement.stage_number || requirement.status === "locked") {
-      return json(409, { error: "This step is locked until a recruiter approves the previous step." });
+    // All required proof slots are open together. Screenshots can be replaced
+    // before the single recruiter verification; no stage-by-stage approval.
+    if (!["eligibility_review","tag_proofs","membership_proofs","discord_roster"].includes(application.workflow_step)) {
+      return json(409, { error: "Screenshot uploads are closed after final verification." });
     }
-    if (["pending", "approved"].includes(requirement.status)) {
-      return json(409, { error: "This requirement is already submitted or approved. Wait for recruiter review." });
+    if (!["not_submitted","needs_correction","pending"].includes(requirement.status)) {
+      return json(409, { error: "This proof was already verified or is not available for replacement." });
     }
 
     if (action === "create-upload") {
@@ -200,7 +195,7 @@ Deno.serve(async (req: Request) => {
         })
         .eq("application_id", application.id)
         .eq("requirement_key", key)
-        .in("status", ["not_submitted", "needs_correction"])
+        .in("status", ["not_submitted", "needs_correction", "pending"])
         .select("requirement_key, status, file_name, submitted_at")
         .maybeSingle();
       if (error || !saved) return json(409, { error: "This requirement changed while uploading. Refresh progress and try again." });
