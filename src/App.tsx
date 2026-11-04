@@ -1359,7 +1359,12 @@ export default function App() {
   const navigation=[['home','Overview'],['community','Community'],['teams','Teams & Scrims'],['apply','Apply to join'],['status','Track application'],['account','Member account'],['screening','Screening guide'],['roster','Community members'],...(authorized?[['operations','Operations']]:[])];
 
   return <div className="shell">
-    <div className="topline"><i/> ASYLUM COMMUNITY <span>/</span> GAMING COMMUNITY</div>
+    <div className="asy-network-strip" role="navigation" aria-label="Asylum Community connected websites">
+      <a className="asy-network-home" href="https://asylum-community-dashboard.vercel.app/" rel="noopener noreferrer"><ShieldCheck size={14}/> MAIN COMMUNITY PORTAL <ArrowRight size={13}/></a>
+      <span className="asy-network-context">YOU ARE IN / RECRUITMENT</span>
+      <a href="https://asylum-jersey-nu.vercel.app/" target="_blank" rel="noopener noreferrer">JERSEY DROP ↗</a>
+    </div>
+    <div className="topline"><i/> ASYLUM COMMUNITY <span>/</span> OFFICIAL RECRUITMENT</div>
     <header className="nav">
       <button className="brand" onClick={()=>setPage('home')}><b className="mark"><img src="https://asy-clan-recruitment-1h073y.v2.appdeploy.ai/resources/asylum-community-logo.png" alt="Asylum Community logo" onError={event=>{event.currentTarget.style.opacity='0';}}/></b><span><strong>ASYLUM<span>.</span></strong><small>OFFICIAL COMMUNITY RECRUITMENT</small></span></button>
       <button className="mobile-toggle" aria-label="Open menu" onClick={()=>setMobileOpen(!mobileOpen)}>☰</button>
