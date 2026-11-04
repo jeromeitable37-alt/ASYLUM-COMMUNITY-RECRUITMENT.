@@ -2,8 +2,9 @@
  * ASYLUM Direct membership Sheets connector — safe dual-mode deployment.
  *
  * Default: TEST (WEBSITE_CASUAL_TEST only).
- * Live: set Script Property ASY_CASUAL_SYNC_TARGET=live, only AFTER the
- * source Sheet is restricted to authorized users and management approves it.
+ * Live: management uses the Recruiter Dashboard's guarded "Go Live" action
+ * AFTER redeploying this version of Code.gs. The action restricts the
+ * spreadsheet, preserves specific staff access, and sets LIVE atomically.
  * All requests require ASY_CASUAL_SYNC_TOKEN (server secret, 32+ chars).
  *
  * Original Google Forms fields are A:K. L is the website-only tracking code
@@ -64,6 +65,69 @@ function pilotAccess_(id){
   const access=DriveApp.getFileById(id).getSharingAccess();
   return access===DriveApp.Access.PRIVATE?'restricted':'link-shared';
 }
+/**
+ * Private directory bridge. Returns only the minimum fields the existing
+ * ASYLUM member-directory sync needs, never birthdates or contact details.
+ * This action always requires the shared server token and is usable in
+ * TEST mode before the Google Sheet is restricted.
+ */
+function pilotDirectory_(){
+  const book=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId);
+  const tabs=['SCREENING','REFERRALS','TEAMS'];
+  const records=[];
+  for(const name of tabs){
+    const tab=book.getSheetByName(name);
+    if(!tab)throw Error('Directory tab '+name+' missing.');
+    if(tab.getLastRow()<2)continue;
+    const values=tab.getRange(1,1,tab.getLastRow(),Math.min(tab.getLastColumn(),12)).getDisplayValues();
+    const heads=values[0].map(x=>String(x||'').toLowerCase().trim());
+    const locate=(key)=>heads.findIndex(v=>v.includes(key));
+    const ignCol=locate('ign (in-game name');
+    const uidCol=heads.findIndex(v=>v==='uid'||v.startsWith('uid '));
+    const clanCol=locate('clan name');
+    const dateCol=locate('timestamp');
+    if(ignCol<0||uidCol<0||clanCol<0)throw Error('Directory headers missing in '+name+'.');
+    for(let i=1;i<values.length;i++){
+      const row=values[i];
+      const ign=String(row[ignCol]||'').trim().slice(0,32);
+      const uid=String(row[uidCol]||'').trim().slice(0,40);
+      if(ign.length<2||uid.length<5)continue;
+      const clan=String(row[clanCol]||'').trim().slice(0,120);
+      const timestamp=String(row[dateCol>=0?dateCol:0]||'').trim().slice(0,50);
+      records.push({ign,uid,clan_name:clan,timestamp});
+    }
+  }
+  return records;
+}
+/**
+ * Management-triggered production switch (authenticated in Supabase first).
+ * Only link-wide access is removed. Owner and named editors retain access.
+ * If the connection cannot be made private, LIVE mode is never enabled.
+ */
+function pilotGoLive_(props){
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(20000))throw Error('Activation busy; retry.');
+  try{
+    const book=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId);
+    const live=book.getSheetByName(ASY_CASUAL_SYNC.liveTab);
+    if(!live)throw Error('SCREENING tab not found.');
+    const header=live.getRange(1,12).getDisplayValue().trim();
+    if(header&&!/application code/i.test(header))
+      throw Error('SCREENING column L already contains a different header.');
+    const count=pilotDirectory_().length;
+    if(count<10)throw Error('Private directory bridge did not return enough members.');
+    const file=DriveApp.getFileById(ASY_CASUAL_SYNC.spreadsheetId);
+    if(file.getSharingAccess()!==DriveApp.Access.PRIVATE){
+      file.setSharing(DriveApp.Access.PRIVATE,DriveApp.Permission.NONE);
+    }
+    if(file.getSharingAccess()!==DriveApp.Access.PRIVATE)
+      throw Error('Google Sheet remains link-shared; refusing LIVE activation.');
+    props.setProperty(ASY_CASUAL_SYNC.modeProperty,'live');
+    return pilotReply_({ok:true,mode:'live',access:'restricted',directory_count:count});
+  }finally{
+    lock.releaseLock();
+  }
+}
 function doPost(e){
   try{
     const body=JSON.parse((e&&e.postData&&e.postData.contents)||'{}');
@@ -73,11 +137,16 @@ function doPost(e){
     const mode=props.getProperty(ASY_CASUAL_SYNC.modeProperty)==='live'?'live':'test';
     if(body.action==='casual_health'){
       return pilotReply_({
-        ok:true,mode,
+        ok:true,mode,version:'secure-v3',
         access:pilotAccess_(ASY_CASUAL_SYNC.spreadsheetId),
         tab:mode==='live'?ASY_CASUAL_SYNC.liveTab:ASY_CASUAL_SYNC.testTab
       });
     }
+    if(body.action==='casual_directory'){
+      const rows=pilotDirectory_();
+      return pilotReply_({ok:true,version:'secure-v3',records:rows,count:rows.length});
+    }
+    if(body.action==='casual_go_live')return pilotGoLive_(props);
     if(mode==='live'&&pilotAccess_(ASY_CASUAL_SYNC.spreadsheetId)!=='restricted')
       return pilotReply_({ok:false,error:'Restrict spreadsheet sharing to staff before live sync.'});
     const parsed=pilotParse_(body,mode);
