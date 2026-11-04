@@ -26,7 +26,10 @@ const cors={
 const json=(status:number,body:Record<string,unknown>)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json"}});
 const token=()=>Deno.env.get("ASY_CASUAL_SYNC_TOKEN")||"";
 const text=(value:unknown)=>String(value??"").trim();
-type AppsReply={ok?:boolean;mode?:string;action?:string;row?:number;error?:string;access?:string};
+type AppsReply={
+ ok?:boolean;mode?:string;action?:string;row?:number;error?:string;access?:string;
+ version?:string;directory_count?:number;records?:unknown[];count?:number
+};
 type RecruitRecord={
  id:string;application_type:string;application_code:string;contact_email:string;submitted_at:string;
  applicant_facebook_name:string|null;applicant_birthdate:string|null;applicant_clan_name:string|null;
@@ -53,6 +56,17 @@ async function checkStaff(req:Request){
   const {data:staff,error:roleError}=await db.from("asy_recruitment_admins")
     .select("email").eq("email",user.email.trim().toLowerCase()).maybeSingle();
   return !roleError&&Boolean(staff);
+}
+async function checkManagement(req:Request){
+  if(!db||!auth)return false;
+  const accessToken=req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if(!accessToken||accessToken===publishableKey)return false;
+  const {data:{user},error}=await auth.auth.getUser(accessToken);
+  if(error||!user?.email)return false;
+  const {data:staff,error:roleError}=await db.from("asy_recruitment_admins")
+    .select("role").eq("email",user.email.trim().toLowerCase()).maybeSingle();
+  return !roleError&&Boolean(staff&&["owner","management","admin"].includes(
+    String(staff.role||"").trim().toLowerCase()));
 }
 async function isLiveEnabled(){
   if(!db)throw Error("Service not configured.");
@@ -182,7 +196,7 @@ async function handleApplicantSync(body:Record<string,unknown>){
   const {data,error}=await db.from("asy_clan_applications")
     .select("id,application_type,application_code,contact_email,submitted_at,applicant_facebook_name,applicant_birthdate,applicant_clan_name,applicant_facebook_url,applicant_tiktok_url,ign,codm_uid,streamer_mode_id,discord_username,status,workflow_enabled")
     .eq("application_code",code).eq("contact_email",email).maybeSingle();
-  if(error||!data||data.application_type!=="casual"||!data.workflow_enabled)
+  if(error||!data||data.application_type!=="casual"||!data.workflow_enabled||data.status==="rejected")
     return json(404,{ok:false,error:"No matching Direct application."});
   if(!data.applicant_facebook_name||!data.applicant_birthdate||!data.applicant_clan_name)
     return json(409,{ok:false,error:"Your Direct application is missing the original form details. Ask a recruiter to correct it."});
@@ -209,12 +223,92 @@ async function handleApplicantSync(body:Record<string,unknown>){
     return json(503,{ok:false,error:"Application saved, but Google Sheet sync is pending recruiter follow-up."});
   }
 }
+// Production activation does not write real data until the authenticated
+// Apps Script has removed link-wide spreadsheet sharing and confirmed private
+// directory access. This intentionally requires a management role.
+async function activateLive(req:Request){
+  if(!db)return json(503,{ok:false,error:"Database service unavailable."});
+  if(!await checkManagement(req))
+    return json(403,{ok:false,error:"Only Owner, Management, or Admin may enable live sync."});
+  try{
+    const health=await callAppsScript({action:"casual_health"});
+    if(health.version!=="secure-v3")
+      return json(409,{ok:false,error:"Deploy the latest Code.gs containing the secure directory bridge and Go Live action first. The current deployment is still test-only."});
+    const directory=await callAppsScript({action:"casual_directory"});
+    if(directory.version!=="secure-v3"||!Array.isArray(directory.records)||directory.records.length<10)
+      return json(409,{ok:false,error:"The private member-directory bridge was not verified; real sync remains OFF."});
+    const go=await callAppsScript({action:"casual_go_live"});
+    if(go.mode!=="live"||go.access!=="restricted")
+      throw Error("Google did not confirm restricted LIVE mode.");
+    const verified=await callAppsScript({action:"casual_health"});
+    if(verified.mode!=="live"||verified.access!=="restricted"||verified.version!=="secure-v3")
+      throw Error("Google Sheet privacy verification failed after activation.");
+    const {error}=await db.from("asy_recruitment_settings")
+      .update({casual_sheet_live_enabled:true}).eq("id",1);
+    if(error)throw Error("Google Sheet is private, but Supabase could not enable auto-sync. Retry activation.");
+    const {count}=await db.from("asy_casual_sheet_sync").select("application_id",{head:true,count:"exact"})
+      .neq("status","synced");
+    return json(200,{
+      ok:true,live_sync_enabled:true,sheet_access:"restricted",
+      directory_bridge:"private",pending_sync_count:count??0,
+      message:"SCREENING live sync is ON and the Google Sheet is restricted. Use Sync pending Direct applications to backfill prior submissions."
+    });
+  }catch(error){
+    const msg=error instanceof Error?error.message:"Production activation failed.";
+    console.error("Casual Go Live failed:",msg);
+    return json(503,{ok:false,error:"Production activation did not finish: "+msg.slice(0,180)});
+  }
+}
+async function syncPending(req:Request){
+  if(!db)return json(503,{ok:false,error:"Database service unavailable."});
+  if(!await checkManagement(req))
+    return json(403,{ok:false,error:"Only Owner, Management, or Admin may backfill Direct applications."});
+  if(!await isLiveEnabled())
+    return json(409,{ok:false,error:"Production transfer is not enabled yet."});
+  const health=await callAppsScript({action:"casual_health"});
+  if(health.mode!=="live"||health.access!=="restricted"||health.version!=="secure-v3")
+    return json(409,{ok:false,error:"Private LIVE Apps Script is not verified."});
+  const {data,error}=await db.from("asy_clan_applications")
+    .select("id,application_type,application_code,contact_email,submitted_at,applicant_facebook_name,applicant_birthdate,applicant_clan_name,applicant_facebook_url,applicant_tiktok_url,ign,codm_uid,streamer_mode_id,discord_username,status,workflow_enabled")
+    .eq("application_type","casual").eq("workflow_enabled",true)
+    .neq("status","rejected").order("submitted_at",{ascending:true}).limit(40);
+  if(error)return json(503,{ok:false,error:"Could not read pending Direct applications."});
+  let synced=0,skipped=0,failed=0;const errors:string[]=[];
+  // Process at most five new writes per request to avoid Apps Script timeouts.
+  for(const row of data||[]){
+    const {data:queue}=await db.from("asy_casual_sheet_sync")
+      .select("status").eq("application_id",row.id).maybeSingle();
+    if(queue?.status==="synced"){skipped++;continue;}
+    try{
+      await performSync(row as RecruitRecord);
+      synced++;
+    }catch(error){
+      failed++;
+      const msg=error instanceof Error?error.message:"Sync failed";
+      errors.push(msg.slice(0,120));
+      console.error("Backfill Direct sync failed:",msg);
+    }
+    if(synced+failed>=5)break;
+  }
+  const {count:remaining}=await db.from("asy_casual_sheet_sync")
+    .select("application_id",{head:true,count:"exact"}).neq("status","synced");
+  return json(200,{
+    ok:true,synced,already_synced:skipped,failed,
+    pending_sync_count:remaining??0,
+    message:"SCREENING backfill processed "+synced+" Direct application(s)."+
+      (failed?" Some records still need review.":"")+
+      (remaining?" Use Sync pending again if required.":" All queued rows are acknowledged."),
+    errors:errors.length?["Some rows could not be synced. See server logs."]:undefined
+  });
+}
 Deno.serve(async(req:Request)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   if(req.method!=="POST")return json(405,{ok:false,error:"POST only."});
   const body=await req.json().catch(()=>null) as Record<string,unknown>|null;
   if(!body)return json(400,{ok:false,error:"JSON body required."});
   if(body.action==="sync-submission")return handleApplicantSync(body);
+  if(body.action==="activate-live")return activateLive(req);
+  if(body.action==="sync-pending")return syncPending(req);
   if(!await checkStaff(req))return json(403,{ok:false,error:"Authorized recruiter sign-in required."});
   if(body.action==="status"){
     let liveEnabled=false;
@@ -223,11 +317,13 @@ Deno.serve(async(req:Request)=>{
     let scriptState:"updated"|"legacy_test"|"not_authorized"|"sheet_permission"|"non_json"|"unavailable"|"unexpected_response"|"missing_secret"="missing_secret";
     let scriptMode:"test"|"live"|"unknown"="unknown";
     let sheetAccess:"restricted"|"link-shared"|"unknown"="unknown";
+    let secureScriptVersion=false;
     if(hasSecret){
       try{
         const health=await callAppsScript({action:"casual_health"});
         if((health.mode==="test"||health.mode==="live") &&
            (health.access==="restricted"||health.access==="link-shared")){
+          secureScriptVersion=health.version==="secure-v3";
           scriptState="updated";
           scriptMode=health.mode;
           sheetAccess=health.access;
@@ -266,7 +362,7 @@ Deno.serve(async(req:Request)=>{
         .not("test_synced_at","is",null)
       : {count:null};
     return json(200,{
-      website_test_count:websiteTestCount??0,
+      website_test_count:websiteTestCount??0,secure_script_ready:secureScriptVersion,
       ok:true,mode:"casual_test_only",webhook_url_configured:true,
       secret_configured:hasSecret,destination:"WEBSITE_CASUAL_TEST",
       live_sync_enabled:liveEnabled,script_state:scriptState,
