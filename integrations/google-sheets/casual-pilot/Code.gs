@@ -1,86 +1,120 @@
 /**
- * ASYLUM COMMUNITY RECRUITMENT — Casual/Direct Google Sheet pilot.
- * Writes ONLY WEBSITE_CASUAL_TEST. Never SCREENING / REFERRALS / TEAMS.
- * Set Script Property ASY_CASUAL_SYNC_TOKEN (32+ random chars)
- * before deploying as an Apps Script web app.
+ * ASYLUM Direct membership Sheets connector — safe dual-mode deployment.
+ *
+ * Default: TEST (WEBSITE_CASUAL_TEST only).
+ * Live: set Script Property ASY_CASUAL_SYNC_TARGET=live, only AFTER the
+ * source Sheet is restricted to authorized users and management approves it.
+ * All requests require ASY_CASUAL_SYNC_TOKEN (server secret, 32+ chars).
+ *
+ * Original Google Forms fields are A:K. L is the website-only tracking code
+ * for idempotent upserts; Master List mapping should use A:K.
  */
-const ASY_CASUAL_PILOT = Object.freeze({
-  spreadsheetId: '17qdrn3qwCjJTG7Ud10EEsIfZiI9n18PJLSPdw5TIQjU',
-  sheetName: 'WEBSITE_CASUAL_TEST',
-  secretProperty: 'ASY_CASUAL_SYNC_TOKEN'
+const ASY_CASUAL_SYNC = Object.freeze({
+  spreadsheetId:'17qdrn3qwCjJTG7Ud10EEsIfZiI9n18PJLSPdw5TIQjU',
+  testTab:'WEBSITE_CASUAL_TEST',
+  liveTab:'SCREENING',
+  secretProperty:'ASY_CASUAL_SYNC_TOKEN',
+  modeProperty:'ASY_CASUAL_SYNC_TARGET'
 });
-function pilotReply_(data) {
-  return ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
+function pilotReply_(data){
+  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
 }
-function pilotSafeText_(value, max) {
-  const text = String(value == null ? '' : value).trim().replace(/[\u0000-\u001F\u007F]/g, ' ').slice(0, max);
-  // Prevent untrusted applicant input from being interpreted as spreadsheet formulas.
-  return /^[=+\-@]/.test(text) ? "'" + text : text;
+function pilotSafeText_(value,max){
+  const s=String(value==null?'':value).trim().replace(/[\u0000-\u001F\u007F]/g,' ').slice(0,max);
+  return /^[=+\-@]/.test(s)?"'"+s:s;
 }
-function pilotParse_(input) {
-  if (!input || input.action !== 'casual_upsert' || input.application_type !== 'casual') throw Error('Invalid route.');
-  const a = input.applicant || {};
-  const code = String(input.application_code || '').trim().toUpperCase();
-  const uid = String(a.codm_uid || '').trim();
-  const dob = String(a.birthdate || '').trim();
-  if (!/^ASYLUM-[A-Z0-9]{6,20}$/.test(code)) throw Error('Invalid application code.');
-  if (!/^\d{19}$/.test(uid)) throw Error('Invalid CODM UID.');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) throw Error('Birthdate must be YYYY-MM-DD.');
-  const date = new Date(dob + 'T12:00:00Z');
-  if (isNaN(date.getTime()) || date.toISOString().slice(0,10) !== dob) throw Error('Invalid birthdate.');
-  if (!String(a.facebook_name||'').trim() || !String(a.ign||'').trim() || !String(a.version||'').trim()) throw Error('Missing Facebook Name, IGN, or Version.');
-  const created = new Date(input.submitted_at || Date.now());
-  if (isNaN(created.getTime())) throw Error('Invalid submit timestamp.');
-  return {
-    code,
-    row: [
-      created, pilotSafeText_(a.facebook_name,100), dob,
-      pilotSafeText_(a.facebook_url,500), pilotSafeText_(a.tiktok_url,500),
-      pilotSafeText_(a.ign,32), uid,
-      pilotSafeText_(a.streamer_mode_id,100), pilotSafeText_(a.clan_name,120),
-      pilotSafeText_(a.discord_username,80), pilotSafeText_(a.version,60),
-      code // L is test-only dedup key; original form columns A:K remain unchanged.
-    ]
-  };
+function pilotParse_(body,mode){
+  if(body.action!=='casual_upsert'||body.application_type!=='casual')throw Error('Invalid application route.');
+  const a=body.applicant||{};
+  const code=String(body.application_code||'').toUpperCase().trim();
+  const uid=String(a.codm_uid||'').trim();
+  const dob=String(a.birthdate||'').trim();
+  const ign=String(a.ign||'').trim();
+  if(!/^ASYLUM-[A-Z0-9]{6,20}$/.test(code))throw Error('Invalid application code.');
+  if(mode==='live'&&code==='ASYLUM-PILOT20261104')throw Error('Pilot demo cannot enter SCREENING.');
+  if(!/^\d{19}$/.test(uid))throw Error('Invalid UID.');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dob))throw Error('Invalid birthdate.');
+  const date=new Date(dob+'T12:00:00Z');
+  if(isNaN(date.getTime())||date.toISOString().slice(0,10)!==dob)throw Error('Invalid birthdate.');
+  if(mode==='live'){
+    const today=new Date();
+    const threshold=new Date(Date.UTC(today.getUTCFullYear()-16,today.getUTCMonth(),today.getUTCDate()));
+    if(date>threshold)throw Error('Applicant must be at least 16.');
+  }
+  if(!String(a.facebook_name||'').trim()||ign.length<2||!String(a.clan_name||'').trim())
+    throw Error('Missing required Casual applicant fields.');
+  const created=new Date(body.submitted_at||Date.now());
+  if(isNaN(created.getTime()))throw Error('Invalid submitted timestamp.');
+  return {code,row:[
+    created,
+    pilotSafeText_(a.facebook_name,120),
+    dob,
+    pilotSafeText_(a.facebook_url,500),
+    pilotSafeText_(a.tiktok_url,500),
+    pilotSafeText_(ign,32),
+    uid,
+    pilotSafeText_(a.streamer_mode_id,100),
+    pilotSafeText_(a.clan_name,120),
+    pilotSafeText_(a.discord_username,80),
+    mode==='test'?pilotSafeText_(a.version||'',60):'',
+    code
+  ]};
 }
-function doPost(e) {
-  try {
-    // Do not log the body: it may contain birthdate or applicant contact details.
-    const body = JSON.parse(e && e.postData && e.postData.contents || '{}');
-    const secret = PropertiesService.getScriptProperties().getProperty(ASY_CASUAL_PILOT.secretProperty);
-    if (!secret || secret.length < 32 || body.token !== secret) return pilotReply_({ok:false,error:'Not authorized.'});
-    const parsed = pilotParse_(body);
-    const lock = LockService.getScriptLock();
-    if (!lock.tryLock(20000)) return pilotReply_({ok:false,error:'Busy; retry.'});
-    try {
-      const ss = SpreadsheetApp.openById(ASY_CASUAL_PILOT.spreadsheetId);
-      const tab = ss.getSheetByName(ASY_CASUAL_PILOT.sheetName);
-      if (!tab) throw Error('Missing test sheet.');
-      const last = tab.getLastRow();
-      let rowNumber = 0;
-      if (last > 1) {
-        const codes = tab.getRange(2,12,last-1,1).getDisplayValues();
-        const offset = codes.findIndex(row=>row[0]===parsed.code);
-        if (offset >= 0) rowNumber = offset + 2;
+function pilotAccess_(id){
+  const access=DriveApp.getFileById(id).getSharingAccess();
+  return access===DriveApp.Access.PRIVATE?'restricted':'link-shared';
+}
+function doPost(e){
+  try{
+    const body=JSON.parse((e&&e.postData&&e.postData.contents)||'{}');
+    const props=PropertiesService.getScriptProperties();
+    const secret=props.getProperty(ASY_CASUAL_SYNC.secretProperty);
+    if(!secret||secret.length<32||body.token!==secret)return pilotReply_({ok:false,error:'Not authorized.'});
+    const mode=props.getProperty(ASY_CASUAL_SYNC.modeProperty)==='live'?'live':'test';
+    if(body.action==='casual_health'){
+      return pilotReply_({
+        ok:true,mode,
+        access:pilotAccess_(ASY_CASUAL_SYNC.spreadsheetId),
+        tab:mode==='live'?ASY_CASUAL_SYNC.liveTab:ASY_CASUAL_SYNC.testTab
+      });
+    }
+    if(mode==='live'&&pilotAccess_(ASY_CASUAL_SYNC.spreadsheetId)!=='restricted')
+      return pilotReply_({ok:false,error:'Restrict spreadsheet sharing to staff before live sync.'});
+    const parsed=pilotParse_(body,mode);
+    const lock=LockService.getScriptLock();
+    if(!lock.tryLock(20000))return pilotReply_({ok:false,error:'Busy; retry.'});
+    try{
+      const target=mode==='live'?ASY_CASUAL_SYNC.liveTab:ASY_CASUAL_SYNC.testTab;
+      const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId).getSheetByName(target);
+      if(!tab)throw Error('Destination sheet missing.');
+      const header=tab.getRange(1,12).getDisplayValue().trim();
+      if(header&&!/application code/i.test(header))throw Error('Column L is occupied; cannot use it for website deduplication.');
+      if(!header&&mode==='live')tab.getRange(1,12).setValue('Website Application Code');
+      const last=tab.getLastRow();
+      let rowIndex=0;
+      if(last>1){
+        const codes=tab.getRange(2,12,last-1,1).getDisplayValues();
+        const match=codes.findIndex(row=>row[0]===parsed.code);
+        if(match>=0)rowIndex=match+2;
       }
-      const isUpdate = rowNumber > 0;
-      rowNumber = rowNumber || last + 1;
-      if (isUpdate) {
-        const oldDate = tab.getRange(rowNumber,1).getValue();
-        if (oldDate instanceof Date && !isNaN(oldDate.getTime())) parsed.row[0] = oldDate;
+      const updated=rowIndex>0;
+      rowIndex=rowIndex||last+1;
+      if(rowIndex>tab.getMaxRows())tab.insertRowsAfter(tab.getMaxRows(),1);
+      if(updated){
+        const old=tab.getRange(rowIndex,1,1,12).getValues()[0];
+        if(old[0] instanceof Date&&!isNaN(old[0].getTime()))parsed.row[0]=old[0];
+        if(mode==='live')parsed.row[10]=old[10]||''; // K is STAFF's original Version/notes.
       }
-      tab.getRange(rowNumber,7).setNumberFormat('@'); // Preserve 19-digit UID.
-      tab.getRange(rowNumber,3).setNumberFormat('@'); // Preserve ISO birthdate.
-      tab.getRange(rowNumber,1,1,12).setValues([parsed.row]);
-      tab.getRange(rowNumber,1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+      tab.getRange(rowIndex,3).setNumberFormat('@');
+      tab.getRange(rowIndex,7).setNumberFormat('@');
+      tab.getRange(rowIndex,1,1,12).setValues([parsed.row]);
+      tab.getRange(rowIndex,1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
       SpreadsheetApp.flush();
-      return pilotReply_({ok:true,mode:'test',action:isUpdate?'updated':'inserted',row:rowNumber});
-    } finally { lock.releaseLock(); }
-  } catch (err) {
-    return pilotReply_({ok:false,error:String(err.message||'Pilot sync failed.').slice(0,100)});
+      return pilotReply_({ok:true,mode,action:updated?'updated':'inserted',row:rowIndex});
+    }finally{lock.releaseLock();}
+  }catch(error){
+    // Do not log applicant details, birthdate or token.
+    return pilotReply_({ok:false,error:String(error&&error.message||'Sync failed').slice(0,130)});
   }
 }
-function doGet() {
-  return pilotReply_({ok:false,message:'POST only. Casual pilot not public.'});
-}
+function doGet(){return pilotReply_({ok:false,message:'POST only. ASY Direct connector.'});}
