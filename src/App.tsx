@@ -1572,7 +1572,7 @@ export default function App() {
                 <button type="button" className="secondary" disabled={casualPilotBusy} onClick={()=>void runCasualSheetPilot('pilot-test')}>{casualPilotBusy?'Checking…':'Run demo test'}</button>
               </div>
               {casualPilotStatus&&<p className={'casual-sheet-pilot-result '+(casualPilotStatus.connected===false?'warning':'')} role="status">{casualPilotStatus.message}</p>}
-              <small>Before live syncing, the website needs the original Casual fields (Facebook name, birthdate, clan and version), restricted Sheet sharing and final field mapping. Keep the matching script secret out of frontend code.</small>
+              <small>The website now collects the original Casual applicant fields. Live transfer stays disabled until the Sheet is restricted, the updated Apps Script is redeployed, and management verifies the Master List integration. Version remains a staff-maintained column. Never expose the script secret.</small>
             </section>
             <section className="panel intake-admin">
               <div className="intake-admin-heading">
