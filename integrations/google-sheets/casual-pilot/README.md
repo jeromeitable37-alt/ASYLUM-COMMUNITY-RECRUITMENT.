@@ -2,6 +2,20 @@
 
 **Deployment state (Nov 4, 2026):** Backend and website form are updated. **Live Sheets sync is intentionally OFF.** This protects the personal birthdates in the original SCREENING sheet while its sharing setting is still "Anyone with the link — Viewer" and while the currently deployed Apps Script may still be the older test-only version. Referral and Master List are untouched.
 
+## Automatic removal after Direct Application rejection
+
+When an authorized recruiter rejects a **Direct/Casual** application (including a failed tryout that sets the application to `rejected`):
+
+- A database trigger atomically changes its private sync queue status to `remove_pending`. Rejected application records and recruiter notes remain in Supabase for auditing and the reapplication process.
+- The recruiter dashboard automatically calls `asy-casual-sheet-pilot` with `sync-rejections`. The server verifies staff authentication and the current rejected status.
+- The authenticated Apps Script `casual_delete` action verifies `LIVE` mode and `Restricted` sharing. It only deletes an exact matching **website application code in `SCREENING!L`**; it never matches just an IGN or UID and never edits other tabs. It refuses duplicate-code ambiguities.
+- If the Google row is already missing, the response is idempotent and the private queue becomes `removed`. If Google is offline or Code.gs is still the previous deployment, `remove_pending` stays queued and the dashboard silently retries on the next recruiter visit.
+- Rejected Direct applicants cannot be re-synced through the public tracking endpoint. Race checks guard a simultaneous application submission and rejection. A new application after rejection gets its **own** unique tracking code.
+
+**Deployment requirement:** This feature adds a new `casual_delete` handler to `Code.gs`. Because Apps Script is hosted in the Google account, copy the latest GitHub `Code.gs`, **Save → Deploy → Manage deployments → Edit → New version → Deploy** once to publish this handler. Keep the same deployment URL, Script Properties token and `LIVE` mode. The Supabase function and frontend were deployed independently. No recurring/manual cleanup button is needed afterward.
+
+**Important:** Google Forms rows remain untouched and rejected applications are not deleted from Supabase. The independent Master List integration has not been verified; the new cleanup affects the `SCREENING` website row only.
+
 ## Production launch — exactly one Google Apps Script redeploy
 
 The full Supabase backend and recruiter management interface are implemented and deployed. Google Apps Script is a separate Google-hosted project: the GitHub Code.gs file cannot update the live Google web-app deployment until the deploying Google account explicitly saves and redeploys it.
