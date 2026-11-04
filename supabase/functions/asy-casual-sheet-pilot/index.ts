@@ -125,11 +125,15 @@ async function performSafeWebsiteTest(row:RecruitRecord){
   const testCode="ASYLUM-"+Array.from(new Uint8Array(signature).slice(0,9),
     b=>b.toString(16).padStart(2,"0")).join("").toUpperCase();
 
-  const {error:queueError}=await db.from("asy_casual_sheet_sync").upsert({
-    application_id:row.id,test_last_attempt_at:now.toISOString(),
+  // Never overwrite the real production queue status while recording a test.
+  const {error:seedError}=await db.from("asy_casual_sheet_sync")
+    .upsert({application_id:row.id},{onConflict:"application_id",ignoreDuplicates:true});
+  if(seedError)throw Error("Could not initialize website test queue.");
+  const {error:queueError}=await db.from("asy_casual_sheet_sync").update({
+    test_last_attempt_at:now.toISOString(),
     test_attempts:(queue?.test_attempts||0)+1,
     test_last_error:null,updated_at:now.toISOString()
-  },{onConflict:"application_id"});
+  }).eq("application_id",row.id);
   if(queueError)throw Error("Could not queue website test.");
 
   try{
@@ -182,8 +186,10 @@ async function handleApplicantSync(body:Record<string,unknown>){
     return json(404,{ok:false,error:"No matching Direct application."});
   if(!data.applicant_facebook_name||!data.applicant_birthdate||!data.applicant_clan_name)
     return json(409,{ok:false,error:"Your Direct application is missing the original form details. Ask a recruiter to correct it."});
+  let liveAttempted=false;
   try{
-    if(!await isLiveEnabled()){
+    liveAttempted=await isLiveEnabled();
+    if(!liveAttempted){
       // This is a synthetic end-to-end test only. No applicant PII leaves Supabase.
       const test=await performSafeWebsiteTest(data as RecruitRecord);
       return json(200,test);
@@ -191,12 +197,14 @@ async function handleApplicantSync(body:Record<string,unknown>){
     const result=await performSync(data as RecruitRecord);
     return json(200,result);
   }catch(error){
-    // A failed sync NEVER invalidates a successfully submitted website application.
+    // A failed test must not mark the real production sync failed.
     const message=error instanceof Error?error.message:"Sync temporarily unavailable.";
-    await db.from("asy_casual_sheet_sync").update({
-      status:"failed",last_error:message.slice(0,200),last_attempt_at:new Date().toISOString(),
-      updated_at:new Date().toISOString()
-    }).eq("application_id",data.id).neq("status","synced");
+    if(liveAttempted){
+      await db.from("asy_casual_sheet_sync").update({
+        status:"failed",last_error:message.slice(0,200),last_attempt_at:new Date().toISOString(),
+        updated_at:new Date().toISOString()
+      }).eq("application_id",data.id).neq("status","synced");
+    }
     console.error("Casual sync failed:",message);
     return json(503,{ok:false,error:"Application saved, but Google Sheet sync is pending recruiter follow-up."});
   }
