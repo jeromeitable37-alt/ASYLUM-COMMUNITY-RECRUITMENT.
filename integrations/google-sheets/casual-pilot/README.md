@@ -2,6 +2,22 @@
 
 **Deployment state (Nov 4, 2026):** Backend and website form are updated. **Live Sheets sync is intentionally OFF.** This protects the personal birthdates in the original SCREENING sheet while its sharing setting is still "Anyone with the link — Viewer" and while the currently deployed Apps Script may still be the older test-only version. Referral and Master List are untouched.
 
+## Production launch — exactly one Google Apps Script redeploy
+
+The full Supabase backend and recruiter management interface are implemented and deployed. Google Apps Script is a separate Google-hosted project: the GitHub Code.gs file cannot update the live Google web-app deployment until the deploying Google account explicitly saves and redeploys it.
+
+1. Open the exact maintained [Code.gs](./Code.gs) and copy **its entire current contents** into the existing "ASYLUM Casual Sync Pilot" Google Apps Script editor. Keep the existing project, **same deployment**, and existing `ASY_CASUAL_SYNC_TOKEN` Script Property. Do not publish the token.
+2. Save. Select `authorizeSecureSync` in the function selector and Run. This only checks permissions and the SCREENING tab. Review Google's **new full Drive scope** request: it is necessary for the guarded Go Live action that restricts public Sheet sharing. Do not approve an unknown/untrusted script.
+3. **Deploy → Manage deployments → Edit (pencil) → Version: New version → Deploy**. This retains the established `/exec` URL.
+4. Recruiter Dashboard → **Check connection**. The response must say **Secure directory bridge available**.
+5. Sign in with an Owner/Management/Admin account and click **Go Live — make Sheet private**. Confirm. The server verifies the private bridge, asks Apps Script to revoke **anyone-with-link** permission while preserving named collaborators, verifies restricted Google access, enables `casual_sheet_live_enabled` in Supabase, and automatically backfills up to five eligible pending Direct applications. Use **Sync pending Direct applications** to retry any remaining rows.
+6. Confirm via Google Drive **Share → General access: Restricted** (not just the backend response), and `SCREENING!L1` is the hidden key header `Website Application Code`; real website Direct applicants should appear with their A:K member fields populated. Staff-maintained Version is preserved; Referral and TEAMS tabs are untouched.
+7. Finally test one genuine Direct application. Only one application is allowed per active UID/email. Do not create fabricated live applicant rows. TRACKING should say **Real Direct application synced to the private SCREENING Google Sheet**.
+
+**Safety and external dependencies:** `asy-member-directory-sync` has a private `casual_directory` Apps Script bridge with a temporary public-CSV fallback, so the private switch no longer needs public Sheets access for that ASYLUM directory. Google Forms continue writing to the owner-maintained Sheet. But **writing rows through Apps Script does not fire the Google Forms `onFormSubmit` trigger**; any separately managed Master List powered by such a trigger will require its own separately verified synchronization. No Master List source file is linked or modified here. Do not represent Master List automation as tested.
+
+**If Go Live fails:** The Supabase flag remains OFF unless private Google sharing and new Apps Script authorization both verify. The Spreadsheet owner may need to restrict sharing if the deploying account cannot manage permissions. Retry Go Live after permission is fixed; do not manually flip the Supabase flag first.
+
 ## Website submission → isolated Sheets test (now connected)
 
 Every **new Direct/Casual application** is first saved to Supabase (unchanged workflow), then the website calls `asy-casual-sheet-pilot` with only its tracking reference and email for lookup. While the production flag remains OFF, the backend:
