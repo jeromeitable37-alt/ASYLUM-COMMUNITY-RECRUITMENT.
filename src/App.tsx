@@ -588,13 +588,20 @@ export default function App() {
           Authorization:'Bearer '+session.access_token
         },body:JSON.stringify({action}),cache:'no-store'
       });
-      const data=await response.json().catch(()=>null) as {ok?:boolean;error?:string;secret_configured?:boolean;action?:string;row?:number}|null;
+      const data=await response.json().catch(()=>null) as {ok?:boolean;error?:string;secret_configured?:boolean;action?:string;row?:number;script_state?:string;script_mode?:string;sheet_access?:string;message?:string}|null;
       if(!response.ok||!data?.ok)throw new Error(data?.error||'Google Sheets pilot request failed.');
       if(action==='status'){
-        const ready=Boolean(data.secret_configured);
-        setCasualPilotStatus({connected:ready,message:ready
-          ?'Supabase token is configured. Ready for the dummy test.'
-          :'Apps Script URL saved; add matching ASY_CASUAL_SYNC_TOKEN to Supabase Edge Function Secrets first.'});
+        const scriptUpdated=data.script_state==='updated';
+        const mode=data.script_mode||'unknown';
+        const access=data.sheet_access||'unknown';
+        const message=!data.secret_configured
+          ?'Supabase security token is missing. Add ASY_CASUAL_SYNC_TOKEN to the Edge Function Secrets.'
+          :!scriptUpdated
+            ?'Apps Script deployment not verified. Open your Code.gs, Save, then Deploy → Manage deployments → Edit → New version → Deploy. Check again afterward.'
+            :mode==='test'
+              ?'✅ Updated Apps Script confirmed in TEST mode. Google Sheet sharing: '+access+'. Live applicant sync remains OFF.'
+              :'✅ Updated Apps Script confirmed in LIVE mode. Google Sheet sharing: '+access+'. Real sync is still controlled separately in Supabase.';
+        setCasualPilotStatus({connected:scriptUpdated,message});
       }else{
         setCasualPilotStatus({connected:true,message:'Demo '+(data.action||'sync')+' at row '+String(data.row||'?')+' of WEBSITE_CASUAL_TEST. Live applicant sync remains disabled.'});
         notify('Casual demo synced to WEBSITE_CASUAL_TEST. Check the test tab.');
