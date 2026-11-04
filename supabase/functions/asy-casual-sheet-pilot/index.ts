@@ -32,7 +32,7 @@ async function requireStaff(req:Request){
   if(error||!user?.email)return {ok:false,message:"Recruiter session expired or invalid."};
   const email=user.email.trim().toLowerCase();
   const {data:staff,error:roleError}=await db.from("asy_recruitment_admins")
-    .select("email").ilike("email",email).maybeSingle();
+    .select("email").eq("email",email).maybeSingle();
   if(roleError||!staff)return {ok:false,message:"Only authorized ASY recruiters can run the pilot."};
   return {ok:true,message:""};
 }
