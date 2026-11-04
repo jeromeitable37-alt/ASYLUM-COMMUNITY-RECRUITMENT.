@@ -130,6 +130,40 @@ function pilotGoLive_(props){
     lock.releaseLock();
   }
 }
+/**
+ * Remove ONLY a website-originated Direct Application row, matched by the
+ * exact unique tracking code in SCREENING column L.
+ * Never deletes original Google Forms rows, REFERRALS or TEAMS.
+ * Idempotent: repeated requests for a missing row return not_found=true.
+ */
+function pilotDeleteRejected_(code){
+  const candidate=String(code||'').toUpperCase().trim();
+  if(!/^ASYLUM-[A-Z0-9]{8}$/.test(candidate))throw Error('Invalid website application code.');
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(20000))throw Error('Google Sheets row lock busy; retry.');
+  try{
+    const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId)
+      .getSheetByName(ASY_CASUAL_SYNC.liveTab);
+    if(!tab)throw Error('SCREENING tab missing.');
+    const header=tab.getRange(1,12).getDisplayValue().trim();
+    if(!/website application code/i.test(header))
+      throw Error('SCREENING website application key column missing.');
+    const last=tab.getLastRow();
+    if(last<2)return pilotReply_({ok:true,mode:'live',removed:false,not_found:true});
+    const codes=tab.getRange(2,12,last-1,1).getDisplayValues();
+    const matches=[];
+    for(let i=0;i<codes.length;i++){
+      if(String(codes[i][0]||'').trim()===candidate)matches.push(i+2);
+    }
+    if(matches.length>1)throw Error('Duplicate website application codes; manual review required.');
+    if(!matches.length)return pilotReply_({ok:true,mode:'live',removed:false,not_found:true});
+    tab.deleteRow(matches[0]);
+    SpreadsheetApp.flush();
+    return pilotReply_({ok:true,mode:'live',removed:true});
+  }finally{
+    lock.releaseLock();
+  }
+}
 function doPost(e){
   try{
     const body=JSON.parse((e&&e.postData&&e.postData.contents)||'{}');
@@ -151,6 +185,10 @@ function doPost(e){
     if(body.action==='casual_go_live')return pilotGoLive_(props);
     if(mode==='live'&&pilotAccess_(ASY_CASUAL_SYNC.spreadsheetId)!=='restricted')
       return pilotReply_({ok:false,error:'Restrict spreadsheet sharing to staff before live sync.'});
+    if(body.action==='casual_delete'){
+      if(mode!=='live')throw Error('Direct rejection cleanup requires LIVE mode.');
+      return pilotDeleteRejected_(body.application_code);
+    }
     const parsed=pilotParse_(body,mode);
     const lock=LockService.getScriptLock();
     if(!lock.tryLock(20000))return pilotReply_({ok:false,error:'Busy; retry.'});
