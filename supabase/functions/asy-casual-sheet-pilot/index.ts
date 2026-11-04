@@ -28,7 +28,7 @@ const token=()=>Deno.env.get("ASY_CASUAL_SYNC_TOKEN")||"";
 const text=(value:unknown)=>String(value??"").trim();
 type AppsReply={
  ok?:boolean;mode?:string;action?:string;row?:number;error?:string;access?:string;
- version?:string;directory_count?:number;records?:unknown[];count?:number
+ version?:string;directory_count?:number;records?:unknown[];count?:number;removed?:boolean;not_found?:boolean
 };
 type RecruitRecord={
  id:string;application_type:string;application_code:string;contact_email:string;submitted_at:string;
@@ -75,8 +75,57 @@ async function isLiveEnabled(){
   if(error)throw Error("Could not read Casual sync settings.");
   return data.casual_sheet_live_enabled===true;
 }
+type RejectedDirect={id:string;application_code:string;application_type:string;status:string};
+async function removeRejectedFromSheet(row:RejectedDirect){
+  if(!db)throw Error("Database service unavailable.");
+  if(row.status!=="rejected"||row.application_type!=="casual")
+    throw Error("Only rejected Direct applications may be removed from SCREENING.");
+  if(!/^ASYLUM-[A-Z0-9]{8}$/.test(row.application_code))
+    throw Error("Invalid website Direct application code.");
+  const {data:queue,error:queueReadError}=await db.from("asy_casual_sheet_sync")
+    .select("status,attempts").eq("application_id",row.id).maybeSingle();
+  if(queueReadError)throw Error("Could not inspect private removal queue.");
+  if(queue?.status==="removed")
+    return {ok:true,already_removed:true};
+
+  // Keep application history in Supabase. Only the exact website-code row
+  // from SCREENING can be deleted, never Google Form rows or other tabs.
+  const now=new Date().toISOString();
+  try{
+    if(!await isLiveEnabled())throw Error("Live Sheets sync is disabled.");
+    const health=await callAppsScript({action:"casual_health"});
+    if(health.mode!=="live"||health.access!=="restricted")
+      throw Error("Google Sheet is not confirmed private and LIVE.");
+    const result=await callAppsScript({
+      action:"casual_delete",application_code:row.application_code
+    });
+    if(result.mode!=="live"||(!result.removed&&!result.not_found))
+      throw Error("Apps Script did not acknowledge Direct row removal.");
+    const {error}=await db.from("asy_casual_sheet_sync").upsert({
+      application_id:row.id,status:"removed",
+      attempts:(queue?.attempts||0)+1,last_attempt_at:now,
+      last_error:null,updated_at:now
+    },{onConflict:"application_id"});
+    if(error)throw Error("Google deletion succeeded but queue acknowledgment failed.");
+    return {ok:true,removed:result.removed===true,already_missing:result.not_found===true};
+  }catch(error){
+    const reason=error instanceof Error?error.message:"Google Sheet rejection cleanup failed.";
+    await db.from("asy_casual_sheet_sync").upsert({
+      application_id:row.id,status:"remove_pending",
+      attempts:(queue?.attempts||0)+1,last_attempt_at:now,
+      last_error:reason.slice(0,170),updated_at:now
+    },{onConflict:"application_id"});
+    throw error;
+  }
+}
 async function performSync(row:RecruitRecord){
   if(!db)throw Error("Database service unavailable.");
+  if(row.status==="rejected")
+    throw Error("A rejected Direct application cannot be re-synced.");
+  const {data:beforeSend,error:beforeError}=await db.from("asy_clan_applications")
+    .select("status").eq("id",row.id).single();
+  if(beforeError||!beforeSend||beforeSend.status==="rejected")
+    throw Error("Direct application is no longer eligible for SCREENING sync.");
   const {data:queue,error:qerr}=await db.from("asy_casual_sheet_sync")
     .select("application_id,status,attempts").eq("application_id",row.id).maybeSingle();
   if(qerr)throw Error("Could not read sync queue.");
@@ -104,12 +153,33 @@ async function performSync(row:RecruitRecord){
   });
   if(result.mode!=="live"||!Number.isInteger(result.row)||Number(result.row)<2)
     throw Error("Apps Script did not confirm a verified live SCREENING row.");
-  const {error:saveError}=await db.from("asy_casual_sheet_sync").upsert({
-    application_id:row.id,status:"synced",attempts:(queue?.attempts||0)+1,
-    synced_at:new Date().toISOString(),last_attempt_at:new Date().toISOString(),
-    last_error:null,updated_at:new Date().toISOString()
-  },{onConflict:"application_id"});
+  const {data:afterSend,error:afterError}=await db.from("asy_clan_applications")
+    .select("status").eq("id",row.id).single();
+  if(afterError||!afterSend)throw Error("Could not recheck Direct application status after transfer.");
+  if(afterSend.status==="rejected"){
+    await removeRejectedFromSheet({...row,status:"rejected"});
+    return {ok:true,rejected_removed:true};
+  }
+  const savedAt=new Date().toISOString();
+  // If a concurrent rejection queued removal, never overwrite that queue
+  // with "synced". The rejection cleanup will own the final state.
+  const {data:saved,error:saveError}=await db.from("asy_casual_sheet_sync").update({
+    status:"synced",attempts:(queue?.attempts||0)+1,
+    synced_at:savedAt,last_attempt_at:savedAt,
+    last_error:null,updated_at:savedAt
+  }).eq("application_id",row.id)
+    .in("status",["pending","failed","synced"])
+    .select("application_id").maybeSingle();
   if(saveError)throw Error("Sync sent; database could not save acknowledgement.");
+  if(!saved){
+    const {data:latest}=await db.from("asy_clan_applications")
+      .select("status").eq("id",row.id).maybeSingle();
+    if(latest?.status==="rejected"){
+      await removeRejectedFromSheet({...row,status:"rejected"});
+      return {ok:true,rejected_removed:true};
+    }
+    throw Error("Direct Sheet sync queue changed during transfer.");
+  }
   return {ok:true,synced:true,action:result.action,row:result.row};
 }
 // During pilot mode we write ONLY synthetic markers to the test tab.
@@ -315,12 +385,50 @@ async function syncPending(req:Request){
     errors:errors.length?["Some rows could not be synced. See server logs."]:undefined
   });
 }
+// Safe to call repeatedly. Queued removal is committed by a database
+// trigger as soon as a Direct application is rejected, including tryout rejects.
+async function reconcileRejected(req:Request){
+  if(!db)return json(503,{ok:false,error:"Sync service unavailable."});
+  if(!await checkStaff(req))
+    return json(403,{ok:false,error:"Authorized recruiter sign-in required."});
+  const {data:queued,error}=await db.from("asy_casual_sheet_sync")
+    .select("application_id").eq("status","remove_pending")
+    .order("updated_at",{ascending:true}).limit(8);
+  if(error)return json(503,{ok:false,error:"Could not inspect pending Sheet cleanup."});
+  let removed=0,missing=0,failed=0,skipped=0;
+  for(const item of queued||[]){
+    const {data:app,error:lookupError}=await db.from("asy_clan_applications")
+      .select("id,application_code,application_type,status")
+      .eq("id",item.application_id).maybeSingle();
+    if(lookupError||!app||app.status!=="rejected"||app.application_type!=="casual"){
+      skipped++;continue;
+    }
+    try{
+      const result=await removeRejectedFromSheet(app as RejectedDirect);
+      if(result.removed)removed++;
+      else missing++;
+    }catch(error){
+      failed++;
+      // Avoid logging applicant codes, emails or Google personal data.
+      console.error("Automatic rejected Direct cleanup pending:",
+        error instanceof Error?error.message:"Google cleanup unavailable");
+    }
+  }
+  const {count:remaining}=await db.from("asy_casual_sheet_sync")
+    .select("application_id",{head:true,count:"exact"}).eq("status","remove_pending");
+  return json(200,{
+    ok:true,removed,already_missing:missing,skipped,failed,pending:remaining??0,
+    message:failed?"Rejected application saved; Google cleanup will retry automatically.":
+      "Rejected Direct SCREENING row cleanup completed."
+  });
+}
 Deno.serve(async(req:Request)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   if(req.method!=="POST")return json(405,{ok:false,error:"POST only."});
   const body=await req.json().catch(()=>null) as Record<string,unknown>|null;
   if(!body)return json(400,{ok:false,error:"JSON body required."});
   if(body.action==="sync-submission")return handleApplicantSync(body);
+  if(body.action==="sync-rejections")return reconcileRejected(req);
   if(body.action==="activate-live")return activateLive(req);
   if(body.action==="sync-pending")return syncPending(req);
   if(!await checkStaff(req))return json(403,{ok:false,error:"Authorized recruiter sign-in required."});
