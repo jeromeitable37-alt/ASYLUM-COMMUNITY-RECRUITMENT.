@@ -592,16 +592,10 @@ export default function App() {
       if(!response.ok||!data?.ok)throw new Error(data?.error||'Google Sheets pilot request failed.');
       if(action==='status'){
         const scriptUpdated=data.script_state==='updated';
-        const mode=data.script_mode||'unknown';
-        const access=data.sheet_access||'unknown';
-        const message=!data.secret_configured
-          ?'Supabase security token is missing. Add ASY_CASUAL_SYNC_TOKEN to the Edge Function Secrets.'
-          :!scriptUpdated
-            ?'Apps Script deployment not verified. Open your Code.gs, Save, then Deploy → Manage deployments → Edit → New version → Deploy. Check again afterward.'
-            :mode==='test'
-              ?'✅ Updated Apps Script confirmed in TEST mode. Google Sheet sharing: '+access+'. Live applicant sync remains OFF.'
-              :'✅ Updated Apps Script confirmed in LIVE mode. Google Sheet sharing: '+access+'. Real sync is still controlled separately in Supabase.';
-        setCasualPilotStatus({connected:scriptUpdated,message});
+        const message=data.message||'Unable to diagnose the Apps Script deployment. Check its Executions log.';
+        // "Legacy demo" is a distinct status: an earlier deployment can pass demo tests
+        // without implementing the newer casual_health request.
+        setCasualPilotStatus({connected:scriptUpdated,message:scriptUpdated?'✅ '+message:message});
       }else{
         setCasualPilotStatus({connected:true,message:'Demo '+(data.action||'sync')+' at row '+String(data.row||'?')+' of WEBSITE_CASUAL_TEST. Live applicant sync remains disabled.'});
         notify('Casual demo synced to WEBSITE_CASUAL_TEST. Check the test tab.');
