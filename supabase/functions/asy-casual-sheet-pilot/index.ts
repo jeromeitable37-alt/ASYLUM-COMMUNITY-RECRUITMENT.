@@ -2,13 +2,20 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL=Deno.env.get("SUPABASE_URL")||"";
-const PUBLISHABLE_KEY=Deno.env.get("SUPABASE_PUBLISHABLE_KEY")||Deno.env.get("SUPABASE_ANON_KEY")||"";
-function serverKey() {
-  const value=Deno.env.get("SUPABASE_SECRET_KEYS");
-  if(value){try{const data=JSON.parse(value);if(data.default)return String(data.default);}catch{}}
+function getPublishableKey(){
+  const obj=Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+  if(obj){try{return String(JSON.parse(obj).default||"");}catch{}}
+  return Deno.env.get("SUPABASE_PUBLISHABLE_KEY")||Deno.env.get("SUPABASE_ANON_KEY")||"";
+}
+function getServerKey(){
+  const obj=Deno.env.get("SUPABASE_SECRET_KEYS");
+  if(obj){try{return String(JSON.parse(obj).default||"");}catch{}}
   return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
 }
-const SECRET_KEY=serverKey();
+const publishableKey=getPublishableKey();
+const serverKey=getServerKey();
+const db=SUPABASE_URL&&serverKey?createClient(SUPABASE_URL,serverKey,{auth:{persistSession:false,autoRefreshToken:false}}):null;
+const auth=SUPABASE_URL&&publishableKey?createClient(SUPABASE_URL,publishableKey,{auth:{persistSession:false,autoRefreshToken:false}}):null;
 const WEBAPP_URL="https://script.google.com/macros/s/AKfycbzf9DwgJl-Sa9cVWyvpYPWKWTTqlXTTgAK_-WhAT6nMgbmHhcteTwHDUVx2Uv1Lw46m/exec";
 const cors={
   "Access-Control-Allow-Origin":"*",
@@ -16,86 +23,148 @@ const cors={
   "Access-Control-Allow-Methods":"POST,OPTIONS",
   "Cache-Control":"no-store",
 };
-const json=(status:number, body:Record<string,unknown>)=>
-  new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json"}});
-const db=SUPABASE_URL&&SECRET_KEY
-  ?createClient(SUPABASE_URL,SECRET_KEY,{auth:{persistSession:false,autoRefreshToken:false}})
-  :null;
-const auth=SUPABASE_URL&&PUBLISHABLE_KEY
-  ?createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}})
-  :null;
-async function requireStaff(req:Request){
-  if(!db||!auth)return {ok:false,message:"Supabase service is not configured."};
-  const match=req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i);
-  if(!match||match[1]===PUBLISHABLE_KEY)return {ok:false,message:"Sign in as a recruiter to test sheet syncing."};
-  const {data:{user},error}=await auth.auth.getUser(match[1]);
-  if(error||!user?.email)return {ok:false,message:"Recruiter session expired or invalid."};
-  const email=user.email.trim().toLowerCase();
-  const {data:staff,error:roleError}=await db.from("asy_recruitment_admins")
-    .select("email").eq("email",email).maybeSingle();
-  if(roleError||!staff)return {ok:false,message:"Only authorized ASY recruiters can run the pilot."};
-  return {ok:true,message:""};
+const json=(status:number,body:Record<string,unknown>)=>new Response(JSON.stringify(body),{status,headers:{...cors,"Content-Type":"application/json"}});
+const token=()=>Deno.env.get("ASY_CASUAL_SYNC_TOKEN")||"";
+const text=(value:unknown)=>String(value??"").trim();
+type AppsReply={ok?:boolean;mode?:string;action?:string;row?:number;error?:string;access?:string};
+type RecruitRecord={
+ id:string;application_type:string;application_code:string;contact_email:string;submitted_at:string;
+ applicant_facebook_name:string|null;applicant_birthdate:string|null;applicant_clan_name:string|null;
+ applicant_facebook_url:string|null;applicant_tiktok_url:string|null;ign:string;codm_uid:string;
+ streamer_mode_id:string|null;discord_username:string|null;status:string;workflow_enabled:boolean
+};
+async function callAppsScript(payload:Record<string,unknown>):Promise<AppsReply>{
+  const response=await fetch(WEBAPP_URL,{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({token:token(),...payload}),redirect:"follow",signal:AbortSignal.timeout(18000)
+  });
+  const raw=await response.text();
+  let result:AppsReply;
+  try{result=JSON.parse(raw);}catch{throw Error("Apps Script returned non-JSON. Verify its deployed code and web app permissions.");}
+  if(!response.ok||result.ok!==true)throw Error(result.error||"Apps Script rejected the request.");
+  return result;
 }
-Deno.serve(async (req:Request)=>{
+async function checkStaff(req:Request){
+  if(!db||!auth)return false;
+  const match=req.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i);
+  if(!match||match[1]===publishableKey)return false;
+  const {data:{user},error}=await auth.auth.getUser(match[1]);
+  if(error||!user?.email)return false;
+  const {data:staff,error:roleError}=await db.from("asy_recruitment_admins")
+    .select("email").eq("email",user.email.trim().toLowerCase()).maybeSingle();
+  return !roleError&&Boolean(staff);
+}
+async function isLiveEnabled(){
+  if(!db)throw Error("Service not configured.");
+  const {data,error}=await db.from("asy_recruitment_settings")
+    .select("casual_sheet_live_enabled").eq("id",1).single();
+  if(error)throw Error("Could not read Casual sync settings.");
+  return data.casual_sheet_live_enabled===true;
+}
+async function performSync(row:RecruitRecord){
+  if(!db)throw Error("Database service unavailable.");
+  const {data:queue,error:qerr}=await db.from("asy_casual_sheet_sync")
+    .select("application_id,status,attempts").eq("application_id",row.id).maybeSingle();
+  if(qerr)throw Error("Could not read sync queue.");
+  if(queue?.status==="synced")return {ok:true,already_synced:true};
+  if(token().length<32)throw Error("Server secret is missing.");
+  // Before transferring ANY real birthdate, require Apps Script v2 with confirmed live mode
+  // and a restricted (not anyone-with-link) destination spreadsheet.
+  const health=await callAppsScript({action:"casual_health"});
+  if(health.mode!=="live"||health.access!=="restricted")
+    throw Error("Live Apps Script deployment is not yet approved/restricted.");
+  const result=await callAppsScript({
+    action:"casual_upsert",application_type:"casual",application_code:row.application_code,
+    submitted_at:row.submitted_at,
+    applicant:{
+      facebook_name:row.applicant_facebook_name||"",
+      birthdate:row.applicant_birthdate||"",
+      facebook_url:row.applicant_facebook_url||"",
+      tiktok_url:row.applicant_tiktok_url||"",
+      ign:row.ign,codm_uid:row.codm_uid,
+      streamer_mode_id:row.streamer_mode_id||"",
+      clan_name:row.applicant_clan_name||"",
+      discord_username:row.discord_username||"",
+      version:""
+    }
+  });
+  if(result.mode!=="live"||!Number.isInteger(result.row)||Number(result.row)<2)
+    throw Error("Apps Script did not confirm a verified live SCREENING row.");
+  const {error:saveError}=await db.from("asy_casual_sheet_sync").upsert({
+    application_id:row.id,status:"synced",attempts:(queue?.attempts||0)+1,
+    synced_at:new Date().toISOString(),last_attempt_at:new Date().toISOString(),
+    last_error:null,updated_at:new Date().toISOString()
+  },{onConflict:"application_id"});
+  if(saveError)throw Error("Sync sent; database could not save acknowledgement.");
+  return {ok:true,synced:true,action:result.action,row:result.row};
+}
+async function handleApplicantSync(body:Record<string,unknown>){
+  if(!db)return json(503,{ok:false,error:"Sheet service unavailable."});
+  const code=text(body.application_code).toUpperCase();
+  const email=text(body.contact_email).toLowerCase();
+  if(!/^ASYLUM-[A-Z0-9]{8}$/.test(code)||email.length<5||email.length>254||
+     !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
+    return json(400,{ok:false,error:"Invalid application reference."});
+  const {data,error}=await db.from("asy_clan_applications")
+    .select("id,application_type,application_code,contact_email,submitted_at,applicant_facebook_name,applicant_birthdate,applicant_clan_name,applicant_facebook_url,applicant_tiktok_url,ign,codm_uid,streamer_mode_id,discord_username,status,workflow_enabled")
+    .eq("application_code",code).eq("contact_email",email).maybeSingle();
+  if(error||!data||data.application_type!=="casual"||!data.workflow_enabled)
+    return json(404,{ok:false,error:"No matching Direct application."});
+  if(!data.applicant_facebook_name||!data.applicant_birthdate||!data.applicant_clan_name)
+    return json(409,{ok:false,error:"Your Direct application is missing the original form details. Ask a recruiter to correct it."});
+  try{
+    if(!await isLiveEnabled())
+      return json(200,{ok:true,queued:true,mode:"test_only",message:"Your application is saved. Live Google Sheets sync is not yet enabled."});
+    const result=await performSync(data as RecruitRecord);
+    return json(200,result);
+  }catch(error){
+    // A failed sync NEVER invalidates a successfully submitted website application.
+    const message=error instanceof Error?error.message:"Sync temporarily unavailable.";
+    await db.from("asy_casual_sheet_sync").update({
+      status:"failed",last_error:message.slice(0,200),last_attempt_at:new Date().toISOString(),
+      updated_at:new Date().toISOString()
+    }).eq("application_id",data.id).neq("status","synced");
+    console.error("Casual sync failed:",message);
+    return json(503,{ok:false,error:"Application saved, but Google Sheet sync is pending recruiter follow-up."});
+  }
+}
+Deno.serve(async(req:Request)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   if(req.method!=="POST")return json(405,{ok:false,error:"POST only."});
-  const staff=await requireStaff(req);
-  if(!staff.ok)return json(403,{ok:false,error:staff.message});
-  const body=await req.json().catch(()=>null) as {action?:string}|null;
-  if(!body||!["status","pilot-test"].includes(body.action||""))
-    return json(400,{ok:false,error:"Unknown Casual pilot action."});
-  const token=Deno.env.get("ASY_CASUAL_SYNC_TOKEN")||"";
+  const body=await req.json().catch(()=>null) as Record<string,unknown>|null;
+  if(!body)return json(400,{ok:false,error:"JSON body required."});
+  if(body.action==="sync-submission")return handleApplicantSync(body);
+  if(!await checkStaff(req))return json(403,{ok:false,error:"Authorized recruiter sign-in required."});
   if(body.action==="status"){
+    let liveEnabled=false;
+    try{liveEnabled=await isLiveEnabled();}catch{}
     return json(200,{
       ok:true,mode:"casual_test_only",webhook_url_configured:true,
-      secret_configured:token.length>=32,
-      destination:"WEBSITE_CASUAL_TEST",
-      live_sync_enabled:false,
-      missing_website_fields:["facebook_name","birthdate","clan_name","version"]
+      secret_configured:token().length>=32,destination:"WEBSITE_CASUAL_TEST",
+      live_sync_enabled:liveEnabled,
+      missing_website_fields:[],
+      message:liveEnabled?"Live sync switch enabled. New Direct submissions may sync automatically.":"Live sync deliberately locked until the form, Apps Script, and private sheet are verified."
     });
   }
-  // No genuine applicant data is ever transmitted by this endpoint.
-  if(token.length<32)return json(503,{
-    ok:false,error:"Set ASY_CASUAL_SYNC_TOKEN in Supabase Edge Function Secrets to exactly the same 32+ character value as the Apps Script Project property. Do not put the token in the website or chat."
-  });
-  const payload={
-    action:"casual_upsert",
-    application_type:"casual",
-    application_code:"ASYLUM-PILOT20261104",
-    submitted_at:"2026-11-04T00:00:00.000Z",
-    token,
-    applicant:{
-      facebook_name:"PILOT DEMO - NOT A REAL APPLICANT",
-      birthdate:"2000-01-01",
-      facebook_url:"https://www.facebook.com/example",
-      tiktok_url:"https://www.tiktok.com/@example",
-      ign:"PILOTTEST",
-      codm_uid:"1234567890123456789",
-      streamer_mode_id:"TEST",
-      clan_name:"NO CLAN",
-      discord_username:"pilot_test",
-      version:"PILOT TEST"
+  if(body.action==="pilot-test"){
+    if(token().length<32)return json(503,{ok:false,error:"Set matching ASY_CASUAL_SYNC_TOKEN in Supabase and Apps Script."});
+    try{
+      const result=await callAppsScript({
+        action:"casual_upsert",application_type:"casual",
+        application_code:"ASYLUM-PILOT20261104",submitted_at:"2026-11-04T00:00:00.000Z",
+        applicant:{
+          facebook_name:"PILOT DEMO - NOT A REAL APPLICANT",
+          birthdate:"2000-01-01",facebook_url:"https://www.facebook.com/example",
+          tiktok_url:"https://www.tiktok.com/@example",ign:"PILOTTEST",
+          codm_uid:"1234567890123456789",streamer_mode_id:"TEST",
+          clan_name:"NO CLAN",discord_username:"pilot_test",version:"PILOT TEST"
+        }
+      });
+      if(result.mode!=="test")throw Error("Demo testing is allowed only while Apps Script targets WEBSITE_CASUAL_TEST.");
+      return json(200,{ok:true,mode:"casual_test_only",destination:"WEBSITE_CASUAL_TEST",action:result.action,row:result.row});
+    }catch(error){
+      return json(502,{ok:false,error:error instanceof Error?error.message:"Demo failed."});
     }
-  };
-  try{
-    const response=await fetch(WEBAPP_URL,{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(payload),redirect:"follow",
-      signal:AbortSignal.timeout(18000),
-    });
-    const raw=await response.text();
-    let result:{ok?:boolean;mode?:string;action?:string;row?:number;error?:string};
-    try{result=JSON.parse(raw);}catch{
-      return json(502,{ok:false,error:"Apps Script returned non-JSON. Check the deployment URL, permissions and deployed version."});
-    }
-    if(!response.ok||result.ok!==true||result.mode!=="test"){
-      return json(502,{ok:false,error:result.error||"Apps Script did not confirm the test write."});
-    }
-    return json(200,{ok:true,mode:"casual_test_only",action:result.action,
-      row:result.row,destination:"WEBSITE_CASUAL_TEST",
-      message:"Synthetic test row verified by Apps Script. Live applicant sync remains disabled."});
-  }catch(error){
-    console.error("Casual Sheets pilot request failed:",error instanceof Error?error.name:"unknown");
-    return json(502,{ok:false,error:"Could not reach the Google Apps Script deployment. Confirm its /exec URL and access settings."});
   }
+  return json(400,{ok:false,error:"Unsupported action."});
 });
