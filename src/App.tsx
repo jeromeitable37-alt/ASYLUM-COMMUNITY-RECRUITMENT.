@@ -126,8 +126,6 @@ export default function App() {
   const [selectedEvidence,setSelectedEvidence]=useState<Evidence[]>([]);
   const [evidenceNotes,setEvidenceNotes]=useState<Record<string,string>>({});
   const [applicantEvidenceNotes,setApplicantEvidenceNotes]=useState<Record<string,string>>({});
-  const [applicantEvidenceFiles,setApplicantEvidenceFiles]=useState<Record<string,File>>({});
-  const [applicantBulkUploading,setApplicantBulkUploading]=useState(false);
   const [announcements,setAnnouncements]=useState<Announcement[]>([]);
   const [announcementDraft,setAnnouncementDraft]=useState(emptyAnnouncementDraft);
   const [announcementBusy,setAnnouncementBusy]=useState(false);
@@ -679,57 +677,56 @@ export default function App() {
     finally{setEvidenceUploadKey('');}
   }
 
-  async function uploadRemainingRequirementsTogether(){
-    if(applicantBulkUploading||!applicantProgress)return;
-    if(!['membership_proofs','discord_roster'].includes(applicantProgress.application.workflow_step)){
-      notify('Stage 2 is locked. Your CODM screenshot must be approved by a recruiter first.',true);
-      return;
-    }
-    const outstanding=applicantProgress.evidence.filter(item=>item.stage_number===2&&['not_submitted','needs_correction'].includes(item.status));
-    if(!outstanding.length){notify('There are no remaining screenshots waiting for upload.',true);return;}
-    const missing=outstanding.filter(item=>!applicantEvidenceFiles[item.requirement_key]);
-    if(missing.length){
-      notify('Choose a screenshot for each remaining requirement: '+missing.map(item=>item.requirement_label).join('; '),true);
-      return;
-    }
-    setApplicantBulkUploading(true);
-    let submitted=0;
-    const failed:string[]=[];
-    for(const item of outstanding){
-      const ok=await uploadRequirement(item.requirement_key,applicantEvidenceFiles[item.requirement_key],true);
-      if(ok){
-        submitted++;
-        setApplicantEvidenceFiles(old=>{const next={...old};delete next[item.requirement_key];return next;});
-      }else failed.push(item.requirement_label);
-    }
-    await loadApplicantProgress(applicationCode.trim(),contactEmail.trim().toLowerCase());
-    setApplicantBulkUploading(false);
-    if(failed.length){
-      notify(submitted+' of '+outstanding.length+' screenshots submitted. Please retry: '+failed.join('; '),true);
-    }else{
-      notify('All '+submitted+' remaining screenshots were submitted together. They are now waiting for recruiter review.');
-    }
-  }
   async function loadSelectedEvidence(applicationId:string,applicationType?:string){
     const {data,error}=await supabase.from('asy_recruitment_evidence').select('*').eq('application_id',applicationId).order('stage_number').order('requirement_label');
     if(error){notify('Could not load requirement evidence. Confirm recruiter permissions.',true);return;}
     setSelectedEvidence(((data||[]) as Evidence[]).filter(item=>(applicationType||selected?.application_type)==='referral'||!['membership_form_screenshot','referral_conversation_screenshot'].includes(item.requirement_key)));
   }
-  async function reviewEvidence(item:Evidence,status:'approved'|'needs_correction'){
-    if(!selected||!item.id)return;
-    if(item.stage_number===2&&['eligibility_review','tag_proofs'].includes(selected.workflow_step)){
-      notify('Stage 2 cannot be reviewed until the CODM screenshot is approved.',true);
+  async function requestEvidenceCorrection(item:Evidence){
+    if(!selected||!item.id||item.status!=='pending')return;
+    const reviewerNotes=evidenceNotes[item.id]?.trim()||null;
+    if(!reviewerNotes){
+      notify('Write a correction note to explain which screenshot the applicant should replace.',true);
       return;
     }
-    const reviewerNotes=evidenceNotes[item.id]?.trim()||null;
-    if(status==='needs_correction'&&!reviewerNotes){notify('Add a correction note first so the applicant knows exactly what to fix.',true);return;}
     setBusy(true);
-    const {error}=await supabase.from('asy_recruitment_evidence').update({status,reviewer_notes:reviewerNotes,reviewed_by_email:session?.user.email||null,reviewed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',item.id);
+    const {error}=await supabase.from('asy_recruitment_evidence').update({
+      status:'needs_correction',reviewer_notes:reviewerNotes,
+      reviewed_by_email:session?.user.email||null,
+      reviewed_at:new Date().toISOString(),updated_at:new Date().toISOString()
+    }).eq('id',item.id).eq('status','pending');
     setBusy(false);
-    if(error){notify('Could not update this requirement. Check recruiter permissions.',true);return;}
-    await loadSelectedEvidence(selected.id);
+    if(error){
+      notify('Could not request correction. Check your recruiter permissions.',true);
+      return;
+    }
+    await loadSelectedEvidence(selected.id,selected.application_type);
+    notify('Correction requested. The applicant can replace this screenshot without starting over.');
+  }
+  async function verifyAllScreeningProofs(app:Application){
+    if(!authorized||!session?.access_token){
+      notify('Recruiter sign-in is required to verify screenshots.',true);return;
+    }
+    const required=selectedEvidence.filter(item=>item.is_required!==false);
+    if(!required.length||required.some(item=>
+      !['pending','approved'].includes(item.status)||!item.storage_path)){
+      notify('All required screenshots must be uploaded and any corrections completed first.',true);
+      return;
+    }
+    if(app.age_verification_status!=='verified'||!app.application_details_verified){
+      notify('Confirm applicant age and application details before final verification.',true);
+      return;
+    }
+    if(!window.confirm('Verify all '+required.length+' required screenshots together and continue to Final Review? This does not approve ASYLUM membership yet.'))return;
+    setBusy(true);
+    const {error}=await supabase.rpc('asy_verify_all_screening_proofs',{p_application_id:app.id});
+    setBusy(false);
+    if(error){notify(error.message||'Could not verify all screenshots.',true);return;}
+    const {data:updated}=await supabase.from('asy_clan_applications').select('*').eq('id',app.id).single();
+    if(updated)setSelected(updated as Application);
+    await loadSelectedEvidence(app.id,app.application_type);
     await loadApplications();
-    notify(status==='approved'?'Proof approved. The next stage opens only when all required proofs in this stage are approved.':'Correction requested. The applicant can upload a replacement screenshot.');
+    notify('All screenshots verified together. Proceed with final MGC checks before Screening GC eligibility.');
   }
   async function setMembershipFormResponseVerified(app:Application,verified:boolean){
     if(!authorized||!session?.user.email){notify('Only an authorized recruiter can verify a Membership Form response.',true);return;}
@@ -1534,8 +1531,8 @@ export default function App() {
               <div className="applicant-evidence-copy"><strong>{item.requirement_label}</strong><span className={'evidence-status '+visibleStatus}>{statusLabel}</span>{item.file_name&&<small>Uploaded file: {item.file_name}</small>}{item.submitted_at&&<small>Submitted: {new Date(item.submitted_at).toLocaleString()}</small>}{item.reviewed_at&&<small>Reviewed: {new Date(item.reviewed_at).toLocaleString()}</small>}{item.reviewer_notes&&item.status==='needs_correction'&&<p className="correction-note">Recruiter feedback: {item.reviewer_notes}</p>}</div>
               {(item.requirement_key==='codm_tag_screenshot'||item.requirement_key==='tiktok_tag_screenshot'||item.requirement_key==='tiktok_follow_screenshot'||item.requirement_key==='membership_form_screenshot'||item.requirement_key==='roster_photo')&&<ExampleProof kind={({codm_tag_screenshot:'codm',tiktok_tag_screenshot:'tiktok',tiktok_follow_screenshot:'following',membership_form_screenshot:'form',roster_photo:'roster'} as Record<string,string>)[item.requirement_key]}/>}
               {canUpload&&<><Field label="Optional note for recruiter"><textarea rows={2} maxLength={500} value={applicantEvidenceNotes[item.requirement_key]??item.applicant_note??''} onChange={e=>setApplicantEvidenceNotes(old=>({...old,[item.requirement_key]:e.target.value}))} placeholder="Add context for this proof, if needed…"/></Field>
-                {item.stage_number===1&&<label className="upload-control"><span>{evidenceUploadKey===item.requirement_key?'Uploading…':item.status==='needs_correction'?'Upload replacement CODM screenshot':'Choose CODM screenshot'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey||applicantBulkUploading} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadRequirement(item.requirement_key,file);e.currentTarget.value='';}}/></label>}
-                {item.stage_number===2&&<label className="upload-control"><span>{applicantEvidenceFiles[item.requirement_key]?.name||(item.status==='needs_correction'?'Choose replacement file':'Choose file for batch')}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey||applicantBulkUploading} onChange={e=>{const file=e.target.files?.[0];if(file){setApplicantEvidenceFiles(old=>({...old,[item.requirement_key]:file}));}e.currentTarget.value='';}}/></label>}
+                {item.stage_number===1&&<label className="upload-control"><span>{evidenceUploadKey===item.requirement_key?'Uploading…':item.status==='needs_correction'?'Upload replacement CODM screenshot':'Choose CODM screenshot'}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadRequirement(item.requirement_key,file);e.currentTarget.value='';}}/></label>}
+                {item.stage_number===2&&<label className="upload-control"><span>{applicantEvidenceFiles[item.requirement_key]?.name||(item.status==='needs_correction'?'Choose replacement file':'Choose file for batch')}</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={!!evidenceUploadKey} onChange={e=>{const file=e.target.files?.[0];if(file){setApplicantEvidenceFiles(old=>({...old,[item.requirement_key]:file}));}e.currentTarget.value='';}}/></label>}
               </>}
             </article>;
           })}</div>
