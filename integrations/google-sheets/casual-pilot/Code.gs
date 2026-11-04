@@ -39,7 +39,7 @@ function pilotParse_(body,mode){
   if(mode==='live'){
     const today=new Date();
     const threshold=new Date(Date.UTC(today.getUTCFullYear()-16,today.getUTCMonth(),today.getUTCDate()));
-    if(date>threshold)throw Error('Applicant must be at least 16.');
+    if(dob>threshold.toISOString().slice(0,10))throw Error('Applicant must be at least 16.');
   }
   if(!String(a.facebook_name||'').trim()||ign.length<2||!String(a.clan_name||'').trim())
     throw Error('Missing required Casual applicant fields.');
