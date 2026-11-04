@@ -1,3 +1,19 @@
+## Current pilot deployment (Nov 4, 2026)
+
+The owner provided this deployed Google Apps Script endpoint:
+`https://script.google.com/macros/s/AKfycbzf9DwgJl-Sa9cVWyvpYPWKWTTqlXTTgAK_-WhAT6nMgbmHhcteTwHDUVx2Uv1Lw46m/exec`
+
+The public URL was installed **server-side** in the new Supabase Edge Function `asy-casual-sheet-pilot` (not in browser code). The function performs full Supabase Auth verification and checks the existing `asy_recruitment_admins` allowlist, with two authorized actions:
+
+- `status`: report whether the secret is present in Supabase; never reveals its value
+- `pilot-test`: write/update only the fixed **synthetic** `ASYLUM-PILOT20261104` row in `WEBSITE_CASUAL_TEST` using the Google Apps Script endpoint
+
+**Still required from the owner:** In Supabase Dashboard for project `tyhszzztltamrohhyykh` → **Edge Functions → Secrets**, create `ASY_CASUAL_SYNC_TOKEN` with **exactly the same 32+ character value** that was already saved in Google Apps Script → Project Settings → Script Properties. Never paste the token in ChatGPT, GitHub or Vercel frontend variables.
+
+After saving the secret, go to the Recruiter Dashboard and use **Google Sheets / Casual Pilot → Check connection**, then **Run demo test**. Confirm the demo row in the test tab, and repeat to test idempotent update. If the function reports a non-JSON Apps Script response, check the Apps Script Web App deployment permissions/version.
+
+**Not yet enabled:** automatic live applicant syncing, live SCREENING writes, and removal of extra website questions. The website currently lacks Facebook Name, Birthdate, Clan Name and Version, and the original responses spreadsheet currently permits public link-viewer access despite birthdate data. Resolve both before enabling real applicant data.
+
 # ASYLUM Casual → Google Sheets Pilot
 
 **Status: staged only. Not a live automatic sync yet.** No changes to Referral, official `SCREENING` responses, or the master list.
