@@ -2,11 +2,32 @@
 
 **Deployment state (Nov 4, 2026):** Backend and website form are updated. **Live Sheets sync is intentionally OFF.** This protects the personal birthdates in the original SCREENING sheet while its sharing setting is still "Anyone with the link — Viewer" and while the currently deployed Apps Script may still be the older test-only version. Referral and Master List are untouched.
 
+## Website submission → isolated Sheets test (now connected)
+
+Every **new Direct/Casual application** is first saved to Supabase (unchanged workflow), then the website calls `asy-casual-sheet-pilot` with only its tracking reference and email for lookup. While the production flag remains OFF, the backend:
+
+1. reads the saved application from Supabase;
+2. derives a deterministic, non-identifying testing code using HMAC and the server-only sync token;
+3. sends **synthetic demo fields** (`WEBTEST`, dummy UID, dummy birthdate, example URLs) to the already-deployed Apps Script in `test` mode;
+4. upserts into `WEBSITE_CASUAL_TEST` with one row per unique website submission, deduplicated by the synthetic code in column L;
+5. records `test_synced_at`, `test_sheet_row`, test attempts and test errors separately in the private `asy_casual_sheet_sync` table;
+6. shows the result in the website's application tracking screen. Recruiters can also use **Check connection** to see the number of website-initiated pilot tests confirmed.
+
+No real name, DOB, UID, email, contact links, or actual tracking code are ever placed on this link-shared Google Sheet while the production flag is OFF. **These are connectivity markers, not real enrollment responses.** Production queue status stays pending.
+
+### Verify safely
+
+- **Test Apps Script itself:** Recruiter Dashboard → Google Sheets / Casual Pilot → Run demo test. `PILOTTEST` should update row 2, not create duplicates.
+- **Test a genuine Direct application:** Submit the real website Direct form with authorized, real applicant information, then visit its tracking page. A successful synthetic transfer shows `Google Sheets website pilot verified`. `WEBSITE_CASUAL_TEST` gets a **WEBTEST** marker row; private applicant details stay only in Supabase. Do **not** create fake live application records just to test; use only actual legitimate submissions. If there are none, staff can still use the Apps Script demo.
+- **Test idempotency:** Reload/check the same application tracking again. No additional `WEBTEST` row should appear for that application, because the backend remembers the successful test.
+
+The `WEBTEST` marker proves the cross-system request path, but **does not prove real applicant details have arrived in SCREENING**. The real `SCREENING` sync requires the privacy and management rollout steps below.
+
 ## What has been implemented
 - Website Casual/Direct form matches actual applicant columns: Facebook Name, Birthdate (age 16+), Facebook Link, TikTok Link, IGN, CODM UID, Streamer ID, Clan Name (use NO CLAN), Discord username. Website contact email is required for private tracking, **not** added to the original form response columns.
 - Removed unrelated Casual application questions for Region, rank, level, reason and separate MP/BR Legendary Series numerical totals. Eligibility confirmation still requires the minimum six Legendary Series and is reviewed by recruiters. Referral keeps its earlier form and separate MP/BR inputs.
 - Supabase migration `20261104032103_casual_direct_form_alignment_private_sync_queue.sql` adds private fields, guards, and a locked queue table `asy_casual_sheet_sync` (RLS enabled; revoked from anon/authenticated). Site submits always save to Supabase first.
-- Server function `asy-casual-sheet-pilot` deployed to Supabase, keeps existing staff-only demo test and adds `sync-submission` for Casual applicants using tracking code + email. Backend re-reads applicant details from Supabase. While `casual_sheet_live_enabled=false`, it **queues without transmitting any applicant data** to Google Sheets.
+- Server function `asy-casual-sheet-pilot` deployed to Supabase, keeps the staff-only demo test and adds `sync-submission` for Casual applicants using tracking code + email. Backend re-reads applicant details from Supabase. While `casual_sheet_live_enabled=false`, it **writes only synthetic, non-identifying WEBTEST connectivity markers** to Google Sheets and keeps real applicant information private in Supabase.
 - Verified a transaction-rolled-back synthetic insert creates a sync queue entry without persisting a fake applicant; GitHub CI passes.
 
 ## Verified Google destination
