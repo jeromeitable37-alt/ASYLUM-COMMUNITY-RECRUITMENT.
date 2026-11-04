@@ -965,3 +965,16 @@
   .screening-admin-contact-controls input{grid-column:1/-1;width:100%;max-width:100%;min-width:0}
   .screening-admin-contact-controls button{width:100%;min-width:0}
 }
+
+
+/* Staff-only Google Sheets pilot connection test (never on public application form). */
+.casual-sheet-pilot-panel{display:flex;flex-direction:column;gap:13px;padding:clamp(17px,3vw,28px);border:1px solid #583340;border-radius:12px;background:linear-gradient(140deg,#171218,#0d0b10)}
+.casual-sheet-pilot-panel h2{font-size:clamp(18px,2vw,25px);margin:6px 0 8px}
+.casual-sheet-pilot-panel p{color:#bfb3bf;line-height:1.7;margin:0}
+.casual-sheet-pilot-panel strong{color:#fff}
+.casual-sheet-pilot-actions{display:flex;flex-wrap:wrap;gap:10px}
+.casual-sheet-pilot-actions button{min-height:40px}
+.casual-sheet-pilot-result{border-left:3px solid #6dae93;padding:11px 13px;border-radius:5px;background:#14201b;color:#d6f6e8!important;overflow-wrap:anywhere}
+.casual-sheet-pilot-result.warning{border-color:#d69e51;background:#211910;color:#f6e3c7!important}
+.casual-sheet-pilot-panel>small{color:#a69da8;line-height:1.7}
+@media(max-width:640px){.casual-sheet-pilot-actions{display:grid;grid-template-columns:1fr;width:100%}.casual-sheet-pilot-actions button{width:100%}}
