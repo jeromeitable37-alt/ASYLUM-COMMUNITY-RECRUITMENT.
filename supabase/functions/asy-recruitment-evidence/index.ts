@@ -59,7 +59,7 @@ async function findApplication(code: string, email: string) {
   if (!client) return null;
   const { data, error } = await client
     .from("asy_clan_applications")
-    .select("id, application_code, ign, contact_email, status, workflow_step, application_type, workflow_enabled, submitted_at")
+    .select("id, application_code, ign, contact_email, status, workflow_step, application_type, workflow_enabled, submitted_at, membership_form_response_verified")
     .eq("application_code", code.toUpperCase())
     .eq("contact_email", email.toLowerCase())
     .maybeSingle();
@@ -88,7 +88,7 @@ Deno.serve(async (req: Request) => {
       if (!application.workflow_enabled) return json(409, { workflow_enabled: false, error: "This application uses the previous review flow." });
       const { data: evidence, error } = await client
         .from("asy_recruitment_evidence")
-        .select("requirement_key, requirement_label, stage_number, status, file_name, applicant_note, reviewer_notes, submitted_at, reviewed_at")
+        .select("requirement_key, requirement_label, stage_number, is_required, status, file_name, applicant_note, reviewer_notes, submitted_at, reviewed_at")
         .eq("application_id", application.id)
         .order("stage_number")
         .order("requirement_label");
@@ -135,10 +135,21 @@ Deno.serve(async (req: Request) => {
     if (application.application_type !== "referral" && ["membership_form_screenshot", "referral_conversation_screenshot"].includes(key)) {
       return json(409, { error: "Referral-only screenshots are not required for Direct Application." });
     }
-    // All required proof slots are open together. Screenshots can be replaced
-    // before the single recruiter verification; no stage-by-stage approval.
-    if (!["eligibility_review","tag_proofs","membership_proofs","discord_roster"].includes(application.workflow_step)) {
-      return json(409, { error: "Screenshot uploads are closed after final verification." });
+    // The initial screenshot bundle is open at once. The Referral Membership
+    // Form is provided later and can be uploaded during Final MGC review.
+    const initialProofOpen = ["eligibility_review","tag_proofs","membership_proofs","discord_roster"]
+      .includes(application.workflow_step);
+    const referralFormOpen = application.application_type === "referral"
+      && application.workflow_step === "final_review"
+      && key === "membership_form_screenshot";
+    if (!initialProofOpen && !referralFormOpen) {
+      return json(409, { error: "This screenshot is not open for uploads in the current review stage." });
+    }
+    if (key === "membership_form_screenshot" && !referralFormOpen) {
+      return json(409, { error: "The Referral Membership Form screenshot is uploaded during Final MGC review, after the other proofs are verified." });
+    }
+    if (referralFormOpen && application.membership_form_response_verified) {
+      return json(409, { error: "The recruiter has already verified the form response. Ask the recruiter to reopen the form check before replacing this screenshot." });
     }
     if (!["not_submitted","needs_correction","pending"].includes(requirement.status)) {
       return json(409, { error: "This proof was already verified or is not available for replacement." });
