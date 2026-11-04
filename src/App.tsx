@@ -9,6 +9,7 @@ const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_cue7psRXDt6h-1oSAwnpIw_ro8Tvecn
 const EVIDENCE_API_URL = SUPABASE_URL + '/functions/v1/asy-recruitment-evidence';
 const MESSAGING_API_URL = SUPABASE_URL + '/functions/v1/asy-community-messaging';
 const OPERATIONS_API_URL = SUPABASE_URL + '/functions/v1/asy-operations';
+const CASUAL_SHEETS_PILOT_API_URL = SUPABASE_URL + '/functions/v1/asy-casual-sheet-pilot';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; membership_form_response_verified:boolean; membership_form_response_verified_by_email:string|null; membership_form_response_verified_at:string|null; legendary_series_count:number; legendary_series_mp:number|null; legendary_series_br:number|null; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; is_required?:boolean; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
@@ -113,6 +114,8 @@ export default function App() {
   const [intakeLimitDraft,setIntakeLimitDraft]=useState('');
   const [intakeOpenDraft,setIntakeOpenDraft]=useState(true);
   const [settingsBusy,setSettingsBusy]=useState(false);
+  const [casualPilotBusy,setCasualPilotBusy]=useState(false);
+  const [casualPilotStatus,setCasualPilotStatus]=useState<{message:string;connected:boolean|null}|null>(null);
   const [screeningAdminUrl,setScreeningAdminUrl]=useState(DEFAULT_SCREENING_ADMIN_URL);
   const [screeningAdminDraft,setScreeningAdminDraft]=useState(DEFAULT_SCREENING_ADMIN_URL);
   const [screeningAdminSaving,setScreeningAdminSaving]=useState(false);
@@ -566,6 +569,37 @@ export default function App() {
     notify('Applicant details review recorded. You can now unlock the separate CODM screenshot step once age verification is complete.');
   }
 
+  async function runCasualSheetPilot(action:'status'|'pilot-test'){
+    if(!authorized||!session?.access_token){
+      notify('Sign in as an authorized recruiter to test Casual Google Sheets syncing.',true);
+      return;
+    }
+    if(action==='pilot-test'&&!window.confirm('This writes one clearly labeled DEMO row to WEBSITE_CASUAL_TEST (or updates the existing demo row). No real applicant data or live SCREENING/REFERRALS rows are touched. Continue?'))return;
+    setCasualPilotBusy(true);
+    try{
+      const response=await fetch(CASUAL_SHEETS_PILOT_API_URL,{
+        method:'POST',headers:{
+          'Content-Type':'application/json',apikey:SUPABASE_PUBLISHABLE_KEY,
+          Authorization:'Bearer '+session.access_token
+        },body:JSON.stringify({action}),cache:'no-store'
+      });
+      const data=await response.json().catch(()=>null) as {ok?:boolean;error?:string;secret_configured?:boolean;action?:string;row?:number}|null;
+      if(!response.ok||!data?.ok)throw new Error(data?.error||'Google Sheets pilot request failed.');
+      if(action==='status'){
+        const ready=Boolean(data.secret_configured);
+        setCasualPilotStatus({connected:ready,message:ready
+          ?'Supabase token is configured. Ready for the dummy test.'
+          :'Apps Script URL saved; add matching ASY_CASUAL_SYNC_TOKEN to Supabase Edge Function Secrets first.'});
+      }else{
+        setCasualPilotStatus({connected:true,message:'Demo '+(data.action||'sync')+' at row '+String(data.row||'?')+' of WEBSITE_CASUAL_TEST. Live applicant sync remains disabled.'});
+        notify('Casual demo synced to WEBSITE_CASUAL_TEST. Check the test tab.');
+      }
+    }catch(error){
+      const message=error instanceof Error?error.message:'Could not test Casual sheet sync.';
+      setCasualPilotStatus({connected:false,message});
+      notify(message,true);
+    }finally{setCasualPilotBusy(false);}
+  }
   async function loadIntakeSettings(){
     const {data,error}=await supabase.from('asy_recruitment_settings').select('id,intake_open,application_limit,application_count,cycle_started_at,updated_at,screening_admin_url').eq('id',1).maybeSingle();
     if(error){console.error('Could not load recruitment intake settings.',error.message);return;}
@@ -1467,7 +1501,17 @@ export default function App() {
               </article>)}
             </div>
           </section>
-           <section className="panel intake-admin">
+           <section className="panel casual-sheet-pilot-panel">
+              <div><small className="kicker">GOOGLE SHEETS / CASUAL PILOT</small><h2>Test website-to-Sheet connection</h2>
+                <p>The Apps Script URL is connected to a staff-only Supabase function. Testing writes only a synthetic demo row to <strong>WEBSITE_CASUAL_TEST</strong>. Live SCREENING, REFERRALS and Master List records remain untouched.</p></div>
+              <div className="casual-sheet-pilot-actions">
+                <button type="button" className="secondary" disabled={casualPilotBusy} onClick={()=>void runCasualSheetPilot('status')}>Check connection</button>
+                <button type="button" className="secondary" disabled={casualPilotBusy} onClick={()=>void runCasualSheetPilot('pilot-test')}>{casualPilotBusy?'Checking…':'Run demo test'}</button>
+              </div>
+              {casualPilotStatus&&<p className={'casual-sheet-pilot-result '+(casualPilotStatus.connected===false?'warning':'')} role="status">{casualPilotStatus.message}</p>}
+              <small>Before live syncing, the website needs the original Casual fields (Facebook name, birthdate, clan and version), restricted Sheet sharing and final field mapping. Keep the matching script secret out of frontend code.</small>
+            </section>
+            <section className="panel intake-admin">
               <div className="intake-admin-heading">
                 <div className="intake-admin-title">
                   <small className="kicker">RECRUITMENT INTAKE CONTROL</small>
