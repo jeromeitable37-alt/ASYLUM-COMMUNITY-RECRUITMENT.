@@ -98,6 +98,76 @@ async function performSync(row:RecruitRecord){
   if(saveError)throw Error("Sync sent; database could not save acknowledgement.");
   return {ok:true,synced:true,action:result.action,row:result.row};
 }
+// During pilot mode we write ONLY synthetic markers to the test tab.
+// No applicant name, UID, birthdate, email, actual tracking code, or links are
+// transmitted to the link-shared spreadsheet. Real data stays in Supabase.
+async function performSafeWebsiteTest(row:RecruitRecord){
+  if(!db)throw Error("Database service unavailable.");
+  if(token().length<32)throw Error("The server's Apps Script token is not configured.");
+  const {data:queue,error:qerr}=await db.from("asy_casual_sheet_sync")
+    .select("test_synced_at,test_sheet_row,test_attempts,test_last_attempt_at")
+    .eq("application_id",row.id).maybeSingle();
+  if(qerr)throw Error("Could not read the private Casual sync queue.");
+  if(queue?.test_synced_at)return {
+    ok:true,mode:"test_only",website_test_synced:true,already_tested:true,
+    destination:"WEBSITE_CASUAL_TEST",row:queue.test_sheet_row
+  };
+  const now=new Date();
+  if(queue?.test_last_attempt_at&&now.getTime()-new Date(queue.test_last_attempt_at).getTime()<15000)
+    return {ok:true,mode:"test_only",queued:true,retry_later:true,message:"Website test already in progress; reload tracking shortly."};
+
+  // The deterministic HMAC is stable across retries, but cannot be linked back
+  // to the private applicant tracking code by Sheet viewers.
+  const key=await crypto.subtle.importKey(
+    "raw",new TextEncoder().encode(token()),
+    {name:"HMAC",hash:"SHA-256"},false,["sign"]);
+  const signature=await crypto.subtle.sign("HMAC",key,new TextEncoder().encode("website-casual-pilot:"+row.id));
+  const testCode="ASYLUM-"+Array.from(new Uint8Array(signature).slice(0,9),
+    b=>b.toString(16).padStart(2,"0")).join("").toUpperCase();
+
+  const {error:queueError}=await db.from("asy_casual_sheet_sync").upsert({
+    application_id:row.id,test_last_attempt_at:now.toISOString(),
+    test_attempts:(queue?.test_attempts||0)+1,
+    test_last_error:null,updated_at:now.toISOString()
+  },{onConflict:"application_id"});
+  if(queueError)throw Error("Could not queue website test.");
+
+  try{
+    const health=await callAppsScript({action:"casual_health"});
+    if(health.mode!=="test")throw Error("Website test requires Apps Script TEST mode.");
+    const result=await callAppsScript({
+      action:"casual_upsert",application_type:"casual",
+      application_code:testCode,submitted_at:"2026-11-04T00:00:00.000Z",
+      applicant:{
+        facebook_name:"WEBSITE TEST - NO PERSONAL DATA",
+        birthdate:"2000-01-01",
+        facebook_url:"https://www.facebook.com/example",
+        tiktok_url:"https://www.tiktok.com/@example",
+        ign:"WEBTEST",codm_uid:"1234567890123456789",
+        streamer_mode_id:"WEBTEST",clan_name:"NO CLAN",
+        discord_username:"website_test",version:"WEBSITE TEST ONLY"
+      }
+    });
+    if(result.mode!=="test"||!Number.isInteger(result.row)||Number(result.row)<2)
+      throw Error("Apps Script did not acknowledge a test-only row.");
+    const {error:saveError}=await db.from("asy_casual_sheet_sync").update({
+      test_synced_at:new Date().toISOString(),test_sheet_row:result.row,
+      test_last_error:null,updated_at:new Date().toISOString()
+    }).eq("application_id",row.id);
+    if(saveError)throw Error("Test row written; Supabase could not record acknowledgment.");
+    return {
+      ok:true,mode:"test_only",website_test_synced:true,
+      action:result.action,row:result.row,destination:"WEBSITE_CASUAL_TEST",
+      message:"Website-to-Supabase-to-Google-Sheets pilot confirmed using a synthetic row. No personal applicant information was transferred."
+    };
+  }catch(error){
+    const reason=error instanceof Error?error.message:"Website test temporarily unavailable.";
+    await db.from("asy_casual_sheet_sync").update({
+      test_last_error:reason.slice(0,180),updated_at:new Date().toISOString()
+    }).eq("application_id",row.id);
+    throw error;
+  }
+}
 async function handleApplicantSync(body:Record<string,unknown>){
   if(!db)return json(503,{ok:false,error:"Sheet service unavailable."});
   const code=text(body.application_code).toUpperCase();
@@ -113,8 +183,11 @@ async function handleApplicantSync(body:Record<string,unknown>){
   if(!data.applicant_facebook_name||!data.applicant_birthdate||!data.applicant_clan_name)
     return json(409,{ok:false,error:"Your Direct application is missing the original form details. Ask a recruiter to correct it."});
   try{
-    if(!await isLiveEnabled())
-      return json(200,{ok:true,queued:true,mode:"test_only",message:"Your application is saved. Live Google Sheets sync is not yet enabled."});
+    if(!await isLiveEnabled()){
+      // This is a synthetic end-to-end test only. No applicant PII leaves Supabase.
+      const test=await performSafeWebsiteTest(data as RecruitRecord);
+      return json(200,test);
+    }
     const result=await performSync(data as RecruitRecord);
     return json(200,result);
   }catch(error){
@@ -180,7 +253,12 @@ Deno.serve(async(req:Request)=>{
       unexpected_response:"The Apps Script response lacks the new mode/access fields. Confirm that the deployed Code.gs has the casual_health handler.",
       missing_secret:"Supabase has no valid 32+ character ASY_CASUAL_SYNC_TOKEN."
     };
+    const {count:websiteTestCount}=db
+      ? await db.from("asy_casual_sheet_sync").select("application_id",{head:true,count:"exact"})
+        .not("test_synced_at","is",null)
+      : {count:null};
     return json(200,{
+      website_test_count:websiteTestCount??0,
       ok:true,mode:"casual_test_only",webhook_url_configured:true,
       secret_configured:hasSecret,destination:"WEBSITE_CASUAL_TEST",
       live_sync_enabled:liveEnabled,script_state:scriptState,
