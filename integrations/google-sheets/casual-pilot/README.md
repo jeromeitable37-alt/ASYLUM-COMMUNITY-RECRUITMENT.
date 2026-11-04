@@ -1,89 +1,34 @@
-## Current pilot deployment (Nov 4, 2026)
+# ASYLUM — Casual / Direct Membership Form → Google Sheets
 
-The owner provided this deployed Google Apps Script endpoint:
-`https://script.google.com/macros/s/AKfycbzf9DwgJl-Sa9cVWyvpYPWKWTTqlXTTgAK_-WhAT6nMgbmHhcteTwHDUVx2Uv1Lw46m/exec`
+**Deployment state (Nov 4, 2026):** Backend and website form are updated. **Live Sheets sync is intentionally OFF.** This protects the personal birthdates in the original SCREENING sheet while its sharing setting is still "Anyone with the link — Viewer" and while the currently deployed Apps Script may still be the older test-only version. Referral and Master List are untouched.
 
-The public URL was installed **server-side** in the new Supabase Edge Function `asy-casual-sheet-pilot` (not in browser code). The function performs full Supabase Auth verification and checks the existing `asy_recruitment_admins` allowlist, with two authorized actions:
+## What has been implemented
+- Website Casual/Direct form matches actual applicant columns: Facebook Name, Birthdate (age 16+), Facebook Link, TikTok Link, IGN, CODM UID, Streamer ID, Clan Name (use NO CLAN), Discord username. Website contact email is required for private tracking, **not** added to the original form response columns.
+- Removed unrelated Casual application questions for Region, rank, level, reason and separate MP/BR Legendary Series numerical totals. Eligibility confirmation still requires the minimum six Legendary Series and is reviewed by recruiters. Referral keeps its earlier form and separate MP/BR inputs.
+- Supabase migration `20261104032103_casual_direct_form_alignment_private_sync_queue.sql` adds private fields, guards, and a locked queue table `asy_casual_sheet_sync` (RLS enabled; revoked from anon/authenticated). Site submits always save to Supabase first.
+- Server function `asy-casual-sheet-pilot` deployed to Supabase, keeps existing staff-only demo test and adds `sync-submission` for Casual applicants using tracking code + email. Backend re-reads applicant details from Supabase. While `casual_sheet_live_enabled=false`, it **queues without transmitting any applicant data** to Google Sheets.
+- Verified a transaction-rolled-back synthetic insert creates a sync queue entry without persisting a fake applicant; GitHub CI passes.
 
-- `status`: report whether the secret is present in Supabase; never reveals its value
-- `pilot-test`: write/update only the fixed **synthetic** `ASYLUM-PILOT20261104` row in `WEBSITE_CASUAL_TEST` using the Google Apps Script endpoint
+## Verified Google destination
+Spreadsheet: https://docs.google.com/spreadsheets/d/17qdrn3qwCjJTG7Ud10EEsIfZiI9n18PJLSPdw5TIQjU/edit
 
-**Still required from the owner:** In Supabase Dashboard for project `tyhszzztltamrohhyykh` → **Edge Functions → Secrets**, create `ASY_CASUAL_SYNC_TOKEN` with **exactly the same 32+ character value** that was already saved in Google Apps Script → Project Settings → Script Properties. Never paste the token in ChatGPT, GitHub or Vercel frontend variables.
+Original response sheet `SCREENING` (untouched): columns A:K contain Timestamp, Facebook Name, Birthdate, Facebook Link, TikTok Link, IGN, UID, Streamer Mode ID, Clan Name, Discord Username, Version. **Version is staff-maintained**: live website submissions leave K blank.
 
-After saving the secret, go to the Recruiter Dashboard and use **Google Sheets / Casual Pilot → Check connection**, then **Run demo test**. Confirm the demo row in the test tab, and repeat to test idempotent update. If the function reports a non-JSON Apps Script response, check the Apps Script Web App deployment permissions/version.
+Test sheet `WEBSITE_CASUAL_TEST`: original A:K plus column L as tracking code. The synthetic `ASYLUM-PILOT20261104` was inserted at row 2 and idempotently updated at row 2.
 
-**Not yet enabled:** automatic live applicant syncing, live SCREENING writes, and removal of extra website questions. The website currently lacks Facebook Name, Birthdate, Clan Name and Version, and the original responses spreadsheet currently permits public link-viewer access despite birthdate data. Resolve both before enabling real applicant data.
+When live, `SCREENING` would get a column L "Website Application Code" as a dedup key; its original A:K order remains unchanged. The new Apps Script preserves staff-entered Version on updates.
 
-# ASYLUM Casual → Google Sheets Pilot
+## Required management-owned final actions (in order)
+1. **Change Google Sheet sharing to Restricted**, while retaining authorized staff Editors/Viewers. Google Drive link access is currently open to anyone who knows the URL. The original automatic `asy-member-directory-sync` currently reads a public Google Sheets CSV view; **restricting sharing can disrupt that separate directory feature**. Before restricting, coordinate a secure authenticated alternative for the member directory or temporarily pause it. Do not enable live transfers of birthdates while this remains public.
+2. In the **existing Apps Script project** you own, replace its Code.gs with `integrations/google-sheets/casual-pilot/Code.gs` in this repository. Save, then Deploy → Manage deployments → Edit → New version → Deploy. Re-authorize the script if asked (the new access check uses DriveApp). Keep the same Secret Property `ASY_CASUAL_SYNC_TOKEN`; never paste it into GitHub or browser JS. New Apps Script code defaults to `ASY_CASUAL_SYNC_TARGET=test`.
+3. Verify `Run demo test` again from Recruiter Dashboard while Apps Script targets TEST; check that the `PILOTTEST` stays at row 2 with no duplicates.
+4. Management should verify Master List formulas/scripts with Dam Boni. Inserting a row with Apps Script is **not** a native Google Form submission and does not fire Google Form's `onFormSubmit` event automatically. If Master List depends on this event, it needs a separate authorized integration.
+5. Only after privacy, Apps Script deployment and Master List checks: Set Apps Script Script Property `ASY_CASUAL_SYNC_TARGET=live`, then have management set Supabase `public.asy_recruitment_settings.casual_sheet_live_enabled=true`. Backend runs a signed `casual_health` check before transferring any real applicant data and refuses to sync if Apps Script is not live or detects link-shared spreadsheet. Keep Referral untouched.
+6. Send one **authorized synthetic test record** to confirm the new SCREENING mapping and tracking key before allowing real submissions, then use staff-only dashboard to audit and retry pending sync records.
 
-**Status: staged only. Not a live automatic sync yet.** No changes to Referral, official `SCREENING` responses, or the master list.
-
-## Verified destination
-- Spreadsheet: https://docs.google.com/spreadsheets/d/17qdrn3qwCjJTG7Ud10EEsIfZiI9n18PJLSPdw5TIQjU/edit
-- Official direct/casual responses tab: `SCREENING`
-- Isolated write target: `WEBSITE_CASUAL_TEST` (created and verified; sheetId `1254136764`)
-- The existing `SCREENING!A1` timestamp header is unexpectedly `hahahahah3232_`; it was **not** changed. The new test tab's A1 is `Timestamp`.
-
-## Columns (original form order)
-| Column | Original Casual Form response | Data required from website |
-|:--:|---|---|
-| A | Timestamp | submission time |
-| B | Facebook Name | `facebook_name` **missing in website** |
-| C | Birthdate | `birthdate` **missing in website; sensitive** |
-| D | Facebook Link | applicant Facebook URL |
-| E | TikTok Link | applicant TikTok URL |
-| F | IGN (In-Game Name) | IGN |
-| G | UID | CODM UID (19 digits, text) |
-| H | Streamer mode ID | Streamer Mode ID |
-| I | Clan Name | `clan_name` **missing in website** |
-| J | Discord Username | Discord username |
-| K | Version | `version` **missing in website** |
-| L | **Test-only column** | Application Code — safe dedup/update key |
-
-The existing website asks extra items including Region, MP and BR Legendary Series, rank and level. **Do not remove these blindly**: existing Supabase constraints and screening approval checks require a coordinated migration, not invented replacement values. Get the exact Google Form choices for `Version` and any form-required fields before enabling submissions.
-
-## Prepare the one-time Apps Script webhook
-
-1. Open the linked spreadsheet as an editor → **Extensions → Apps Script**.
-2. If this spreadsheet already has an operational Apps Script project, keep its existing code intact; use a separate Apps Script project to avoid replacing operational functions.
-3. Copy `Code.gs` from this folder to the new script project.
-4. In **Project Settings → Script properties**, set `ASY_CASUAL_SYNC_TOKEN` to a **unique, random 32+ character secret**. Keep it out of the frontend, repository, messages and screenshots.
-5. **Deploy → New deployment → Web app**. Choose **Execute as: Me** and access **Anyone**, gated by the secret. A Google App Script web app accepts `doPost(e)`: https://developers.google.com/apps-script/guides/web.
-6. Copy the `/exec` URL and store it, along with the token, as **server-side Supabase Edge Function secrets**. The script must not be invoked with a secret from public browser JavaScript.
-7. After the secure server-side sender is configured, make one **synthetic** direct application test, verify the A:K field positions and L tracking code, then repeat with the **same tracking code** to confirm one row updates instead of duplicating.
-8. Keep the Apps Script fixed on `WEBSITE_CASUAL_TEST` until reviewed and approved; do not switch to `SCREENING` before verifying downstream master-list handling and all required website fields.
-
-### Webhook contract (server only)
-
-```json
-{
-  "token": "SERVER_SIDE_SECRET_ONLY",
-  "action": "casual_upsert",
-  "application_type": "casual",
-  "application_code": "ASYLUM-PILOT888",
-  "submitted_at": "2026-11-04T00:00:00.000Z",
-  "applicant": {
-    "facebook_name": "PILOT DEMO",
-    "birthdate": "2000-01-01",
-    "facebook_url": "https://facebook.com/example",
-    "tiktok_url": "https://tiktok.com/@example",
-    "ign": "PILOT_TEST",
-    "codm_uid": "1234567890123456789",
-    "streamer_mode_id": "TEST",
-    "clan_name": "NO CLAN",
-    "discord_username": "pilot_test",
-    "version": "PILOT"
-  }
-}
-```
-
-A successful write returns `{"ok":true,"mode":"test","action":"inserted"|"updated","row":N}`.
-Apps Script often returns HTTP 200 even on a response with `ok:false`, so the sender must inspect `ok`. The webhook accepts only direct/casual applications.
-
-## Privacy and operational safety
-
-- Drive metadata currently shows the responses spreadsheet as **Anyone with the link → Viewer**; it contains birthdates and game identifiers. Management should restrict sharing to trusted staff before putting real applicant DOBs there from the website.
-- **No real applicant data has been sent via this pilot.**
-- Do not hardcode OAuth credentials, webhook secret, Google account tokens or birthdates into GitHub.
-- Referral remains completely out of scope.
-- This pilot script and test tab do **not** automatically connect the live website. Finish the backend sender and field mapping after the script deploy credentials are available.
+## Important security and workflow notes
+- Applicant DOB, UID and social links must not be exposed in browser credentials or public API messages; only the opaque application code and tracking email travel to the server sync endpoint. The backend fetches saved data privately.
+- The staff-only demo action always refuses to write unless the deployed Apps Script confirms TEST mode. The server never sends a real DOB while `casual_sheet_live_enabled` is false.
+- The Apps Script live path checks restricted sharing before writing and rejects demo tracking codes in SCREENING.
+- The website still offers the original **Send Membership Form (Non-Referral)** button as a fallback. Remove it only after confirmed live sync and successful Master List integration to avoid breaking ongoing applications.
+- Do not use staff-maintained Version values (OK/V2/V3) as applicant form questions or invent a value in an automated submission.
