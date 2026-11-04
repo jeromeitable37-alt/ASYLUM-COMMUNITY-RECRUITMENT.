@@ -116,6 +116,7 @@ export default function App() {
   const [settingsBusy,setSettingsBusy]=useState(false);
   const [casualWebsiteSync,setCasualWebsiteSync]=useState<{code:string;state:'testing'|'verified'|'queued'|'failed';message:string}|null>(null);
   const casualWebsiteSyncInFlight=useRef<Set<string>>(new Set());
+  const rejectedSheetCleanupInFlight=useRef(false);
   const [screeningAdminUrl,setScreeningAdminUrl]=useState(DEFAULT_SCREENING_ADMIN_URL);
   const [screeningAdminDraft,setScreeningAdminDraft]=useState(DEFAULT_SCREENING_ADMIN_URL);
   const [screeningAdminSaving,setScreeningAdminSaving]=useState(false);
@@ -1205,7 +1206,43 @@ export default function App() {
   async function checkStatus(event:FormEvent){event.preventDefault();setBusy(true);setTracked(null);setApplicantProgress(null);const {data,error}=await supabase.rpc('asy_check_application',{p_application_code:applicationCode.trim(),p_contact_email:contactEmail.trim().toLowerCase()});setBusy(false);if(error)notify('We could not check the status right now. Please try again in a moment.',true);else if(!data?.length)notify('We could not find a match. Check your tracking code and the same email used in your application.',true);else{setTracked(data[0]);await loadApplicantProgress(applicationCode.trim(),contactEmail.trim().toLowerCase());notify('Application found. Your latest status is ready.');}}
   async function copyApplicationCode(codeToCopy=savedApplication?.application_code||applicationCode){if(!codeToCopy){notify('There is no tracking code to copy yet.',true);return;}try{await navigator.clipboard.writeText(codeToCopy);notify('Tracking code copied. Keep it private with your application email.');}catch{notify('Copy is unavailable in this browser. Select the code and copy it manually.',true);}}
   function clearSavedApplication(){try{localStorage.removeItem('asy-recruitment:last-application');}catch{}setSavedApplication(null);setApplicationCode('');setContactEmail('');setTracked(null);notify('Saved tracking details cleared from this device.');}
-  async function loadApplications(){const {data,error}=await supabase.from('asy_clan_applications').select('*').order('submitted_at',{ascending:false});if(error)notify('Unable to load applications. Confirm recruiter access.',true);else setApplications((data||[]) as Application[]);}
+  // Automatically remove rejected website-originated Direct rows. This is a
+  // staff-authenticated call; the backend verifies each rejected record and
+  // only deletes an exact tracking-code match in SCREENING column L.
+  async function reconcileRejectedDirectRows(){
+    if(!authorized||!session?.access_token||rejectedSheetCleanupInFlight.current)return null;
+    rejectedSheetCleanupInFlight.current=true;
+    try{
+      const response=await fetch(CASUAL_SHEETS_PILOT_API_URL,{
+        method:'POST',headers:{
+          'Content-Type':'application/json',
+          apikey:SUPABASE_PUBLISHABLE_KEY,
+          Authorization:'Bearer '+session.access_token
+        },
+        body:JSON.stringify({action:'sync-rejections'}),
+        cache:'no-store'
+      });
+      const result=await response.json().catch(()=>null) as {
+        ok?:boolean;removed?:number;already_missing?:number;failed?:number;pending?:number;
+      }|null;
+      if(!response.ok||!result?.ok)throw new Error('Automatic Sheet cleanup is pending.');
+      return result;
+    }catch(error){
+      console.warn('Rejected Direct Sheet cleanup will retry on the next recruiter visit.',error);
+      return null;
+    }finally{
+      rejectedSheetCleanupInFlight.current=false;
+    }
+  }
+  async function loadApplications(){
+    const {data,error}=await supabase.from('asy_clan_applications')
+      .select('*').order('submitted_at',{ascending:false});
+    if(error){notify('Unable to load applications. Confirm recruiter access.',true);return;}
+    setApplications((data||[]) as Application[]);
+    // Covers temporary network failures and earlier rejection actions that
+    // happened while recruiters were offline. No manual sync buttons.
+    void reconcileRejectedDirectRows();
+  }
   async function openStaffNotificationApplication(applicationId:string){
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(applicationId))return;
     setPage('admin');
@@ -1238,7 +1275,37 @@ export default function App() {
     });
   },[authorized,session?.user.id]);
   async function loadRoster(){const {data,error}=await supabase.from('asy_clan_roster_public').select('id,ign,main_role,rank,member_status,joined_at,clan_name').eq('member_status','active').order('joined_at');if(error)notify('Could not load the roster right now.',true);else setRoster((data||[]) as Roster[]);}
-  async function updateApplication(app:Application,status:string){setBusy(true);const {error}=await supabase.from('asy_clan_applications').update({status,reviewer_notes:notes.trim()||null,updated_at:new Date().toISOString()}).eq('id',app.id);if(error){setBusy(false);notify('Could not save this review. Check recruiter permissions.',true);return;}if(status==='accepted'){const {error:rosterError}=await supabase.from('asy_clan_roster').upsert({application_id:app.id,ign:app.ign,codm_uid:app.codm_uid,main_role:app.main_role,rank:app.rank,discord_username:app.discord_username,member_status:'active'},{onConflict:'application_id'});if(rosterError)notify('Status updated, but roster sync failed. Check whether this UID already exists.',true);}setBusy(false);setSelected(null);await loadApplications();notify(status==='accepted'?'Applicant accepted and added to community members.':status==='rejected'?'Application rejected and removed from the active queue. They can reapply if no other active application exists for their email or CODM UID.':'Application review saved.');}
+  async function updateApplication(app:Application,status:string){
+    setBusy(true);
+    const {error}=await supabase.from('asy_clan_applications')
+      .update({status,reviewer_notes:notes.trim()||null,updated_at:new Date().toISOString()})
+      .eq('id',app.id);
+    if(error){setBusy(false);notify('Could not save this review. Check recruiter permissions.',true);return;}
+    if(status==='accepted'){
+      const {error:rosterError}=await supabase.from('asy_clan_roster')
+        .upsert({application_id:app.id,ign:app.ign,codm_uid:app.codm_uid,
+          main_role:app.main_role,rank:app.rank,
+          discord_username:app.discord_username,member_status:'active'},
+          {onConflict:'application_id'});
+      if(rosterError)notify('Status updated, but roster sync failed. Check whether this UID already exists.',true);
+    }
+    let cleanupNote='';
+    if(status==='rejected'&&app.application_type==='casual'){
+      const cleanup=await reconcileRejectedDirectRows();
+      cleanupNote=cleanup&&cleanup.failed===0&&cleanup.pending===0
+        ?' The matching website row was removed from SCREENING (if present).'
+        :' Google Sheets removal is queued and will retry automatically.';
+    }
+    setBusy(false);
+    setSelected(null);
+    await loadApplications();
+    notify(status==='accepted'
+      ?'Applicant accepted and added to community members.'
+      :status==='rejected'
+        ?'Application rejected and removed from the active queue.'+cleanupNote+
+         ' They can reapply if no other active application exists for their email or CODM UID.'
+        :'Application review saved.');
+  }
   async function scheduleInterview(event:FormEvent){event.preventDefault();if(!selected||!interviewAt)return;setBusy(true);const {error}=await supabase.from('asy_recruitment_interviews').insert({application_id:selected.id,scheduled_at:new Date(interviewAt).toISOString(),channel:interviewChannel,meeting_details:interviewDetails.trim()||null,created_by:session?.user.email||null});setBusy(false);if(error)notify('Interview could not be saved.',true);else{await updateApplication(selected,'interview');setInterviewAt('');setInterviewDetails('');notify('Interview scheduled.');}}
   async function saveTryout(event:FormEvent){event.preventDefault();if(!selected)return;setBusy(true);const {error}=await supabase.from('asy_recruitment_tryouts').insert({application_id:selected.id,scheduled_at:tryoutAt?new Date(tryoutAt).toISOString():null,mode:tryoutMode,score:tryoutScore?Number(tryoutScore):null,result:tryoutResult,notes:tryoutNotes.trim()||null});setBusy(false);if(error)notify('Tryout result could not be saved.',true);else{await updateApplication(selected,tryoutResult==='fail'?'rejected':'tryout');setTryoutScore('');setTryoutNotes('');notify('Tryout record saved.');}}
   const duplicateActiveUids=useMemo(()=>{
