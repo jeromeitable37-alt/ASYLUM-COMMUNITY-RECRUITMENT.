@@ -287,7 +287,7 @@ async function handleApplicantSync(body:Record<string,unknown>){
       await db.from("asy_casual_sheet_sync").update({
         status:"failed",last_error:message.slice(0,200),last_attempt_at:new Date().toISOString(),
         updated_at:new Date().toISOString()
-      }).eq("application_id",data.id).neq("status","synced");
+      }).eq("application_id",data.id).in("status",["pending","failed"]);
     }
     console.error("Casual sync failed:",message);
     return json(503,{ok:false,error:"Application saved, but Google Sheet sync is pending recruiter follow-up."});
