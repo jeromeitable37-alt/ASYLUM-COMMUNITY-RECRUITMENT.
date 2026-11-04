@@ -20,6 +20,8 @@ const serverKey = getServerKey();
 const db = SUPABASE_URL && serverKey ? createClient(SUPABASE_URL, serverKey, { auth: { autoRefreshToken: false, persistSession: false } }) : null;
 const auth = SUPABASE_URL && PUBLISHABLE_KEY ? createClient(SUPABASE_URL, PUBLISHABLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } }) : null;
 const SHEET_ID = "17qdrn3qwCjJTG7Ud10EEsIfZiI9n18PJLSPdw5TIQjU";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzf9DwgJl-Sa9cVWyvpYPWKWTTqlXTTgAK_-WhAT6nMgbmHhcteTwHDUVx2Uv1Lw46m/exec";
+const bridgeToken = () => Deno.env.get("ASY_CASUAL_SYNC_TOKEN") || "";
 const TABS = ["SCREENING", "REFERRALS", "TEAMS"];
 
 function json(status: number, body: unknown) {
@@ -61,6 +63,27 @@ function normalizeUid(raw: string) {
 function parseTimestamp(raw: string) {
   const n = Date.parse(raw);
   return Number.isFinite(n) ? n : 0;
+}
+async function fetchPrivateDirectory(){
+  // Uses an authenticated Apps Script bridge: Google Drive file sharing can
+  // now be restricted without breaking the member directory.
+  if(bridgeToken().length<32)throw Error("Private directory bridge token missing.");
+  const response=await fetch(APPS_SCRIPT_URL,{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({action:"casual_directory",token:bridgeToken()}),
+    redirect:"follow",signal:AbortSignal.timeout(25000)
+  });
+  let payload:any;
+  try{payload=await response.json();}catch{throw Error("Private directory bridge returned invalid data.");}
+  if(!response.ok||payload?.ok!==true||payload.version!=="secure-v3"||!Array.isArray(payload.records))
+    throw Error("Private directory bridge is not yet deployed.");
+  if(payload.records.length>10000)throw Error("Directory sync source exceeded the allowed size.");
+  return payload.records.map((r:any)=>({
+    ign:String(r.ign||"").trim().slice(0,32),
+    uid:normalizeUid(String(r.uid||"")),
+    clan_name:/no clan/i.test(String(r.clan_name||""))?null:String(r.clan_name||"").trim().slice(0,120)||null,
+    timestamp:parseTimestamp(String(r.timestamp||""))
+  })).filter((r:any)=>r.ign.length>=2&&r.uid);
 }
 async function fetchTab(tab: string) {
   const exportUrl = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv&sheet=" + encodeURIComponent(tab);
@@ -108,8 +131,16 @@ Deno.serve(async (request: Request) => {
   const actor = await requireManagement(request);
   if (actor.error) return json(403, { error: actor.error });
   try {
-    const all: Array<{ign:string;uid:string;clan_name:string|null;timestamp:number}> = [];
-    for (const tab of TABS) all.push(...await fetchTab(tab));
+    let all: Array<{ign:string;uid:string;clan_name:string|null;timestamp:number}> = [];
+    let source="private_apps_script";
+    try{
+      all=await fetchPrivateDirectory();
+    }catch{
+      // Temporary compatibility only while the original file is link-shared.
+      // Once privacy is enabled the authenticated bridge becomes mandatory.
+      source="legacy_public_csv";
+      for(const tab of TABS)all.push(...await fetchTab(tab));
+    }
     const dedup = new Map<string, {ign:string;uid:string;clan_name:string|null;timestamp:number}>();
     for (const item of all) {
       const prior = dedup.get(item.uid);
@@ -150,7 +181,7 @@ Deno.serve(async (request: Request) => {
       entity_id: SHEET_ID, summary: "Synchronized " + upserted + " members from the official Google Sheets member register.",
     });
     return json(200, {
-      success: true, rows_seen: all.length, unique_members: incoming.length, records_upserted: upserted,
+      success: true, source, rows_seen: all.length, unique_members: incoming.length, records_upserted: upserted,
       duplicate_uids_merged: all.length - incoming.length, existing_records: existing.size,
       private_fields_excluded: ["birthdate", "Facebook name/link", "TikTok link", "Streamer Mode ID", "Discord username"],
       message: "Only IGN, CODM UID (stored privately for matching), and clan name were used. Existing role/rank/status values were preserved, and missing rank/role values were not invented beyond the neutral Community Member label."
