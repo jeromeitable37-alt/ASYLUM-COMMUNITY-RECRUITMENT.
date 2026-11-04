@@ -114,8 +114,6 @@ export default function App() {
   const [intakeLimitDraft,setIntakeLimitDraft]=useState('');
   const [intakeOpenDraft,setIntakeOpenDraft]=useState(true);
   const [settingsBusy,setSettingsBusy]=useState(false);
-  const [casualPilotBusy,setCasualPilotBusy]=useState(false);
-  const [casualPilotStatus,setCasualPilotStatus]=useState<{message:string;connected:boolean|null;liveEnabled?:boolean;secureReady?:boolean}|null>(null);
   const [casualWebsiteSync,setCasualWebsiteSync]=useState<{code:string;state:'testing'|'verified'|'queued'|'failed';message:string}|null>(null);
   const casualWebsiteSyncInFlight=useRef<Set<string>>(new Set());
   const [screeningAdminUrl,setScreeningAdminUrl]=useState(DEFAULT_SCREENING_ADMIN_URL);
@@ -576,54 +574,6 @@ export default function App() {
     notify('Applicant details review recorded. You can now unlock the separate CODM screenshot step once age verification is complete.');
   }
 
-  async function runCasualSheetPilot(action:'status'|'pilot-test'|'activate-live'|'sync-pending'){
-    if(!authorized||!session?.access_token){
-      notify('Sign in as an authorized recruiter to test Casual Google Sheets syncing.',true);
-      return;
-    }
-    const manager=['owner','management','admin'].includes((staffRole||'').trim().toLowerCase());
-    if((action==='activate-live'||action==='sync-pending')&&!manager){
-      notify('Only Owner, Management, or Admin can activate live sync or transfer pending applicants.',true);
-      return;
-    }
-    if(action==='pilot-test'&&!window.confirm('Write a synthetic DEMO row to WEBSITE_CASUAL_TEST? Do not continue if the Script is already in LIVE mode.'))return;
-    if(action==='activate-live'&&!window.confirm(
-      'Enable real Direct applications in SCREENING? This will REMOVE anyone-with-link access from the entire original Google Sheet, preserve named staff permissions, switch the Apps Script to LIVE, and backfill pending Direct applications. REFERRALS and TEAMS remain untouched. External Master List form-submit triggers are NOT automatically fired. Continue?'
-    ))return;
-    if(action==='sync-pending'&&!window.confirm('Sync previously submitted, non-rejected Direct applications into the private SCREENING sheet? Duplicate records will be updated instead of reinserted.'))return;
-    setCasualPilotBusy(true);
-    try{
-      const response=await fetch(CASUAL_SHEETS_PILOT_API_URL,{
-        method:'POST',headers:{
-          'Content-Type':'application/json',apikey:SUPABASE_PUBLISHABLE_KEY,
-          Authorization:'Bearer '+session.access_token
-        },body:JSON.stringify({action}),cache:'no-store'
-      });
-      const data=await response.json().catch(()=>null) as {ok?:boolean;error?:string;secret_configured?:boolean;action?:string;row?:number;script_state?:string;script_mode?:string;sheet_access?:string;website_test_count?:number;message?:string;secure_script_ready?:boolean;live_sync_enabled?:boolean;backfill_synced?:number;pending_sync_count?:number}|null;
-      if(!response.ok||!data?.ok)throw new Error(data?.error||'Google Sheets pilot request failed.');
-      if(action==='status'){
-        const scriptUpdated=data.script_state==='updated';
-        const message=(data.message||'Unable to diagnose the Apps Script deployment. Check its Executions log.')+
-          (typeof data.website_test_count==='number'?' Website submission tests confirmed: '+data.website_test_count+'.':'')+
-          (!data.secure_script_ready?' Secure production upgrade is not deployed yet. Copy latest Code.gs, authorize permissions, and redeploy a New version.':' Secure directory bridge available.');
-        setCasualPilotStatus({connected:scriptUpdated,message:scriptUpdated?'✅ '+message:message,
-          secureReady:data.secure_script_ready,liveEnabled:data.live_sync_enabled});
-      }else if(action==='pilot-test'){
-        setCasualPilotStatus({connected:true,message:'Demo '+(data.action||'sync')+' at row '+String(data.row||'?')+' of WEBSITE_CASUAL_TEST. This is not a live applicant transfer.'});
-        notify('Casual demo synced to WEBSITE_CASUAL_TEST. Check the test tab.');
-      }else{
-        setCasualPilotStatus({connected:true,liveEnabled:data.live_sync_enabled??casualPilotStatus?.liveEnabled,
-          secureReady:true,message:'✅ '+(data.message||'Direct Google Sheet operation completed.')});
-        notify(action==='activate-live'
-          ?'SCREENING live sync enabled and private; existing pending Direct backfill attempted.'
-          :'Pending Direct applicant sync completed.');
-      }
-    }catch(error){
-      const message=error instanceof Error?error.message:'Could not test Casual sheet sync.';
-      setCasualPilotStatus({connected:false,message});
-      notify(message,true);
-    }finally{setCasualPilotBusy(false);}
-  }
   async function loadIntakeSettings(){
     const {data,error}=await supabase.from('asy_recruitment_settings').select('id,intake_open,application_limit,application_count,cycle_started_at,updated_at,screening_admin_url,casual_sheet_live_enabled').eq('id',1).maybeSingle();
     if(error){console.error('Could not load recruitment intake settings.',error.message);return;}
@@ -651,41 +601,49 @@ export default function App() {
     await loadIntakeSettings();
     notify('New intake cycle started. Existing application history was kept.');
   }
+  // Direct Application is automatically synced immediately after its DB insert.
+  // The queue and tracking flow provide idempotent retries; no recruiter buttons needed.
   async function requestCasualSheetSync(code:string,emailValue:string):Promise<void>{
     if(casualWebsiteSyncInFlight.current.has(code))return;
     casualWebsiteSyncInFlight.current.add(code);
-    setCasualWebsiteSync({code,state:'testing',message:'Checking the website → Supabase → Sheets pilot connection…'});
+    setCasualWebsiteSync({code,state:'testing',message:'Automatically syncing your Direct Application to the private Google Sheet…'});
     try{
-      const response=await fetch(CASUAL_SHEETS_PILOT_API_URL,{
-        method:'POST',headers:{'Content-Type':'application/json',apikey:SUPABASE_PUBLISHABLE_KEY},
-        body:JSON.stringify({action:'sync-submission',application_code:code,contact_email:emailValue}),
-        cache:'no-store'
-      });
-      const result=await response.json().catch(()=>null) as {
-        ok?:boolean;mode?:string;website_test_synced?:boolean;queued?:boolean;
-        row?:number;destination?:string;message?:string;synced?:boolean;already_synced?:boolean;
-      }|null;
-      if(!response.ok||!result?.ok)throw new Error('The pilot Google Sheets check did not finish.');
-      if(result.synced||result.already_synced){
-        setCasualWebsiteSync({code,state:'verified',
-          message:'✅ Real Direct application synced to the private SCREENING Google Sheet'+
-            (result.row?' (row '+result.row+')':'')+
-            '. No separate Google Membership Form is needed.'});
-      }else if(result.mode==='test_only'&&result.website_test_synced){
-        setCasualWebsiteSync({code,state:'verified',
-          message:'✅ Test-only sync confirmed in WEBSITE_CASUAL_TEST'+
-            (result.row?' (row '+result.row+')':'')+
-            '. No personal applicant details were sent to Google Sheets. Live SCREENING transfer is still off.'});
-      }else if(result.queued){
-        setCasualWebsiteSync({code,state:'queued',
-          message:'Application saved in Supabase. Google Sheets test is queued; live SCREENING transfer remains off.'});
-      }else{
-        setCasualWebsiteSync({code,state:'queued',message:'Application saved. Google Sheets connection status is pending.'});
+      for(let attempt=0;attempt<3;attempt++){
+        try{
+          const response=await fetch(CASUAL_SHEETS_PILOT_API_URL,{
+            method:'POST',headers:{'Content-Type':'application/json',apikey:SUPABASE_PUBLISHABLE_KEY},
+            body:JSON.stringify({action:'sync-submission',application_code:code,contact_email:emailValue}),
+            cache:'no-store',keepalive:true
+          });
+          const result=await response.json().catch(()=>null) as {
+            ok?:boolean;mode?:string;website_test_synced?:boolean;queued?:boolean;
+            row?:number;destination?:string;message?:string;synced?:boolean;already_synced?:boolean;
+          }|null;
+          if(!response.ok||!result?.ok)throw new Error('Google Sheets transfer is temporarily unavailable.');
+          if(result.synced||result.already_synced){
+            setCasualWebsiteSync({code,state:'verified',
+              message:'✅ Your Direct Application was automatically saved to the private SCREENING Google Sheet'+
+                (result.row?' (row '+result.row+')':'')+'. No separate Google Membership Form is needed.'});
+          }else if(result.mode==='test_only'&&result.website_test_synced){
+            setCasualWebsiteSync({code,state:'verified',
+              message:'Test-only Google Sheets sync completed. Real SCREENING transfer is not active.'});
+          }else{
+            setCasualWebsiteSync({code,state:'queued',
+              message:'Application saved in Supabase. Google Sheets transfer is queued and will be retried automatically.'});
+          }
+          return;
+        }catch(error){
+          if(attempt===2)throw error;
+          // Retry temporary network/Apps Script failures automatically. The
+          // Apps Script upsert uses a unique application code, so it is safe
+          // to retry even if a prior response was lost after the write.
+          await new Promise(resolve=>setTimeout(resolve,attempt===0?2000:6000));
+        }
       }
     }catch(error){
-      console.warn('Test-only Casual Sheet sync was not completed. Your application remains saved.',error);
+      console.warn('Automatic Direct Google Sheets sync is pending.',error);
       setCasualWebsiteSync({code,state:'failed',
-        message:'Your application is saved in Supabase, but the test Google Sheets check did not finish. A recruiter can inspect the sync status.'});
+        message:'Application saved in Supabase. Automatic Google Sheets transfer is pending; opening Tracking again will retry without a separate button.'});
     }finally{
       casualWebsiteSyncInFlight.current.delete(code);
     }
@@ -1469,7 +1427,7 @@ export default function App() {
         {savedApplication&&<div className="panel saved-reference"><div className="saved-reference-head"><div><small className="kicker">SAVED ON THIS DEVICE</small><h2>Your tracking code</h2><p>We saved your latest application reference here so you can find it again after you leave the site.</p></div><span className="saved-reference-icon"><ClipboardList size={20}/></span></div><div className="reference-code-row"><code>{savedApplication.application_code}</code><button className="secondary" type="button" onClick={()=>void copyApplicationCode(savedApplication.application_code)}><Copy size={15}/> Copy code</button></div><p className="saved-email"><Mail size={15}/> Email used: <strong>{savedApplication.contact_email}</strong></p><p className="saved-help">Using another device? Contact an ASY recruiter with your in-game name and the email you applied with. Do not post your UID or email publicly.</p><button className="saved-clear" type="button" onClick={clearSavedApplication}>Forget saved details on this device</button></div>}
         <form className="panel form" onSubmit={checkStatus}><Field label="Application code"><input required value={applicationCode} onChange={e=>{setApplicationCode(e.target.value.toUpperCase());setTracked(null);setApplicantProgress(null);setApplicantMessages([]);}} placeholder="ASYLUM-XXXXXXXX"/></Field><Field label="Contact email"><input required type="email" value={contactEmail} onChange={e=>{setContactEmail(e.target.value);setTracked(null);setApplicantProgress(null);setApplicantMessages([]);}} placeholder="Email used in your application"/></Field><button className="primary full" disabled={busy}>{busy?'Checking…':'Check application'} <ArrowRight size={16}/></button></form>
         {tracked&&<div className="panel tracked"><small>APPLICATION FOUND</small><span className={'pill '+tracked.status}>{labels[tracked.status]||tracked.status}</span><h2>{tracked.ign}</h2><div className="tracked-reference"><p className="muted">Tracking code: <strong>{tracked.application_code}</strong></p><button className="saved-clear" type="button" onClick={()=>void copyApplicationCode(tracked.application_code)}><Copy size={14}/> Copy code</button></div><div className="timeline">{['pending','reviewing','interview','tryout','accepted'].map((stage,index)=><div className={'step '+(statuses.indexOf(tracked.status)>=statuses.indexOf(stage)&&tracked.status!=='rejected'?'done':'')} key={stage}><b>{index+1}</b><div><strong>{labels[stage]}</strong><small>{['Application received','Recruiter review','Interview stage','Tryout stage','Welcome to the roster'][index]}</small></div></div>)}</div><p className="muted">Submitted {new Date(tracked.submitted_at).toLocaleString()}</p>{tracked.status==='rejected'&&<div className="notice"><strong>Application rejected</strong><p>Your previous application and tracking code stay in your history. You may submit a new Direct or Referral Application using the same email if you do not have another active application.</p><button type="button" className="primary" onClick={()=>{setForm(blankForm);setPage('apply');}}>Apply again <ArrowRight size={15}/></button></div>}</div>}
-        {casualWebsiteSync&&casualWebsiteSync.code===applicationCode&&<div className="notice" role="status" aria-live="polite"><strong>{casualWebsiteSync.state==='verified'?'Google Sheets website pilot verified':casualWebsiteSync.state==='failed'?'Google Sheets website pilot pending':'Google Sheets pilot connection'}</strong><p>{casualWebsiteSync.message}</p></div>}
+        {casualWebsiteSync&&casualWebsiteSync.code===applicationCode&&<div className="notice" role="status" aria-live="polite"><strong>{casualWebsiteSync.state==='verified'?'Google Sheets auto-sync complete':casualWebsiteSync.state==='failed'?'Google Sheets auto-sync pending':'Google Sheets automatic sync'}</strong><p>{casualWebsiteSync.message}</p></div>}
          {tracked&&<div className="notice applicant-inbox-reminder"><strong>📩 Check recruiter updates before uploading.</strong><p>Read Notifications and Private Application Chat below for instructions, links and corrections. Stage 2 unlocks only after your CODM screenshot is approved.</p></div>}
         {tracked&&<ApplicantNotificationPanel applicationCode={applicationCode.trim()} contactEmail={contactEmail.trim().toLowerCase()} onNotify={notify}/>}
         {tracked&&<section className="panel application-chat">
@@ -1614,20 +1572,6 @@ export default function App() {
               </article>)}
             </div>
           </section>
-           <section className="panel casual-sheet-pilot-panel">
-              <div><small className="kicker">GOOGLE SHEETS / DIRECT APPLICATION</small><h2>Google Sheets production transfer</h2>
-                <p>All new Direct applications save first to Supabase. TEST mode writes only synthetic markers to <strong>WEBSITE_CASUAL_TEST</strong>. LIVE mode sends the actual original-form fields to a <strong>private SCREENING</strong> sheet. Referral and TEAMS rows are not modified.</p></div>
-              <div className="casual-sheet-pilot-actions">
-                <button type="button" className="secondary" disabled={casualPilotBusy} onClick={()=>void runCasualSheetPilot('status')}>Check connection</button>
-                <button type="button" className="secondary" disabled={casualPilotBusy||casualPilotStatus?.liveEnabled} onClick={()=>void runCasualSheetPilot('pilot-test')}>Run demo test</button>
-                {['owner','management','admin'].includes((staffRole||'').trim().toLowerCase())&&<>
-                  {!casualPilotStatus?.liveEnabled&&<button type="button" className="primary" disabled={casualPilotBusy||casualPilotStatus?.secureReady!==true} onClick={()=>void runCasualSheetPilot('activate-live')}>Go Live — make Sheet private</button>}
-                  {casualPilotStatus?.liveEnabled&&<button type="button" className="secondary" disabled={casualPilotBusy} onClick={()=>void runCasualSheetPilot('sync-pending')}>Sync pending Direct applications</button>}
-                </>}
-              </div>
-              {casualPilotStatus&&<p className={'casual-sheet-pilot-result '+(casualPilotStatus.connected===false?'warning':'')} role="status">{casualPilotStatus.message}</p>}
-              <small>Production activation requires the new secure Code.gs to be saved, authorized and redeployed once. Go Live revokes Google Sheet anyone-with-link access, preserves named collaborators, and enables Direct submissions plus pending backfill. Existing Google Forms continue. External Master List form-submit triggers are not fired by Apps Script row writes and must be verified separately. Keep the security token private.</small>
-            </section>
             <section className="panel intake-admin">
               <div className="intake-admin-heading">
                 <div className="intake-admin-title">
