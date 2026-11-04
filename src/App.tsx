@@ -116,6 +116,7 @@ export default function App() {
   const [settingsBusy,setSettingsBusy]=useState(false);
   const [casualPilotBusy,setCasualPilotBusy]=useState(false);
   const [casualPilotStatus,setCasualPilotStatus]=useState<{message:string;connected:boolean|null}|null>(null);
+  const [casualWebsiteSync,setCasualWebsiteSync]=useState<{code:string;state:'testing'|'verified'|'queued'|'failed';message:string}|null>(null);
   const [screeningAdminUrl,setScreeningAdminUrl]=useState(DEFAULT_SCREENING_ADMIN_URL);
   const [screeningAdminDraft,setScreeningAdminDraft]=useState(DEFAULT_SCREENING_ADMIN_URL);
   const [screeningAdminSaving,setScreeningAdminSaving]=useState(false);
@@ -588,11 +589,12 @@ export default function App() {
           Authorization:'Bearer '+session.access_token
         },body:JSON.stringify({action}),cache:'no-store'
       });
-      const data=await response.json().catch(()=>null) as {ok?:boolean;error?:string;secret_configured?:boolean;action?:string;row?:number;script_state?:string;script_mode?:string;sheet_access?:string;message?:string}|null;
+      const data=await response.json().catch(()=>null) as {ok?:boolean;error?:string;secret_configured?:boolean;action?:string;row?:number;script_state?:string;script_mode?:string;sheet_access?:string;website_test_count?:number;message?:string}|null;
       if(!response.ok||!data?.ok)throw new Error(data?.error||'Google Sheets pilot request failed.');
       if(action==='status'){
         const scriptUpdated=data.script_state==='updated';
-        const message=data.message||'Unable to diagnose the Apps Script deployment. Check its Executions log.';
+        const message=(data.message||'Unable to diagnose the Apps Script deployment. Check its Executions log.')+
+          (typeof data.website_test_count==='number'?' Website submission tests confirmed: '+data.website_test_count+'.':'');
         // "Legacy demo" is a distinct status: an earlier deployment can pass demo tests
         // without implementing the newer casual_health request.
         setCasualPilotStatus({connected:scriptUpdated,message:scriptUpdated?'✅ '+message:message});
@@ -634,13 +636,34 @@ export default function App() {
     notify('New intake cycle started. Existing application history was kept.');
   }
   async function requestCasualSheetSync(code:string,emailValue:string):Promise<void>{
+    setCasualWebsiteSync({code,state:'testing',message:'Checking the website → Supabase → Sheets pilot connection…'});
     try{
-      await fetch(CASUAL_SHEETS_PILOT_API_URL,{
+      const response=await fetch(CASUAL_SHEETS_PILOT_API_URL,{
         method:'POST',headers:{'Content-Type':'application/json',apikey:SUPABASE_PUBLISHABLE_KEY},
         body:JSON.stringify({action:'sync-submission',application_code:code,contact_email:emailValue}),
         cache:'no-store'
       });
-    }catch(error){console.warn('Optional Casual Sheet sync unavailable; website application stays saved.',error);}
+      const result=await response.json().catch(()=>null) as {
+        ok?:boolean;mode?:string;website_test_synced?:boolean;queued?:boolean;
+        row?:number;destination?:string;message?:string;
+      }|null;
+      if(!response.ok||!result?.ok)throw new Error('The pilot Google Sheets check did not finish.');
+      if(result.mode==='test_only'&&result.website_test_synced){
+        setCasualWebsiteSync({code,state:'verified',
+          message:'✅ Test-only sync confirmed in WEBSITE_CASUAL_TEST'+
+            (result.row?' (row '+result.row+')':'')+
+            '. No personal applicant details were sent to Google Sheets. Live SCREENING transfer is still off.'});
+      }else if(result.queued){
+        setCasualWebsiteSync({code,state:'queued',
+          message:'Application saved in Supabase. Google Sheets test is queued; live SCREENING transfer remains off.'});
+      }else{
+        setCasualWebsiteSync({code,state:'queued',message:'Application saved. Google Sheets connection status is pending.'});
+      }
+    }catch(error){
+      console.warn('Test-only Casual Sheet sync was not completed. Your application remains saved.',error);
+      setCasualWebsiteSync({code,state:'failed',
+        message:'Your application is saved in Supabase, but the test Google Sheets check did not finish. A recruiter can inspect the sync status.'});
+    }
   }
   async function loadApplicantProgress(code:string,emailValue:string){
     try{
@@ -1421,7 +1444,8 @@ export default function App() {
         {savedApplication&&<div className="panel saved-reference"><div className="saved-reference-head"><div><small className="kicker">SAVED ON THIS DEVICE</small><h2>Your tracking code</h2><p>We saved your latest application reference here so you can find it again after you leave the site.</p></div><span className="saved-reference-icon"><ClipboardList size={20}/></span></div><div className="reference-code-row"><code>{savedApplication.application_code}</code><button className="secondary" type="button" onClick={()=>void copyApplicationCode(savedApplication.application_code)}><Copy size={15}/> Copy code</button></div><p className="saved-email"><Mail size={15}/> Email used: <strong>{savedApplication.contact_email}</strong></p><p className="saved-help">Using another device? Contact an ASY recruiter with your in-game name and the email you applied with. Do not post your UID or email publicly.</p><button className="saved-clear" type="button" onClick={clearSavedApplication}>Forget saved details on this device</button></div>}
         <form className="panel form" onSubmit={checkStatus}><Field label="Application code"><input required value={applicationCode} onChange={e=>{setApplicationCode(e.target.value.toUpperCase());setTracked(null);setApplicantProgress(null);setApplicantMessages([]);}} placeholder="ASYLUM-XXXXXXXX"/></Field><Field label="Contact email"><input required type="email" value={contactEmail} onChange={e=>{setContactEmail(e.target.value);setTracked(null);setApplicantProgress(null);setApplicantMessages([]);}} placeholder="Email used in your application"/></Field><button className="primary full" disabled={busy}>{busy?'Checking…':'Check application'} <ArrowRight size={16}/></button></form>
         {tracked&&<div className="panel tracked"><small>APPLICATION FOUND</small><span className={'pill '+tracked.status}>{labels[tracked.status]||tracked.status}</span><h2>{tracked.ign}</h2><div className="tracked-reference"><p className="muted">Tracking code: <strong>{tracked.application_code}</strong></p><button className="saved-clear" type="button" onClick={()=>void copyApplicationCode(tracked.application_code)}><Copy size={14}/> Copy code</button></div><div className="timeline">{['pending','reviewing','interview','tryout','accepted'].map((stage,index)=><div className={'step '+(statuses.indexOf(tracked.status)>=statuses.indexOf(stage)&&tracked.status!=='rejected'?'done':'')} key={stage}><b>{index+1}</b><div><strong>{labels[stage]}</strong><small>{['Application received','Recruiter review','Interview stage','Tryout stage','Welcome to the roster'][index]}</small></div></div>)}</div><p className="muted">Submitted {new Date(tracked.submitted_at).toLocaleString()}</p>{tracked.status==='rejected'&&<div className="notice"><strong>Application rejected</strong><p>Your previous application and tracking code stay in your history. You may submit a new Direct or Referral Application using the same email if you do not have another active application.</p><button type="button" className="primary" onClick={()=>{setForm(blankForm);setPage('apply');}}>Apply again <ArrowRight size={15}/></button></div>}</div>}
-        {tracked&&<div className="notice applicant-inbox-reminder"><strong>📩 Check recruiter updates before uploading.</strong><p>Read Notifications and Private Application Chat below for instructions, links and corrections. Stage 2 unlocks only after your CODM screenshot is approved.</p></div>}
+        {casualWebsiteSync&&casualWebsiteSync.code===applicationCode&&<div className="notice" role="status" aria-live="polite"><strong>{casualWebsiteSync.state==='verified'?'Google Sheets website pilot verified':casualWebsiteSync.state==='failed'?'Google Sheets website pilot pending':'Google Sheets pilot connection'}</strong><p>{casualWebsiteSync.message}</p></div>}
+         {tracked&&<div className="notice applicant-inbox-reminder"><strong>📩 Check recruiter updates before uploading.</strong><p>Read Notifications and Private Application Chat below for instructions, links and corrections. Stage 2 unlocks only after your CODM screenshot is approved.</p></div>}
         {tracked&&<ApplicantNotificationPanel applicationCode={applicationCode.trim()} contactEmail={contactEmail.trim().toLowerCase()} onNotify={notify}/>}
         {tracked&&<section className="panel application-chat">
           <div className="application-chat-heading"><div><small className="kicker">PRIVATE APPLICATION CHAT</small><h2>Message the recruitment team</h2><p>Ask about your application or reply to recruiter messages here.</p></div><span className="private-badge"><ShieldCheck size={13}/> Private</span></div>
