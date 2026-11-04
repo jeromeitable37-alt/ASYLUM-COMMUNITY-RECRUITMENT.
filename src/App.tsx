@@ -512,6 +512,11 @@ export default function App() {
       applicant_facebook_url:get('applicant_facebook_url')||null,
       applicant_tiktok_url:get('applicant_tiktok_url')||null,
       streamer_mode_id:get('streamer_mode_id')||null,
+      ...(editApplicationType==='casual'?{
+        applicant_facebook_name:get('applicant_facebook_name')||null,
+        applicant_birthdate:get('applicant_birthdate')||null,
+        applicant_clan_name:get('applicant_clan_name')||null
+      }:{}),
       region:get('region'),level,rank:get('rank'),reason:get('reason'),
       ...(hasLegendaryBreakdown?{legendary_series_mp:legendaryMp,legendary_series_br:legendaryBr}:{}),
       referrer_name:editApplicationType==='referral'?get('referrer_name'):null,
@@ -627,12 +632,22 @@ export default function App() {
     await loadIntakeSettings();
     notify('New intake cycle started. Existing application history was kept.');
   }
+  async function requestCasualSheetSync(code:string,emailValue:string):Promise<void>{
+    try{
+      await fetch(CASUAL_SHEETS_PILOT_API_URL,{
+        method:'POST',headers:{'Content-Type':'application/json',apikey:SUPABASE_PUBLISHABLE_KEY},
+        body:JSON.stringify({action:'sync-submission',application_code:code,contact_email:emailValue}),
+        cache:'no-store'
+      });
+    }catch(error){console.warn('Optional Casual Sheet sync unavailable; website application stays saved.',error);}
+  }
   async function loadApplicantProgress(code:string,emailValue:string){
     try{
       const response=await fetch(EVIDENCE_API_URL+'?application_code='+encodeURIComponent(code)+'&contact_email='+encodeURIComponent(emailValue),{headers:{apikey:SUPABASE_PUBLISHABLE_KEY},cache:'no-store'});
       const data=await response.json();
       if(!response.ok){setEvidenceServiceConfigured(response.status!==503);setApplicantProgress(null);return;}
       setEvidenceServiceConfigured(true);setApplicantProgress(data as ApplicantProgress);
+      if((data as ApplicantProgress)?.application?.application_type==='casual')void requestCasualSheetSync(code,emailValue);
     }catch{setEvidenceServiceConfigured(false);setApplicantProgress(null);}
   }
   async function uploadRequirement(key:string,file:File,silent=false):Promise<boolean>{
@@ -1142,6 +1157,7 @@ export default function App() {
         return;
       }
 
+      if(isCasual)void requestCasualSheetSync(code,payload.contact_email);
       void loadIntakeSettings();
       try {
         await fetch('/api/notify-discord', {
