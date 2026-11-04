@@ -11,7 +11,7 @@ const MESSAGING_API_URL = SUPABASE_URL + '/functions/v1/asy-community-messaging'
 const OPERATIONS_API_URL = SUPABASE_URL + '/functions/v1/asy-operations';
 const CASUAL_SHEETS_PILOT_API_URL = SUPABASE_URL + '/functions/v1/asy-casual-sheet-pilot';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; membership_form_response_verified:boolean; membership_form_response_verified_by_email:string|null; membership_form_response_verified_at:string|null; legendary_series_count:number; legendary_series_mp:number|null; legendary_series_br:number|null; workflow_step:string; submitted_at:string; updated_at:string };
+type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; applicant_facebook_name:string|null; applicant_birthdate:string|null; applicant_clan_name:string|null; legendary_requirement_confirmed:boolean; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; membership_form_response_verified:boolean; membership_form_response_verified_by_email:string|null; membership_form_response_verified_at:string|null; legendary_series_count:number; legendary_series_mp:number|null; legendary_series_br:number|null; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; is_required?:boolean; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
 type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string; clan_name?:string|null };
@@ -38,7 +38,7 @@ const isValidScreeningAdminUrl = (value:string) => {
       !url.username && !url.password;
   } catch { return false; }
 };
-const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', ageConfirmed:'', legendaryMpCount:'0', legendaryBrCount:'0', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
+const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', facebookName:'', birthdate:'', clanName:'', legendaryRequirementConfirmed:false, ageConfirmed:'', legendaryMpCount:'0', legendaryBrCount:'0', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
 const createCode = () => { const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const bytes=new Uint8Array(8); crypto.getRandomValues(bytes); return 'ASYLUM-'+Array.from(bytes,b=>alphabet[b%alphabet.length]).join(''); };
 const isAllowedProfileUrl=(value:string,domains:string[])=>{
   if(!value.trim())return true;
@@ -1036,13 +1036,35 @@ export default function App() {
       notify('Confirm that you are at least 16 years old before applying.', true);
       return;
     }
+    const isCasual=form.applicationType==='casual';
+    if(isCasual){
+      const dob=form.birthdate.trim();
+      const date=new Date(dob+'T00:00:00Z');
+      const today=new Date();
+      const cutoff=new Date(Date.UTC(today.getUTCFullYear()-16,today.getUTCMonth(),today.getUTCDate()));
+      if(!form.facebookName.trim()||form.facebookName.trim().length<2||form.facebookName.trim().length>120||
+         !form.clanName.trim()||form.clanName.trim().length<2||form.clanName.trim().length>120||
+         !/^\d{4}-\d{2}-\d{2}$/.test(dob)||Number.isNaN(date.getTime())||
+         date.toISOString().slice(0,10)!==dob||date>cutoff||date.getUTCFullYear()<1900){
+        notify('Enter a valid Facebook name, birthdate (at least 16 years old), and clan name. Enter NO CLAN if applicable.',true);
+        return;
+      }
+      if(!form.legendaryRequirementConfirmed){
+        notify('Confirm that you meet the minimum six Legendary Series requirement.',true);
+        return;
+      }
+      if(!form.applicantFacebookUrl.trim()||!form.applicantTikTokUrl.trim()){
+        notify('Your Facebook and TikTok profile links are required for the Direct membership form.',true);
+        return;
+      }
+    }
     const legendaryMp=Number(form.legendaryMpCount);
     const legendaryBr=Number(form.legendaryBrCount);
     const legendaryTotal=legendaryMp+legendaryBr;
-    if(!form.legendaryMpCount.trim()||!form.legendaryBrCount.trim()||
+    if(!isCasual&&(!form.legendaryMpCount.trim()||!form.legendaryBrCount.trim()||
        !Number.isInteger(legendaryMp)||!Number.isInteger(legendaryBr)||
        legendaryMp<0||legendaryBr<0||legendaryMp>100||legendaryBr>100||
-       legendaryTotal<6||legendaryTotal>100){
+       legendaryTotal<6||legendaryTotal>100)){
       notify('Enter MP and BR Legendary Series separately (0 if none). At least 6 in total are required.', true);
       return;
     }
@@ -1071,9 +1093,13 @@ export default function App() {
         referrer_name: form.applicationType === 'referral' ? form.referrerName.trim() : null,
         referrer_facebook_url: form.applicationType === 'referral' ? form.referrerFacebookUrl.trim() : null,
         meets_age_requirement: form.ageConfirmed === 'yes',
-        legendary_series_mp: legendaryMp,
-        legendary_series_br: legendaryBr,
-        legendary_series_count: legendaryTotal,
+        legendary_series_mp: isCasual?null:legendaryMp,
+        legendary_series_br: isCasual?null:legendaryBr,
+        legendary_series_count: isCasual?0:legendaryTotal,
+        legendary_requirement_confirmed: isCasual?form.legendaryRequirementConfirmed:false,
+        applicant_facebook_name: isCasual?form.facebookName.trim():null,
+        applicant_birthdate: isCasual?form.birthdate:null,
+        applicant_clan_name: isCasual?form.clanName.trim():null,
         facebook_name_appropriate: form.facebookNameAppropriate,
         willing_to_add_asy_tag: form.willingToAddTag,
         willing_to_submit_roster_photo: form.willingToSubmitPhoto,
@@ -1084,14 +1110,14 @@ export default function App() {
         applicant_facebook_url: form.applicantFacebookUrl.trim() || null,
         applicant_tiktok_url: form.applicantTikTokUrl.trim() || null,
         streamer_mode_id: form.streamerModeId.trim() || null,
-        region: form.region,
-        rank: form.rank,
-        level: form.level ? Number(form.level) : null,
+        region: isCasual?'Not specified':form.region,
+        rank: isCasual?'Not specified':form.rank,
+        level: isCasual?null:(form.level ? Number(form.level) : null),
         main_role: form.applicationType === 'referral' ? form.role : 'Not specified',
         preferred_mode: form.applicationType === 'referral' ? form.mode : 'Not specified',
         availability: form.applicationType === 'referral' ? form.availability : 'Not specified',
         clan_experience: form.applicationType === 'referral' ? (form.experience.trim() || null) : null,
-        reason: form.reason.trim(),
+        reason: isCasual?'Direct membership application via website.':form.reason.trim(),
         status: 'pending',
         reviewer_notes: null,
       };
@@ -1323,16 +1349,35 @@ export default function App() {
           </div>}
           <Section n="01" title="Eligibility" sub="Check the minimum requirements."/>
           <label className="screening-check eligibility-check"><input type="checkbox" required checked={form.ageConfirmed==='yes'} onChange={e=>updateForm('ageConfirmed',e.target.checked?'yes':'')}/><span>I confirm that I am at least 16 years old.</span></label>
-          <div className="form-grid">
-            <Field label="MP Legendary Series *"><input type="number" min="0" max="100" step="1" inputMode="numeric" required value={form.legendaryMpCount} onChange={e=>updateForm('legendaryMpCount',e.target.value)} placeholder="0 if none"/></Field>
-            <Field label="BR Legendary Series *"><input type="number" min="0" max="100" step="1" inputMode="numeric" required value={form.legendaryBrCount} onChange={e=>updateForm('legendaryBrCount',e.target.value)} placeholder="0 if none"/></Field>
-          </div>
-          <p className="muted form-helper">Combined Legendary Series: <strong>{Number(form.legendaryMpCount||0)+Number(form.legendaryBrCount||0)}</strong> / 6 minimum. Enter 0 for a mode you have not reached Legendary in. We never ask for social account passwords.</p>
+          {form.applicationType==='referral'?<>
+            <div className="form-grid">
+              <Field label="MP Legendary Series *"><input type="number" min="0" max="100" step="1" inputMode="numeric" required value={form.legendaryMpCount} onChange={e=>updateForm('legendaryMpCount',e.target.value)} placeholder="0 if none"/></Field>
+              <Field label="BR Legendary Series *"><input type="number" min="0" max="100" step="1" inputMode="numeric" required value={form.legendaryBrCount} onChange={e=>updateForm('legendaryBrCount',e.target.value)} placeholder="0 if none"/></Field>
+            </div>
+            <p className="muted form-helper">Combined Legendary Series: <strong>{Number(form.legendaryMpCount||0)+Number(form.legendaryBrCount||0)}</strong> / 6 minimum. Enter 0 for a mode you have not reached Legendary in.</p>
+          </>:<label className="screening-check eligibility-check"><input type="checkbox" required checked={form.legendaryRequirementConfirmed} onChange={e=>setForm(old=>({...old,legendaryRequirementConfirmed:e.target.checked}))}/><span>I confirm that I meet the minimum 6 Legendary Series requirement. Recruiters will verify my eligibility.</span></label>}
           <div className="eligibility-confirmations">
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.facebookNameAppropriate} onChange={e=>setForm(old=>({...old,facebookNameAppropriate:e.target.checked}))}/><span>I confirm that my Facebook name is appropriate and not random or inappropriate.</span></label>
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.willingToAddTag} onChange={e=>setForm(old=>({...old,willingToAddTag:e.target.checked}))}/><span>I agree to put the ASY tag AFTER my IGN on my main CODM and TikTok accounts.</span></label>
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.willingToSubmitPhoto} onChange={e=>setForm(old=>({...old,willingToSubmitPhoto:e.target.checked}))}/><span>I agree to submit the required roster photo and follow the admin reference if accepted.</span></label>
           </div>
+          {form.applicationType==='casual'?<>
+            <Section n="02" title="Casual Membership Details" sub="Same applicant fields and order as the original SCREENING membership form. No Region, MP/BR breakdown, rank, or level needed."/>
+            <div className="form-grid">
+              <Field label="Facebook Name *"><input required minLength={2} maxLength={120} autoComplete="name" value={form.facebookName} onChange={e=>updateForm('facebookName',e.target.value)} placeholder="Your Facebook display name"/></Field>
+              <Field label="Birthdate *"><input required type="date" max={new Date(new Date().setFullYear(new Date().getFullYear()-16)).toISOString().slice(0,10)} value={form.birthdate} onChange={e=>updateForm('birthdate',e.target.value)}/></Field>
+              <Field label="Facebook Link *"><input required type="url" value={form.applicantFacebookUrl} onChange={e=>updateForm('applicantFacebookUrl',e.target.value)} placeholder="https://facebook.com/yourprofile"/></Field>
+              <Field label="TikTok Link *"><input required type="url" value={form.applicantTikTokUrl} onChange={e=>updateForm('applicantTikTokUrl',e.target.value)} placeholder="https://tiktok.com/@yourprofile"/></Field>
+              <Field label="IGN (In-Game Name) *"><input required minLength={2} maxLength={32} value={form.ign} onChange={e=>updateForm('ign',e.target.value)} placeholder="Your main CODM IGN"/></Field>
+              <Field label="CODM UID (19 digits) *"><><input required type="text" inputMode="numeric" autoComplete="off" pattern="[0-9]{19}" minLength={19} maxLength={19} value={form.uid} onChange={e=>updateForm('uid',e.target.value.replace(/[^0-9]/g,'').slice(0,19))} placeholder="Enter your 19-digit UID"/><small className="field-hint">Numbers only · {form.uid.length}/19 digits</small></></Field>
+              <Field label="Streamer Mode ID"><input value={form.streamerModeId} maxLength={100} onChange={e=>updateForm('streamerModeId',e.target.value)} placeholder="Optional"/></Field>
+              <Field label="Clan Name *"><input required minLength={2} maxLength={120} value={form.clanName} onChange={e=>updateForm('clanName',e.target.value)} placeholder="Type NO CLAN if you are not in a clan"/></Field>
+              <Field label="Discord Username"><input value={form.discord} maxLength={80} onChange={e=>updateForm('discord',e.target.value)} placeholder="Discord username"/></Field>
+            </div>
+            <Section n="03" title="Application tracking" sub="Used only to check your application status, not added to the public Master List."/>
+            <Field label="Contact email *"><input required type="email" value={form.email} onChange={e=>updateForm('email',e.target.value)} placeholder="you@example.com"/></Field>
+            <p className="muted form-helper">The original SCREENING spreadsheet's Version column is maintained by staff; you do not need to fill it in.</p>
+          </>:<>
           <Section n="02" title="Player details" sub="Your game and contact information."/>
           <div className="form-grid">
             <Field label="In-game name (IGN) *"><input required minLength={2} maxLength={32} value={form.ign} onChange={e=>updateForm('ign',e.target.value)} placeholder="Your CODM name"/></Field>
@@ -1350,6 +1395,8 @@ export default function App() {
             <Field label="Streamer Mode ID"><input value={form.streamerModeId} maxLength={100} onChange={e=>updateForm('streamerModeId',e.target.value)} placeholder="Optional ID"/></Field>
           </div>
           <Field label="Why do you want to join ASY? *"><textarea required minLength={10} maxLength={1000} rows={3} value={form.reason} onChange={e=>updateForm('reason',e.target.value)} placeholder="A few sentences are enough…"/></Field>
+
+          </>}
           <div className="privacy"><ShieldCheck size={17}/> Profile links and IDs are for recruitment review only. Never share passwords or login codes.</div>
           <button className="primary" disabled={busy||intakeFull}>{busy?'Submitting…':intakeFull?'Applications closed':'Submit application'} <ArrowRight size={16}/></button>
         </form></section>}
