@@ -818,7 +818,7 @@ export default function App() {
   }
   async function advanceApplicationWorkflow(app:Application,nextStep:'tag_proofs'|'screening_gc_ready'){
     if(nextStep==='tag_proofs'&&!app.application_details_verified){
-      notify('Review and confirm the applicant details before unlocking the CODM screenshot upload.',true);
+      notify('Review and confirm applicant details before the final screenshot verification.',true);
       return;
     }
     if(nextStep==='tag_proofs'&&app.age_verification_status!=='verified'){
@@ -836,7 +836,7 @@ export default function App() {
     setSelected(data as Application);
     await loadSelectedEvidence(app.id);
     await loadApplications();
-    notify(nextStep==='tag_proofs'?'Eligibility approved. Step 1 screenshot submissions are now unlocked.':'Final review completed. Applicant is now eligible for the Screening GC decision.');
+    notify(nextStep==='tag_proofs'?'Eligibility verified. Screenshot uploads are already available.':'Final review completed. Applicant is now eligible for the Screening GC decision.');
   }
   async function checkAdmin(userEmail:string){const {data,error}=await supabase.from('asy_recruitment_admins').select('email,role').eq('email',userEmail.toLowerCase()).maybeSingle();setAuthorized(!error&&Boolean(data));setStaffRole(!error&&data?String(data.role||'recruiter').toLowerCase():null);}
   async function signIn(event:FormEvent){event.preventDefault();setBusy(true);const {error}=await supabase.auth.signInWithPassword({email:email.trim().toLowerCase(),password});setBusy(false);if(error){notify(error.message.toLowerCase().includes('invalid login credentials')?'Email or password is incorrect. Use the Supabase recruiter account connected to this website.':error.message,true);}else notify('Signed in. Checking recruiter permissions…');}
@@ -1675,13 +1675,13 @@ export default function App() {
             <section className="panel application-details-review">
               <small className="kicker">FIRST REVIEW · BEFORE CODM</small>
               <h3>Check the applicant's details first</h3>
-              <p className="muted">Before unlocking the CODM screenshot, compare IGN, UID, Facebook name, clan, contact details, social links, referral details (if applicable), and eligibility declarations. Open “Correct submitted applicant details” first if anything needs fixing.</p>
+              <p className="muted">Before the one-time final screenshot verification, compare IGN, UID, Facebook name, clan, contact details, social links, referral details (if applicable), and eligibility declarations. Open “Correct submitted applicant details” first if anything needs fixing.</p>
               {selected.workflow_step==='eligibility_review'?<>
                 <p><strong>Status:</strong> {selected.application_details_verified?'Details checked':'Waiting for recruiter review'}</p>
                 {selected.application_details_verified_at&&<small className="muted">Checked by {selected.application_details_verified_by_email||'recruiter'} · {new Date(selected.application_details_verified_at).toLocaleString()}</small>}
                 <button type="button" className="primary" disabled={busy||selected.application_details_verified} onClick={()=>void confirmApplicationDetailsChecked(selected)}>Confirm details checked <CheckCircle2 size={15}/></button>
-                {!selected.application_details_verified&&<small className="muted">This confirmation is required before Step 1 can be unlocked. Saving any corrected details resets this check.</small>}
-              </>:<p className="success-note">This application has already passed the initial details/eligibility stage. The first-review lock is no longer applicable.</p>}
+                {!selected.application_details_verified&&<small className="muted">This confirmation is required before verifying all screenshots. Saving corrected details resets this check.</small>}
+              </>:<p className="success-note">The applicant's initial details have been checked. All screenshot uploads remain available before final verification.</p>}
             </section>
             <details className="panel admin-edit-panel" key={selected.id}>
               <summary>Correct submitted applicant details</summary>
@@ -2024,7 +2024,7 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
   }
   if (/accepted|screening gc|screening group|screenshot|roster photo|cooldown|cool down|gc nickname|proofs|proof checklist|upload proof/.test(q)) {
     return {
-      text: 'Use Track application with your tracking code and the same email you used to apply. Upload only the proof for the currently unlocked stage:\n\n1. Step 1: Upload your main CODM account screenshot showing the ASY tag after your IGN. Referral applicants should wait until Step 2 to upload referral proof.\n2. Step 2: After CODM approval, upload all remaining screenshots together: TikTok account with ASY tag, follow proof for the official ASY TikTok, Discord nickname in the format IGN ASY, and roster photo following the admin reference. Referral applicants also upload their referral conversation screenshot. Include your Facebook name in the roster photo caption.\n\nThe Membership Form link is sent privately after all required screenshots are approved. After you submit it, tell the recruiter in Private Application Chat so the team can check the response before the final MGC confirmation. Never share passwords or login codes.',
+      text: 'Use Track application with your tracking code and the same email you used to apply. Upload your required screenshots at any time in Track application: CODM account showing the ASY tag after IGN, TikTok account showing ASY tag, proof of following the official ASY TikTok, Discord nickname IGN ASY, and roster photo (with Facebook name in the caption). Referral applicants also upload referral conversation and completed Referral Membership Form screenshots. You can replace a screenshot while it is awaiting verification, or after the recruiter requests a correction.\n\nThe recruiter reviews all uploaded screenshots together with one final verification. They may request individual corrections, but a screenshot upload alone does not mean acceptance. The MGC/Membership Form final check and Screening GC decision remain separate. Never share passwords or login codes.',
       links: screeningLinks,
     };
   }
@@ -2035,13 +2035,13 @@ function getRecruitmentReply(question: string, intakeSettings: IntakeSettings|nu
     };
   }
   if (/tiktok|follow/.test(q)) {
-    return { text: 'Follow the official ASY Community TikTok account. When the follow-proof step unlocks in Track application, upload a screenshot there for recruiter review. Keep the evidence private.', links: [screeningLinks[0]] };
+    return { text: 'Follow the official ASY Community TikTok account. Upload the follow-proof screenshot any time in Track application, and replace it if corrections are requested. Keep the evidence private.', links: [screeningLinks[0]] };
   }
   if (/membership form|form link|member form/.test(q)) {
-    return { text: 'The official Membership Form link is provided at the end of screening. First submit your CODM screenshot, wait for recruiter approval, then upload the remaining requirements together and pass the final check. Open Track application to see your current step.' };
+    return { text: 'The official Membership Form link is provided after the recruiter verifies all screenshots together. You can upload the required CODM, TikTok, Discord and roster proofs without waiting for individual approvals. Open Track application to see your current step.' };
   }
   if (/discord|server nickname|banner photo/.test(q)) {
-    return { text: 'The official ASY Discord invite is sent by a recruiter through Private Application Chat after your Step 1 CODM screenshot is approved, so you can complete the remaining Discord and roster-photo proofs. Do not create another application while waiting.' };
+    return { text: 'The official ASY Discord invite can be provided by a recruiter through Private Application Chat so you can complete Discord and roster-photo proofs without waiting for a separate CODM screenshot approval. Do not create another application while waiting.' };
   }
   if (/track|tracking code|application status|status|pending|review|where is my application/.test(q)) {
     return { text: 'Open “Track application” on this website and enter your tracking code plus the same contact email you used when applying. The page shows the latest status saved by the recruitment team. If something is incorrect, use Private Application Chat on your tracked application and ask a recruiter to correct the same record. Do not submit a duplicate application.' };
