@@ -246,12 +246,26 @@ async function activateLive(req:Request){
     const {error}=await db.from("asy_recruitment_settings")
       .update({casual_sheet_live_enabled:true}).eq("id",1);
     if(error)throw Error("Google Sheet is private, but Supabase could not enable auto-sync. Retry activation.");
+    let backfillSynced=0,backfillFailed=0;
+    try{
+      // Existing Direct applications are transferred immediately after the
+      // privacy gate opens. Failed rows remain queued for staff retry.
+      const backfill=await syncPending(req);
+      const result=await backfill.json() as {synced?:number;failed?:number};
+      backfillSynced=result.synced||0;
+      backfillFailed=result.failed||0;
+    }catch(error){
+      console.error("Production activation completed; backfill needs retry.",
+        error instanceof Error?error.message:"Backfill unavailable");
+    }
     const {count}=await db.from("asy_casual_sheet_sync").select("application_id",{head:true,count:"exact"})
       .neq("status","synced");
     return json(200,{
-      ok:true,live_sync_enabled:true,sheet_access:"restricted",
+      ok:true,live_sync_enabled:true,sheet_access:"restricted",backfill_synced:backfillSynced,
+      backfill_failed:backfillFailed,
       directory_bridge:"private",pending_sync_count:count??0,
-      message:"SCREENING live sync is ON and the Google Sheet is restricted. Use Sync pending Direct applications to backfill prior submissions."
+      message:"SCREENING live sync is ON and the Sheet is private. Existing Direct backfill synced "+
+        backfillSynced+" application(s)."+(backfillFailed?" Some rows require retry.":"")
     });
   }catch(error){
     const msg=error instanceof Error?error.message:"Production activation failed.";
