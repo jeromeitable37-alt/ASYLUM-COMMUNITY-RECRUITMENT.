@@ -682,6 +682,28 @@ export default function App() {
     if(error){notify('Could not load requirement evidence. Confirm recruiter permissions.',true);return;}
     setSelectedEvidence(((data||[]) as Evidence[]).filter(item=>(applicationType||selected?.application_type)==='referral'||!['membership_form_screenshot','referral_conversation_screenshot'].includes(item.requirement_key)));
   }
+  // Keep reviewer eligibility in sync with applicant uploads without
+  // requiring a dashboard reload. Every 12s the verification button and
+  // missing-proof explanation reflect the actual database records.
+  useEffect(()=>{
+    if(!authorized||!session?.access_token||!selected?.id)return;
+    const applicationId=selected.id;
+    const applicationType=selected.application_type;
+    const poll=()=>{
+      void supabase.from('asy_recruitment_evidence').select('*')
+        .eq('application_id',applicationId)
+        .order('stage_number').order('requirement_label')
+        .then(({data,error})=>{
+          if(error||!data)return;
+          setSelectedEvidence(((data||[]) as Evidence[]).filter(item=>
+            applicationType==='referral'||!['membership_form_screenshot','referral_conversation_screenshot'].includes(item.requirement_key)
+          ));
+        });
+    };
+    const timer=window.setInterval(poll,12000);
+    return ()=>window.clearInterval(timer);
+  },[authorized,session?.access_token,selected?.id,selected?.application_type]);
+
   async function requestEvidenceCorrection(item:Evidence){
     if(!selected||!item.id||item.status!=='pending')return;
     const reviewerNotes=evidenceNotes[item.id]?.trim()||null;
