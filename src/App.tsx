@@ -117,6 +117,7 @@ export default function App() {
   const [casualPilotBusy,setCasualPilotBusy]=useState(false);
   const [casualPilotStatus,setCasualPilotStatus]=useState<{message:string;connected:boolean|null}|null>(null);
   const [casualWebsiteSync,setCasualWebsiteSync]=useState<{code:string;state:'testing'|'verified'|'queued'|'failed';message:string}|null>(null);
+  const casualWebsiteSyncInFlight=useRef<Set<string>>(new Set());
   const [screeningAdminUrl,setScreeningAdminUrl]=useState(DEFAULT_SCREENING_ADMIN_URL);
   const [screeningAdminDraft,setScreeningAdminDraft]=useState(DEFAULT_SCREENING_ADMIN_URL);
   const [screeningAdminSaving,setScreeningAdminSaving]=useState(false);
@@ -636,6 +637,8 @@ export default function App() {
     notify('New intake cycle started. Existing application history was kept.');
   }
   async function requestCasualSheetSync(code:string,emailValue:string):Promise<void>{
+    if(casualWebsiteSyncInFlight.current.has(code))return;
+    casualWebsiteSyncInFlight.current.add(code);
     setCasualWebsiteSync({code,state:'testing',message:'Checking the website → Supabase → Sheets pilot connection…'});
     try{
       const response=await fetch(CASUAL_SHEETS_PILOT_API_URL,{
@@ -663,6 +666,8 @@ export default function App() {
       console.warn('Test-only Casual Sheet sync was not completed. Your application remains saved.',error);
       setCasualWebsiteSync({code,state:'failed',
         message:'Your application is saved in Supabase, but the test Google Sheets check did not finish. A recruiter can inspect the sync status.'});
+    }finally{
+      casualWebsiteSyncInFlight.current.delete(code);
     }
   }
   async function loadApplicantProgress(code:string,emailValue:string){
