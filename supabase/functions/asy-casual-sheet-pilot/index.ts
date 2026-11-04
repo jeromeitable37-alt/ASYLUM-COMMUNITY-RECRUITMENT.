@@ -138,12 +138,40 @@ Deno.serve(async(req:Request)=>{
   if(body.action==="status"){
     let liveEnabled=false;
     try{liveEnabled=await isLiveEnabled();}catch{}
+    const hasSecret=token().length>=32;
+    let scriptState:"updated"|"old_or_inaccessible"|"missing_secret"="missing_secret";
+    let scriptMode:"test"|"live"|"unknown"="unknown";
+    let sheetAccess:"restricted"|"link-shared"|"unknown"="unknown";
+    if(hasSecret){
+      try{
+        const health=await callAppsScript({action:"casual_health"});
+        if(health.mode==="test"||health.mode==="live"){
+          scriptState="updated";
+          scriptMode=health.mode;
+          if(health.access==="restricted"||health.access==="link-shared"){
+            sheetAccess=health.access;
+          }
+        }else{
+          scriptState="old_or_inaccessible";
+        }
+      }catch{
+        // Do not echo exception or disclose bearer tokens or personal sheet details.
+        scriptState="old_or_inaccessible";
+      }
+    }
     return json(200,{
       ok:true,mode:"casual_test_only",webhook_url_configured:true,
-      secret_configured:token().length>=32,destination:"WEBSITE_CASUAL_TEST",
-      live_sync_enabled:liveEnabled,
+      secret_configured:hasSecret,destination:"WEBSITE_CASUAL_TEST",
+      live_sync_enabled:liveEnabled,script_state:scriptState,
+      script_mode:scriptMode,sheet_access:sheetAccess,
       missing_website_fields:[],
-      message:liveEnabled?"Live sync switch enabled. New Direct submissions may sync automatically.":"Live sync deliberately locked until the form, Apps Script, and private sheet are verified."
+      message:scriptState==="updated"
+        ? (scriptMode==="test"
+          ? "New Apps Script deployment verified: TEST mode, real applicant transfer disabled."
+          : "New Apps Script deployment verified: LIVE mode; Supabase live sync switch remains separately controlled.")
+        : (scriptState==="missing_secret"
+          ? "Add matching ASY_CASUAL_SYNC_TOKEN to Supabase and Apps Script."
+          : "The Apps Script deployment did not pass the new-code health check. Save Code.gs and Deploy > Manage deployments > Edit > New version > Deploy, then recheck.")
     });
   }
   if(body.action==="pilot-test"){
