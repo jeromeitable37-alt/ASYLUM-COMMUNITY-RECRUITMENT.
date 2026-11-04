@@ -139,39 +139,53 @@ Deno.serve(async(req:Request)=>{
     let liveEnabled=false;
     try{liveEnabled=await isLiveEnabled();}catch{}
     const hasSecret=token().length>=32;
-    let scriptState:"updated"|"old_or_inaccessible"|"missing_secret"="missing_secret";
+    let scriptState:"updated"|"legacy_test"|"not_authorized"|"sheet_permission"|"non_json"|"unavailable"|"unexpected_response"|"missing_secret"="missing_secret";
     let scriptMode:"test"|"live"|"unknown"="unknown";
     let sheetAccess:"restricted"|"link-shared"|"unknown"="unknown";
     if(hasSecret){
       try{
         const health=await callAppsScript({action:"casual_health"});
-        if(health.mode==="test"||health.mode==="live"){
+        if((health.mode==="test"||health.mode==="live") &&
+           (health.access==="restricted"||health.access==="link-shared")){
           scriptState="updated";
           scriptMode=health.mode;
-          if(health.access==="restricted"||health.access==="link-shared"){
-            sheetAccess=health.access;
-          }
+          sheetAccess=health.access;
         }else{
-          scriptState="old_or_inaccessible";
+          scriptState="unexpected_response";
         }
-      }catch{
-        // Do not echo exception or disclose bearer tokens or personal sheet details.
-        scriptState="old_or_inaccessible";
+      }catch(error){
+        // Return only a categorical diagnosis to staff; never echo secrets, raw HTML,
+        // spreadsheet data, OAuth metadata, or untrusted error strings.
+        const detail=error instanceof Error?error.message.toLowerCase():"";
+        if(/invalid route|unsupported action|unknown action/.test(detail))
+          scriptState="legacy_test";
+        else if(/not authorized|unauthorized|invalid token|invalid secret/.test(detail))
+          scriptState="not_authorized";
+        else if(/permission|access denied|authorization is required|oauth|scope|not have access/.test(detail))
+          scriptState="sheet_permission";
+        else if(/non-json/.test(detail))
+          scriptState="non_json";
+        else scriptState="unavailable";
       }
     }
+    const staffMessage:Record<string,string>={
+      updated:scriptMode==="test"?
+        "Updated Apps Script verified in TEST mode. Live transfer remains OFF.":
+        "Updated Apps Script verified in LIVE mode; Supabase live switch is independently controlled.",
+      legacy_test:"The deployed Apps Script responds, but does not recognize the new health-check action. The earlier DEMO version can still work. To enable live sync, deploy the latest Code.gs that contains casual_health; this is not a token failure.",
+      not_authorized:"Apps Script rejected the health token. Confirm both Script Properties and Supabase share the exact same ASY_CASUAL_SYNC_TOKEN.",
+      sheet_permission:"Apps Script cannot check Google Drive/Sheet permissions. The deploying Google account may need to authorize DriveApp or have Editor access to the spreadsheet.",
+      non_json:"Apps Script returned a Google sign-in, authorization, or HTML response instead of JSON. Check web-app Execute as Me and deployment access.",
+      unavailable:"Apps Script health check did not complete. Could be network timeout or a script exception; inspect Apps Script Executions.",
+      unexpected_response:"The Apps Script response lacks the new mode/access fields. Confirm that the deployed Code.gs has the casual_health handler.",
+      missing_secret:"Supabase has no valid 32+ character ASY_CASUAL_SYNC_TOKEN."
+    };
     return json(200,{
       ok:true,mode:"casual_test_only",webhook_url_configured:true,
       secret_configured:hasSecret,destination:"WEBSITE_CASUAL_TEST",
       live_sync_enabled:liveEnabled,script_state:scriptState,
       script_mode:scriptMode,sheet_access:sheetAccess,
-      missing_website_fields:[],
-      message:scriptState==="updated"
-        ? (scriptMode==="test"
-          ? "New Apps Script deployment verified: TEST mode, real applicant transfer disabled."
-          : "New Apps Script deployment verified: LIVE mode; Supabase live sync switch remains separately controlled.")
-        : (scriptState==="missing_secret"
-          ? "Add matching ASY_CASUAL_SYNC_TOKEN to Supabase and Apps Script."
-          : "The Apps Script deployment did not pass the new-code health check. Save Code.gs and Deploy > Manage deployments > Edit > New version > Deploy, then recheck.")
+      missing_website_fields:[],message:staffMessage[scriptState]
     });
   }
   if(body.action==="pilot-test"){
