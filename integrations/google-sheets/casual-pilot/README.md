@@ -2,6 +2,32 @@
 
 **Deployment state (Nov 4, 2026):** Backend and website form are updated. **Live Sheets sync is intentionally OFF.** This protects the personal birthdates in the original SCREENING sheet while its sharing setting is still "Anyone with the link — Viewer" and while the currently deployed Apps Script may still be the older test-only version. Referral and Master List are untouched.
 
+## REFERRAL — automatic website-to-Google Sheets integration
+
+The Referral workflow uses the same **private** Google spreadsheet but a separate, service-role-only sync queue and Edge Function. It does not change the working Direct SCREENING connector.
+
+- New Referral applications collect the original Google Referral Form fields: Facebook Name, Birthdate, Facebook/TikTok links, IGN, 19-digit UID, Streamer Mode ID, Clan Name, Discord Username and the referring member's Facebook name and profile link. Referral MP/BR Legendary fields and private screenshot workflow remain intact.
+- After a successful website save, the frontend invokes `asy-referral-sheet-sync` automatically. It retries temporary connection errors and rechecks on Track Application. No manual recruiter sync buttons are required.
+- The backend requires Apps Script `referral_health` to confirm **LIVE + Restricted + referral-v1** before transmitting any real applicant data.
+- The original `REFERRALS` tab columns **A:O** are preserved: A timestamp; B Facebook Name; C birthdate; D/E social links; F IGN; G UID; H Streamer ID; I Clan; J Discord; K note that screenshots are private in recruitment portal; L referrer FB name; M referrer FB link; N Version (staff-owned); O Notes (staff-owned). **P** is the unique Website Application Code used only for website-originated rows. Existing Google Form rows have no code in P and are not overwritten.
+- Screenshots are **not** copied into Google Sheets, and no private Supabase Storage links or contact email are exposed in the spreadsheet.
+- If a Referral Application is rejected, the database marks its private queue `remove_pending`. On the recruiter's next automatic reconciliation, the server asks Apps Script to delete only the `REFERRALS!P` exact tracking-code row. Original Google Form responses and rejected application history remain intact.
+- Existing Referral applications that did not collect Facebook Name or Birthdate cannot be backfilled with invented values. Their queue entries stay `incomplete` until a recruiter corrects the same existing application using "Correct submitted applicant details." The database trigger then automatically retries syncing.
+- If Apps Script has not been redeployed yet, the new site keeps Referral submissions in Supabase and its private pending queue. Direct sync remains operational.
+
+### Google Apps Script update — required ONCE
+
+The Google Apps Script web app is hosted in the owner's Google account and is **not** deployed by a GitHub/Vercel commit. The backend and frontend were deployed independently, but new Referral actions are not available at the Google endpoint until the existing deployment is updated.
+
+1. Open the latest <https://github.com/jeromeitable37-alt/ASYLUM-COMMUNITY-RECRUITMENT./blob/main/integrations/google-sheets/casual-pilot/Code.gs>.
+2. In the existing **ASYLUM Casual Sync Pilot** Google Apps Script project, replace the contents of `Code.gs` with that entire updated file and **Save**. Preserve all Script Properties and the token (do not share its value).
+3. **Deploy → Manage deployments → Edit (pencil) → Version: New version → Deploy**. Reuse the existing deployment. It retains the same URL and Script Properties.
+4. Do not change the `ASY_CASUAL_SYNC_TARGET=live` property or Google Sheet access: it must remain private (Restricted).
+5. The website's first valid new Referral submission, or any authorized recruiter's next dashboard visit, will automatically sync eligible Referral rows to `REFERRALS`, set header `P1: Website Application Code`, and use that column for deduplication.
+6. Verify via the `REFERRALS` tab. No extra manual sync buttons or separate Google Form submission needed for new website applicants. Existing legacy records missing original details need corrections first.
+
+**Independent Master List caveat:** Writing directly to a Google Sheet through Apps Script does **not** invoke the Google Forms `onFormSubmit` event. Any separate Master List process dependent on that trigger must be evaluated separately. This integration does not edit Referral Google Forms, TEAMS or any other Supabase project.
+
 ## Automatic removal after Direct Application rejection
 
 When an authorized recruiter rejects a **Direct/Casual** application (including a failed tryout that sets the application to `rejected`):
