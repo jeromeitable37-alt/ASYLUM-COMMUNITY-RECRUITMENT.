@@ -164,6 +164,117 @@ function pilotDeleteRejected_(code){
     lock.releaseLock();
   }
 }
+/**
+ * REFERRAL route — original Google Form A:O retained verbatim.
+ * Column P is exclusively the website tracking code. Version (N) and staff
+ * Notes (O) remain staff-owned and are preserved on updates.
+ * Evidence is private in Supabase; no screenshots or private storage links
+ * are copied to Google Sheets.
+ */
+function pilotReferralParse_(body){
+  if(body.action!=='referral_upsert'||body.application_type!=='referral')
+    throw Error('Invalid Referral route.');
+  const applicant=body.applicant||{};
+  const code=String(body.application_code||'').trim().toUpperCase();
+  const uid=String(applicant.codm_uid||'').trim();
+  const dob=String(applicant.birthdate||'').trim();
+  const ign=String(applicant.ign||'').trim();
+  if(!/^ASYLUM-[A-Z0-9]{8}$/.test(code))throw Error('Invalid Referral application code.');
+  if(!/^\d{19}$/.test(uid)||ign.length<2)throw Error('Invalid Referral IGN or UID.');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dob))throw Error('Referral birthdate is required.');
+  const date=new Date(dob+'T12:00:00Z');
+  if(isNaN(date.getTime())||date.toISOString().slice(0,10)!==dob)
+    throw Error('Invalid Referral birthdate.');
+  const now=new Date();
+  const cutoff=new Date(Date.UTC(now.getUTCFullYear()-16,now.getUTCMonth(),now.getUTCDate()));
+  if(dob>cutoff.toISOString().slice(0,10))throw Error('Referral applicant must be at least 16.');
+  if(!String(applicant.facebook_name||'').trim()||
+     !String(applicant.clan_name||'').trim()||
+     !String(applicant.referrer_name||'').trim()||
+     !String(applicant.referrer_facebook_url||'').trim())
+    throw Error('Referral membership details are incomplete.');
+  const submitted=new Date(body.submitted_at||Date.now());
+  if(isNaN(submitted.getTime()))throw Error('Invalid Referral timestamp.');
+  return {code,row:[
+    submitted,
+    pilotSafeText_(applicant.facebook_name,120),
+    dob,
+    pilotSafeText_(applicant.facebook_url,500),
+    pilotSafeText_(applicant.tiktok_url,500),
+    pilotSafeText_(ign,32),
+    uid,
+    pilotSafeText_(applicant.streamer_mode_id,100),
+    pilotSafeText_(applicant.clan_name,120),
+    pilotSafeText_(applicant.discord_username,80),
+    'Screenshots reviewed privately in ASYLUM Recruitment',
+    pilotSafeText_(applicant.referrer_name,120),
+    pilotSafeText_(applicant.referrer_facebook_url,500),
+    '', // N: Version, edited by staff
+    '', // O: Notes, edited by staff
+    code
+  ]};
+}
+function pilotReferralUpsert_(body){
+  const parsed=pilotReferralParse_(body);
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(20000))throw Error('Referral Sheet is busy; retry.');
+  try{
+    const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId).getSheetByName('REFERRALS');
+    if(!tab)throw Error('REFERRALS tab does not exist.');
+    if(tab.getLastColumn()<15)throw Error('REFERRALS original columns are incomplete.');
+    const header=String(tab.getRange(1,16).getDisplayValue()||'').trim();
+    if(header&&!/website application code/i.test(header))
+      throw Error('REFERRALS column P is already in use.');
+    const last=tab.getLastRow();
+    let matching=[];
+    if(last>1){
+      const codes=tab.getRange(2,16,last-1,1).getDisplayValues();
+      codes.forEach((r,i)=>{if(String(r[0]||'').trim()===parsed.code)matching.push(i+2);});
+    }
+    if(matching.length>1)throw Error('Duplicate Referral website codes require review.');
+    if(!header)tab.getRange(1,16).setValue('Website Application Code');
+    const exists=matching.length===1;
+    const rowIndex=exists?matching[0]:last+1;
+    if(rowIndex>tab.getMaxRows())tab.insertRowsAfter(tab.getMaxRows(),1);
+    if(exists){
+      const previous=tab.getRange(rowIndex,1,1,16).getValues()[0];
+      if(previous[0] instanceof Date&&!isNaN(previous[0].getTime()))
+        parsed.row[0]=previous[0];
+      parsed.row[13]=previous[13]||'';
+      parsed.row[14]=previous[14]||'';
+      // Preserve any existing screenshot/reference notes in K.
+      parsed.row[10]=previous[10]||parsed.row[10];
+    }
+    tab.getRange(rowIndex,3).setNumberFormat('@');
+    tab.getRange(rowIndex,7).setNumberFormat('@');
+    tab.getRange(rowIndex,1,1,16).setValues([parsed.row]);
+    tab.getRange(rowIndex,1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    SpreadsheetApp.flush();
+    return pilotReply_({ok:true,mode:'live',route:'referral',row:rowIndex,
+      action:exists?'updated':'inserted'});
+  }finally{lock.releaseLock();}
+}
+function pilotReferralDelete_(value){
+  const code=String(value||'').trim().toUpperCase();
+  if(!/^ASYLUM-[A-Z0-9]{8}$/.test(code))throw Error('Invalid Referral tracking code.');
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(20000))throw Error('Referral cleanup busy; retry.');
+  try{
+    const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId).getSheetByName('REFERRALS');
+    if(!tab)throw Error('REFERRALS tab missing.');
+    if(!/website application code/i.test(String(tab.getRange(1,16).getDisplayValue()||'')))
+      throw Error('Website tracking column P is not configured.');
+    const last=tab.getLastRow();
+    if(last<2)return pilotReply_({ok:true,mode:'live',route:'referral',removed:false,not_found:true});
+    const codes=tab.getRange(2,16,last-1,1).getDisplayValues();
+    const matches=[];
+    codes.forEach((row,i)=>{if(String(row[0]||'').trim()===code)matches.push(i+2);});
+    if(matches.length>1)throw Error('Duplicate tracking codes; automatic deletion refused.');
+    if(!matches.length)return pilotReply_({ok:true,mode:'live',route:'referral',removed:false,not_found:true});
+    tab.deleteRow(matches[0]);SpreadsheetApp.flush();
+    return pilotReply_({ok:true,mode:'live',route:'referral',removed:true});
+  }finally{lock.releaseLock();}
+}
 function doPost(e){
   try{
     const body=JSON.parse((e&&e.postData&&e.postData.contents)||'{}');
@@ -182,12 +293,27 @@ function doPost(e){
       const rows=pilotDirectory_();
       return pilotReply_({ok:true,version:'secure-v3',records:rows,count:rows.length});
     }
+    if(body.action==='referral_health'){
+      const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId).getSheetByName('REFERRALS');
+      if(!tab)throw Error('REFERRALS tab missing.');
+      const header=String(tab.getRange(1,16).getDisplayValue()||'').trim();
+      return pilotReply_({ok:true,version:'referral-v1',mode:mode,
+        access:pilotAccess_(ASY_CASUAL_SYNC.spreadsheetId),
+        destination:'REFERRALS',key_column:'P',
+        column_ready:!header||/website application code/i.test(header)});
+    }
     if(body.action==='casual_go_live')return pilotGoLive_(props);
     if(mode==='live'&&pilotAccess_(ASY_CASUAL_SYNC.spreadsheetId)!=='restricted')
       return pilotReply_({ok:false,error:'Restrict spreadsheet sharing to staff before live sync.'});
     if(body.action==='casual_delete'){
       if(mode!=='live')throw Error('Direct rejection cleanup requires LIVE mode.');
       return pilotDeleteRejected_(body.application_code);
+    }
+    if(body.action==='referral_upsert'||body.action==='referral_delete'){
+      if(mode!=='live')throw Error('Referral auto-sync requires private LIVE Google Sheets.');
+      return body.action==='referral_delete'
+        ?pilotReferralDelete_(body.application_code)
+        :pilotReferralUpsert_(body);
     }
     const parsed=pilotParse_(body,mode);
     const lock=LockService.getScriptLock();
