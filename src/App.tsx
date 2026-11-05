@@ -10,6 +10,7 @@ const EVIDENCE_API_URL = SUPABASE_URL + '/functions/v1/asy-recruitment-evidence'
 const MESSAGING_API_URL = SUPABASE_URL + '/functions/v1/asy-community-messaging';
 const OPERATIONS_API_URL = SUPABASE_URL + '/functions/v1/asy-operations';
 const CASUAL_SHEETS_PILOT_API_URL = SUPABASE_URL + '/functions/v1/asy-casual-sheet-pilot';
+const REFERRAL_SHEETS_SYNC_API_URL = SUPABASE_URL + '/functions/v1/asy-referral-sheet-sync';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; applicant_facebook_name:string|null; applicant_birthdate:string|null; applicant_clan_name:string|null; legendary_requirement_confirmed:boolean; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; membership_form_response_verified:boolean; membership_form_response_verified_by_email:string|null; membership_form_response_verified_at:string|null; legendary_series_count:number; legendary_series_mp:number|null; legendary_series_br:number|null; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; is_required?:boolean; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
@@ -117,6 +118,7 @@ export default function App() {
   const [casualWebsiteSync,setCasualWebsiteSync]=useState<{code:string;state:'testing'|'verified'|'queued'|'failed';message:string}|null>(null);
   const casualWebsiteSyncInFlight=useRef<Set<string>>(new Set());
   const rejectedSheetCleanupInFlight=useRef(false);
+  const referralSheetCleanupInFlight=useRef(false);
   const [screeningAdminUrl,setScreeningAdminUrl]=useState(DEFAULT_SCREENING_ADMIN_URL);
   const [screeningAdminDraft,setScreeningAdminDraft]=useState(DEFAULT_SCREENING_ADMIN_URL);
   const [screeningAdminSaving,setScreeningAdminSaving]=useState(false);
@@ -647,6 +649,51 @@ export default function App() {
       casualWebsiteSyncInFlight.current.delete(code);
     }
   }
+  // This uses the same automatic no-button workflow as Direct, but writes
+  // only to the private REFERRALS tab via a separate protected queue.
+  async function requestReferralSheetSync(code:string,emailValue:string):Promise<void>{
+    if(casualWebsiteSyncInFlight.current.has(code))return;
+    casualWebsiteSyncInFlight.current.add(code);
+    setCasualWebsiteSync({code,state:'testing',message:'Automatically syncing your Referral Application to the private REFERRALS Sheet…'});
+    try{
+      for(let attempt=0;attempt<3;attempt++){
+        try{
+          const response=await fetch(REFERRAL_SHEETS_SYNC_API_URL,{
+            method:'POST',
+            headers:{'Content-Type':'application/json',apikey:SUPABASE_PUBLISHABLE_KEY},
+            body:JSON.stringify({action:'sync-submission',application_code:code,contact_email:emailValue}),
+            cache:'no-store',keepalive:true
+          });
+          const result=await response.json().catch(()=>null) as {
+            ok?:boolean;synced?:boolean;already_synced?:boolean;queued?:boolean;
+            missing_details?:boolean;awaiting_google_deployment?:boolean;row?:number
+          }|null;
+          if(!response.ok||!result?.ok)throw new Error('Referral Google Sheets transfer is temporarily unavailable.');
+          if(result.synced||result.already_synced){
+            setCasualWebsiteSync({code,state:'verified',message:
+              '✅ Referral Application automatically synced to private REFERRALS Google Sheet'+
+              (result.row?' (row '+result.row+')':'')+'.'});
+          }else if(result.missing_details){
+            setCasualWebsiteSync({code,state:'queued',message:
+              'Referral Application saved. Some original Referral membership-form fields are missing; ask a recruiter to complete your existing record. No duplicate application is needed.'});
+          }else{
+            setCasualWebsiteSync({code,state:'queued',message:
+              'Referral Application saved in Supabase. Private REFERRALS Google Sheet sync is queued until the updated connector is available.'});
+          }
+          return;
+        }catch(error){
+          if(attempt===2)throw error;
+          await new Promise(resolve=>setTimeout(resolve,attempt===0?2000:6000));
+        }
+      }
+    }catch(error){
+      console.warn('Automatic Referral Google Sheets sync is pending.',error);
+      setCasualWebsiteSync({code,state:'failed',message:
+        'Referral Application saved in Supabase. REFERRALS transfer will retry when you reopen Tracking or a recruiter reviews the queue.'});
+    }finally{
+      casualWebsiteSyncInFlight.current.delete(code);
+    }
+  }
   async function loadApplicantProgress(code:string,emailValue:string){
     try{
       const response=await fetch(EVIDENCE_API_URL+'?application_code='+encodeURIComponent(code)+'&contact_email='+encodeURIComponent(emailValue),{headers:{apikey:SUPABASE_PUBLISHABLE_KEY},cache:'no-store'});
@@ -654,6 +701,7 @@ export default function App() {
       if(!response.ok){setEvidenceServiceConfigured(response.status!==503);setApplicantProgress(null);return;}
       setEvidenceServiceConfigured(true);setApplicantProgress(data as ApplicantProgress);
       if((data as ApplicantProgress)?.application?.application_type==='casual')void requestCasualSheetSync(code,emailValue);
+      else if((data as ApplicantProgress)?.application?.application_type==='referral')void requestReferralSheetSync(code,emailValue);
     }catch{setEvidenceServiceConfigured(false);setApplicantProgress(null);}
   }
   async function uploadRequirement(key:string,file:File,silent=false):Promise<boolean>{
@@ -1185,6 +1233,7 @@ export default function App() {
       }
 
       if(isCasual)void requestCasualSheetSync(code,payload.contact_email);
+      else void requestReferralSheetSync(code,payload.contact_email);
       void loadIntakeSettings();
       try {
         await fetch('/api/notify-discord', {
@@ -1253,6 +1302,30 @@ export default function App() {
       rejectedSheetCleanupInFlight.current=false;
     }
   }
+  async function reconcileReferralRows(){
+    if(!authorized||!session?.access_token||referralSheetCleanupInFlight.current)return null;
+    referralSheetCleanupInFlight.current=true;
+    try{
+      const response=await fetch(REFERRAL_SHEETS_SYNC_API_URL,{
+        method:'POST',headers:{
+          'Content-Type':'application/json',
+          apikey:SUPABASE_PUBLISHABLE_KEY,
+          Authorization:'Bearer '+session.access_token
+        },body:JSON.stringify({action:'sync-batch'}),cache:'no-store'
+      });
+      const result=await response.json().catch(()=>null) as {
+        ok?:boolean;synced?:number;removed?:number;failed?:number;pending?:number;
+        mode?:string
+      }|null;
+      if(!response.ok||!result?.ok)throw Error('Referral sync queue unavailable.');
+      return result;
+    }catch(error){
+      console.warn('Referral sync queue will retry on a recruiter visit.',error);
+      return null;
+    }finally{
+      referralSheetCleanupInFlight.current=false;
+    }
+  }
   async function loadApplications(){
     const {data,error}=await supabase.from('asy_clan_applications')
       .select('*').order('submitted_at',{ascending:false});
@@ -1261,6 +1334,7 @@ export default function App() {
     // Covers temporary network failures and earlier rejection actions that
     // happened while recruiters were offline. No manual sync buttons.
     void reconcileRejectedDirectRows();
+    void reconcileReferralRows();
   }
   async function openStaffNotificationApplication(applicationId:string){
     if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(applicationId))return;
@@ -1314,6 +1388,12 @@ export default function App() {
       cleanupNote=cleanup&&cleanup.failed===0&&cleanup.pending===0
         ?' The matching website row was removed from SCREENING (if present).'
         :' Google Sheets removal is queued and will retry automatically.';
+    }
+    if(status==='rejected'&&app.application_type==='referral'){
+      const cleanup=await reconcileReferralRows();
+      cleanupNote=cleanup&&cleanup.failed===0&&cleanup.pending===0
+        ?' Any matching website-owned REFERRALS row was removed.'
+        :' REFERRALS Sheet removal is queued and will retry automatically.';
     }
     setBusy(false);
     setSelected(null);
