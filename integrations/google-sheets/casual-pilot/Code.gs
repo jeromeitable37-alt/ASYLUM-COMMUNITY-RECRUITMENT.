@@ -206,7 +206,7 @@ function pilotReferralParse_(body){
     pilotSafeText_(applicant.streamer_mode_id,100),
     pilotSafeText_(applicant.clan_name,120),
     pilotSafeText_(applicant.discord_username,80),
-    'Screenshots reviewed privately in ASYLUM Recruitment',
+    'Screenshot proofs managed in private ASYLUM Recruitment',
     pilotSafeText_(applicant.referrer_name,120),
     pilotSafeText_(applicant.referrer_facebook_url,500),
     '', // N: Version, edited by staff
