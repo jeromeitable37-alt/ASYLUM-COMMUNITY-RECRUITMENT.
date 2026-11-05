@@ -513,11 +513,9 @@ export default function App() {
       applicant_facebook_url:get('applicant_facebook_url')||null,
       applicant_tiktok_url:get('applicant_tiktok_url')||null,
       streamer_mode_id:get('streamer_mode_id')||null,
-      ...(editApplicationType==='casual'?{
-        applicant_facebook_name:get('applicant_facebook_name')||null,
-        applicant_birthdate:get('applicant_birthdate')||null,
-        applicant_clan_name:get('applicant_clan_name')||null
-      }:{}),
+      applicant_facebook_name:get('applicant_facebook_name')||null,
+      applicant_birthdate:get('applicant_birthdate')||null,
+      applicant_clan_name:get('applicant_clan_name')||null,
       region:get('region'),level,rank:get('rank'),reason:get('reason'),
       ...(hasLegendaryBreakdown?{legendary_series_mp:legendaryMp,legendary_series_br:legendaryBr}:{}),
       referrer_name:editApplicationType==='referral'?get('referrer_name'):null,
@@ -1127,7 +1125,8 @@ export default function App() {
       return;
     }
     const isCasual=form.applicationType==='casual';
-    if(isCasual){
+    {
+      // Original SCREENING and REFERRALS forms both collect these fields.
       const dob=form.birthdate.trim();
       const date=new Date(dob+'T00:00:00Z');
       const today=new Date();
@@ -1139,12 +1138,14 @@ export default function App() {
         notify('Enter a valid Facebook name, birthdate (at least 16 years old), and clan name. Enter NO CLAN if applicable.',true);
         return;
       }
-      if(!form.legendaryRequirementConfirmed){
-        notify('Confirm that you meet the minimum six Legendary Series requirement.',true);
+      if(!form.applicantFacebookUrl.trim()||!form.applicantTikTokUrl.trim()){
+        notify('Facebook and TikTok profile links are required for both Direct and Referral membership forms.',true);
         return;
       }
-      if(!form.applicantFacebookUrl.trim()||!form.applicantTikTokUrl.trim()){
-        notify('Your Facebook and TikTok profile links are required for the Direct membership form.',true);
+    }
+    if(isCasual){
+      if(!form.legendaryRequirementConfirmed){
+        notify('Confirm that you meet the minimum six Legendary Series requirement.',true);
         return;
       }
     }
@@ -1187,9 +1188,9 @@ export default function App() {
         legendary_series_br: isCasual?null:legendaryBr,
         legendary_series_count: isCasual?0:legendaryTotal,
         legendary_requirement_confirmed: isCasual?form.legendaryRequirementConfirmed:false,
-        applicant_facebook_name: isCasual?form.facebookName.trim():null,
-        applicant_birthdate: isCasual?form.birthdate:null,
-        applicant_clan_name: isCasual?form.clanName.trim():null,
+        applicant_facebook_name: form.facebookName.trim(),
+        applicant_birthdate: form.birthdate,
+        applicant_clan_name: form.clanName.trim(),
         facebook_name_appropriate: form.facebookNameAppropriate,
         willing_to_add_asy_tag: form.willingToAddTag,
         willing_to_submit_roster_photo: form.willingToSubmitPhoto,
@@ -1537,10 +1538,18 @@ export default function App() {
             </div>
             <small className="application-route-hint">Select one application type only.</small>
           </fieldset>
-          {form.applicationType==='referral'&&<div className="form-grid">
-            <Field label="Referring member name *"><input required value={form.referrerName} onChange={e=>updateForm('referrerName',e.target.value)} placeholder="Member who referred you"/></Field>
-            <Field label="Referring member Facebook profile link *"><input required type="url" value={form.referrerFacebookUrl} onChange={e=>updateForm('referrerFacebookUrl',e.target.value)} placeholder="https://facebook.com/…"/></Field>
-          </div>}
+          {form.applicationType==='referral'&&<>
+            <div className="form-grid">
+              <Field label="Referring member name *"><input required value={form.referrerName} onChange={e=>updateForm('referrerName',e.target.value)} placeholder="Member who referred you"/></Field>
+              <Field label="Referring member Facebook profile link *"><input required type="url" value={form.referrerFacebookUrl} onChange={e=>updateForm('referrerFacebookUrl',e.target.value)} placeholder="https://facebook.com/…"/></Field>
+            </div>
+            <div className="form-grid">
+              <Field label="Your Facebook Name *"><input required minLength={2} maxLength={120} autoComplete="name" value={form.facebookName} onChange={e=>updateForm('facebookName',e.target.value)} placeholder="Your Facebook display name"/></Field>
+              <Field label="Your Birthdate *"><input required type="date" max={new Date(new Date().setFullYear(new Date().getFullYear()-16)).toISOString().slice(0,10)} value={form.birthdate} onChange={e=>updateForm('birthdate',e.target.value)}/></Field>
+              <Field label="Your Clan Name *"><input required minLength={2} maxLength={120} value={form.clanName} onChange={e=>updateForm('clanName',e.target.value)} placeholder="Type NO CLAN if none"/></Field>
+            </div>
+            <p className="muted form-helper">These details match the original REFERRALS Google Form and are stored privately for membership review.</p>
+          </>}
           <Section n="01" title="Eligibility" sub="Check the minimum requirements."/>
           <label className="screening-check eligibility-check"><input type="checkbox" required checked={form.ageConfirmed==='yes'} onChange={e=>updateForm('ageConfirmed',e.target.checked?'yes':'')}/><span>I confirm that I am at least 16 years old.</span></label>
           {form.applicationType==='referral'?<>
@@ -1582,10 +1591,10 @@ export default function App() {
             <Field label="Current rank *"><select value={form.rank} onChange={e=>updateForm('rank',e.target.value)}>{['Rookie','Veteran','Elite','Pro','Master','Grand Master','Legendary'].map(v=><option key={v}>{v}</option>)}</select></Field>
             <Field label="Current level"><input type="number" min="1" max="500" value={form.level} onChange={e=>updateForm('level',e.target.value)} placeholder="e.g. 220"/></Field>
           </div>
-          <Section n="03" title="Social profiles" sub="Optional links for cross-checking your details."/>
+          <Section n="03" title="Referral membership social profiles" sub="Required by the original REFERRALS Google Form."/>
           <div className="form-grid">
-            <Field label="Facebook profile link"><input type="url" value={form.applicantFacebookUrl} onChange={e=>updateForm('applicantFacebookUrl',e.target.value)} placeholder="https://facebook.com/…"/><small className="field-hint">Optional · Profile link only.</small></Field>
-            <Field label="TikTok profile link"><input type="url" value={form.applicantTikTokUrl} onChange={e=>updateForm('applicantTikTokUrl',e.target.value)} placeholder="https://tiktok.com/@…"/><small className="field-hint">Optional · Profile link only.</small></Field>
+            <Field label="Facebook profile link *"><input required type="url" value={form.applicantFacebookUrl} onChange={e=>updateForm('applicantFacebookUrl',e.target.value)} placeholder="https://facebook.com/…"/></Field>
+            <Field label="TikTok profile link *"><input required type="url" value={form.applicantTikTokUrl} onChange={e=>updateForm('applicantTikTokUrl',e.target.value)} placeholder="https://tiktok.com/@…"/></Field>
             <Field label="Streamer Mode ID"><input value={form.streamerModeId} maxLength={100} onChange={e=>updateForm('streamerModeId',e.target.value)} placeholder="Optional ID"/></Field>
           </div>
           <Field label="Why do you want to join ASY? *"><textarea required minLength={10} maxLength={1000} rows={3} value={form.reason} onChange={e=>updateForm('reason',e.target.value)} placeholder="A few sentences are enough…"/></Field>
@@ -1795,6 +1804,7 @@ export default function App() {
             <details className="panel admin-edit-panel" key={selected.id}>
               <summary>Correct submitted applicant details</summary>
               <p className="muted">Correct details or change Direct ↔ Referral Application without rejection. The tracking code and existing proofs stay intact; referral requirements update automatically. Route changes are available before final review and reset verification checks.</p>
+              {selected.application_type==='referral'&&(!selected.applicant_facebook_name||!selected.applicant_birthdate||!selected.applicant_clan_name)&&<p className="admin-edit-hint">Legacy Referral: Facebook Name, Birthdate and Clan Name were not collected previously. Fill the real details below to enable automatic REFERRALS Sheet transfer. Do not create another application.</p>}
               <form className="admin-edit-grid" key={selected.id+':'+selected.updated_at} onSubmit={saveApplicantDetails} onInvalidCapture={event=>{const field=event.target as HTMLInputElement;setEditSaveFeedback({applicationId:selected.id,kind:'error',message:'Please correct the highlighted '+(field.name||'required')+' field before saving.'});}}>
                 {(['accepted','rejected'].includes(selected.status)||!['eligibility_review','tag_proofs','membership_proofs','discord_roster'].includes(selected.workflow_step))&&<p className="admin-edit-hint">Application type is locked after final review or a final decision. Other application details can still be corrected.</p>}
                 <Field label="Application type"><select value={editApplicationType} onChange={event=>setEditApplicationType(event.target.value as 'casual'|'referral')} disabled={busy||['accepted','rejected'].includes(selected.status)||!['eligibility_review','tag_proofs','membership_proofs','discord_roster'].includes(selected.workflow_step)}><option value="casual">Direct Application</option><option value="referral">Referral Application</option></select></Field>
@@ -1802,8 +1812,8 @@ export default function App() {
                 <Field label="CODM UID"><input name="codm_uid" defaultValue={selected.codm_uid} required /></Field>
                 <Field label="Contact email"><input name="contact_email" type="email" defaultValue={selected.contact_email} required /></Field>
                 <Field label="Discord username"><input name="discord_username" defaultValue={selected.discord_username||''} /></Field>
-                {editApplicationType==='casual'&&<>
-                  <Field label="Facebook Name (Casual membership form)"><input name="applicant_facebook_name" maxLength={120} defaultValue={selected.applicant_facebook_name||''} /></Field>
+                {<>
+                  <Field label="Facebook Name (membership form)"><input name="applicant_facebook_name" maxLength={120} defaultValue={selected.applicant_facebook_name||''} /></Field>
                   <Field label="Birthdate (private)"><input name="applicant_birthdate" type="date" defaultValue={selected.applicant_birthdate||''} /></Field>
                   <Field label="Clan Name"><input name="applicant_clan_name" maxLength={120} defaultValue={selected.applicant_clan_name||''} placeholder="NO CLAN if none"/></Field>
                 </>}
