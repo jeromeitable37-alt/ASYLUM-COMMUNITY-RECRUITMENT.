@@ -1006,3 +1006,8 @@
  .page.narrow .tracked,.page.narrow .application-chat,.page.narrow .applicant-progress{padding:16px}
  .page.narrow .message-thread,.page.narrow .message-compose{min-width:0;max-width:100%}
 }
+
+/* Recruiter review: one-tap Facebook referrer link */
+.detail .referrer-facebook-link{display:inline-flex;align-items:center;gap:7px;max-width:100%;width:max-content;min-height:36px;padding:8px 10px;border:1px solid #ba3745;border-radius:6px;background:#35151e;color:#fff;font-size:12px;font-weight:800;text-decoration:none;overflow-wrap:anywhere}
+.detail .referrer-facebook-link:hover,.detail .referrer-facebook-link:focus-visible{background:#a8293a;border-color:#f85566;outline-offset:2px}
+.detail .referrer-facebook-link svg{flex:none}
