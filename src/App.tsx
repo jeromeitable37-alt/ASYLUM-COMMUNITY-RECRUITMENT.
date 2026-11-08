@@ -1623,12 +1623,14 @@ export default function App() {
               {renderChatAttachment(message)}
             </article>)}
           </div>
+{(tracked.status==='rejected'||tracked.status==='accepted')?<p className="correction-help" role="status">This application is closed. Earlier messages remain available to read, but new messages cannot be sent here. Contact ASYLUM recruitment through official community channels if you need assistance.</p>:
           <form className="message-compose" onSubmit={sendApplicantMessage}>
             <Field label="Your message"><textarea rows={2} maxLength={2000} value={applicantMessageDraft} onChange={event=>setApplicantMessageDraft(event.target.value)} placeholder="Type a question or reply…" /></Field>
             <label className="chat-attachment-picker">📎 Add screenshot / video <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" onChange={e=>setApplicantChatFile(e.target.files?.[0]||null)}/></label>
             {applicantChatFile&&<small>Selected: {applicantChatFile.name} <button type="button" onClick={()=>setApplicantChatFile(null)}>Remove</button></small>}
             <button type="submit" className="primary" disabled={applicantMessageBusy||(!applicantMessageDraft.trim()&&!applicantChatFile)}>{applicantMessageBusy?'Sending…':'Send message'} <Send size={15}/></button>
           </form>
+          }
           <small className="message-privacy-note">Only you and authorized recruiters can access this application conversation. Never send passwords or login codes.</small>
         </section>}
 
