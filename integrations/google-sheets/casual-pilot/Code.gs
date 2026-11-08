@@ -245,10 +245,10 @@ function pilotReferralUpsert_(body){
       // Preserve any existing screenshot/reference notes in K.
       parsed.row[10]=previous[10]||parsed.row[10];
     }
-    tab.getRange(rowIndex,3).setNumberFormat('@');
-    tab.getRange(rowIndex,7).setNumberFormat('@');
+    // REFERRALS is a Google Sheets typed table: formats are managed by the table.
+    // Apps Script setNumberFormat() on its typed columns throws, blocking sync.
+    // Preserve existing table types and write only the mapped row values.
     tab.getRange(rowIndex,1,1,16).setValues([parsed.row]);
-    tab.getRange(rowIndex,1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
     SpreadsheetApp.flush();
     return pilotReply_({ok:true,mode:'live',route:'referral',row:rowIndex,
       action:exists?'updated':'inserted'});
