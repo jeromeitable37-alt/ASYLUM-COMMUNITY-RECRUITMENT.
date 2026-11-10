@@ -1110,7 +1110,7 @@ export default function App() {
     // Native HTML validation prevents onSubmit from running. Surface its reason
     // near the button, especially on mobile where the invalid field is offscreen.
     const field=event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
-    const friendlyName=field.closest('.field')?.querySelector('label')?.textContent?.trim() || field.getAttribute('aria-label') || field.getAttribute('name') || 'a required field';
+    const friendlyName=field.closest('.field')?.querySelector('span')?.textContent?.trim() || field.getAttribute('aria-label') || field.getAttribute('name') || 'a required field';
     const advice=field.validity.patternMismatch && field.value && field.getAttribute('pattern')==='[0-9]{19}'
       ? 'CODM UID must have exactly 19 digits.'
       : field.validationMessage || 'Complete this field to continue.';
