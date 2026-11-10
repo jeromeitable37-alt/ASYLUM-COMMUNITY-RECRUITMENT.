@@ -1138,8 +1138,8 @@ export default function App() {
       return;
     }
     const isCasual=form.applicationType==='casual';
-    if(!isCasual&&(!form.streamerModeId.trim()||!form.discord.trim())){
-      const message='Referral Application requires both Streamer Mode ID and Discord username. Please complete these fields before submitting.';
+    if(!form.streamerModeId.trim()||!form.discord.trim()){
+      const message='Streamer Mode ID and Discord username are required for both Direct and Referral applications. Please complete these fields before submitting.';
       setApplicationValidationError(message);
       notify(message,true);
       return;
@@ -1592,9 +1592,9 @@ export default function App() {
               <Field label="TikTok Link *"><input required type="url" value={form.applicantTikTokUrl} onChange={e=>updateForm('applicantTikTokUrl',e.target.value)} placeholder="https://tiktok.com/@yourprofile"/></Field>
               <Field label="IGN (In-Game Name) *"><input required minLength={2} maxLength={32} value={form.ign} onChange={e=>updateForm('ign',e.target.value)} placeholder="Your main CODM IGN"/></Field>
               <Field label="CODM UID (19 digits) *"><><input required type="text" inputMode="numeric" autoComplete="off" pattern="[0-9]{19}" minLength={19} maxLength={19} value={form.uid} onChange={e=>updateForm('uid',e.target.value.replace(/[^0-9]/g,'').slice(0,19))} placeholder="Enter your 19-digit UID"/><small className="field-hint">Numbers only · {form.uid.length}/19 digits</small></></Field>
-              <Field label="Streamer Mode ID"><input value={form.streamerModeId} maxLength={100} onChange={e=>updateForm('streamerModeId',e.target.value)} placeholder="Optional"/></Field>
+              <Field label="Streamer Mode ID *"><input required value={form.streamerModeId} maxLength={100} onChange={e=>updateForm('streamerModeId',e.target.value)} placeholder="Enter your Streamer Mode ID"/></Field>
               <Field label="Clan Name *"><input required minLength={2} maxLength={120} value={form.clanName} onChange={e=>updateForm('clanName',e.target.value)} placeholder="Type NO CLAN if you are not in a clan"/></Field>
-              <Field label="Discord Username"><input value={form.discord} maxLength={80} onChange={e=>updateForm('discord',e.target.value)} placeholder="Discord username"/></Field>
+              <Field label="Discord Username *"><input required value={form.discord} maxLength={80} onChange={e=>updateForm('discord',e.target.value)} placeholder="Enter your Discord username"/></Field>
             </div>
             <Section n="03" title="Application tracking" sub="Used only to check your application status, not added to the public Master List."/>
             <Field label="Contact email *"><input required type="email" value={form.email} onChange={e=>updateForm('email',e.target.value)} placeholder="you@example.com"/></Field>
