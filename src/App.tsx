@@ -111,6 +111,7 @@ export default function App() {
   const [tryoutResult,setTryoutResult]=useState('pending');
   const [tryoutNotes,setTryoutNotes]=useState('');
   const [form,setForm]=useState(blankForm);
+  const [applicationValidationError,setApplicationValidationError]=useState('');
   const [intakeSettings,setIntakeSettings]=useState<IntakeSettings|null>(null);
   const [intakeLimitDraft,setIntakeLimitDraft]=useState('');
   const [intakeOpenDraft,setIntakeOpenDraft]=useState(true);
@@ -1105,7 +1106,19 @@ export default function App() {
     finally{setAccountBusy(false);}
   }
 
+  function onInvalidApplicationField(event:FormEvent<HTMLFormElement>) {
+    // Native HTML validation prevents onSubmit from running. Surface its reason
+    // near the button, especially on mobile where the invalid field is offscreen.
+    const field=event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    const friendlyName=field.closest('.field')?.querySelector('label')?.textContent?.trim() || field.getAttribute('aria-label') || field.getAttribute('name') || 'a required field';
+    const advice=field.validity.patternMismatch && field.value && field.getAttribute('pattern')==='[0-9]{19}'
+      ? 'CODM UID must have exactly 19 digits.'
+      : field.validationMessage || 'Complete this field to continue.';
+    setApplicationValidationError(`${friendlyName}: ${advice}`);
+  }
+
   async function submitApplication(event:FormEvent) {
+    setApplicationValidationError('');
     event.preventDefault();
 
     if (!/^\d{19}$/.test(form.uid.trim())) {
@@ -1522,7 +1535,7 @@ export default function App() {
       </section>}
       {page==='apply'&&<section className="page"><Heading kicker="01 / RECRUITMENT FORM" title={<>YOUR RUN <em>STARTS HERE.</em></>} desc="Complete the form honestly. Required fields are marked *. No account needed."/>
         <div className={'panel intake-banner '+(intakeFull?'closed':'open')}><div><strong>{intakeFull?(!intakeSettings?.intake_open?'Applications are temporarily closed':'Application limit reached'):'Recruitment intake is open'}</strong><p>{intakeSettings?.application_limit!==null&&intakeSettings?`${intakeSettings.application_count} of ${intakeSettings.application_limit} applications used this intake.`:'Check the eligibility requirements and complete the form once. Recruiters review applications individually.'}</p></div><span className="intake-dot"/></div>
-        <form className="panel form" onSubmit={submitApplication}>
+        <form className="panel form" onSubmit={submitApplication} onInvalidCapture={onInvalidApplicationField} onChangeCapture={()=>setApplicationValidationError('')}>
           <Section n="00" title="Application route" sub="Select Direct Application or Referral Application."/>
           <fieldset className="application-route-group">
             <legend>Application type <span aria-hidden="true">*</span></legend>
@@ -1601,6 +1614,7 @@ export default function App() {
 
           </>}
           <div className="privacy"><ShieldCheck size={17}/> Profile links and IDs are for recruitment review only. Never share passwords or login codes.</div>
+          {applicationValidationError&&<div className="notice bad" role="alert"><strong>Cannot submit yet</strong><p>{applicationValidationError}</p><p>Please check this field above and try again. Your answers are still here.</p></div>}
           <button className="primary" disabled={busy||intakeFull}>{busy?'Submitting…':intakeFull?'Applications closed':'Submit application'} <ArrowRight size={16}/></button>
         </form></section>}
       {page==='status'&&<section className="page narrow"><Heading kicker="02 / APPLICATION STATUS" title={<>CHECK YOUR <em>STATUS.</em></>} desc="Check your progress with your tracking code and the same email address used on your application."/>
