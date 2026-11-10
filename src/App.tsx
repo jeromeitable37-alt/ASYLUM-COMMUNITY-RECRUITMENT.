@@ -1239,6 +1239,8 @@ export default function App() {
           notify('This CODM UID already has an active application, even if a different email was used. Wait until that application is rejected before applying again, or ask a recruiter to correct the existing application.', true);
         } else if (error.code === '23505' && (message.includes('one_active_recruitment_application_per_email') || message.includes('asy_one_active_application_per_email') || message.includes('active application') || message.includes('already have an application'))) {
           notify('There is still an active application for this email. You can submit again after that application is rejected, or ask staff to correct its application type without rejecting.', true);
+        } else if (error.code === '23514' && message.includes('discord username') && message.includes('streamer mode id')) {
+          notify('Discord username and Streamer Mode ID are required. Please fill in both fields and submit again.', true);
         } else if (message.includes('codm uid') && message.includes('19')) {
           notify('CODM UID must contain exactly 19 digits.', true);
         } else if (message.includes('temporarily closed')) {
