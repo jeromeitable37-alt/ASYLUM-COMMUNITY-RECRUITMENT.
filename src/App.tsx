@@ -1138,6 +1138,12 @@ export default function App() {
       return;
     }
     const isCasual=form.applicationType==='casual';
+    if(!isCasual&&(!form.streamerModeId.trim()||!form.discord.trim())){
+      const message='Referral Application requires both Streamer Mode ID and Discord username. Please complete these fields before submitting.';
+      setApplicationValidationError(message);
+      notify(message,true);
+      return;
+    }
     {
       // Original SCREENING and REFERRALS forms both collect these fields.
       const dob=form.birthdate.trim();
@@ -1430,7 +1436,7 @@ export default function App() {
     }
     return new Set([...counts].filter(([,n])=>n>1).map(([uid])=>uid));
   },[applications]);
-  const filtered=useMemo(()=>applications.filter(app=>(filter==='all'?app.status!=='rejected':app.status===filter)&&[app.ign,app.codm_uid,app.contact_email,app.application_code].some(v=>v.toLowerCase().includes(query.toLowerCase()))),[applications,filter,query]);
+  const filtered=useMemo(()=>applications.filter(app=>(filter==='all'?!['rejected','accepted'].includes(app.status):app.status===filter)&&[app.ign,app.codm_uid,app.contact_email,app.application_code].some(v=>v.toLowerCase().includes(query.toLowerCase()))),[applications,filter,query]);
   const count=(status:string)=>applications.filter(app=>app.status===status).length;
   function exportApplicantRecords(){
     if(!authorized){notify('Recruiter access is required to export applicant records.',true);return;}
@@ -1599,7 +1605,7 @@ export default function App() {
             <Field label="In-game name (IGN) *"><input required minLength={2} maxLength={32} value={form.ign} onChange={e=>updateForm('ign',e.target.value)} placeholder="Your CODM name"/></Field>
             <Field label="CODM UID (19 digits) *"><><input required type="text" inputMode="numeric" autoComplete="off" pattern="[0-9]{19}" title="Enter exactly 19 digits for your CODM UID." minLength={19} maxLength={19} value={form.uid} onChange={e=>updateForm('uid',e.target.value.replace(/[^0-9]/g,'').slice(0,19))} placeholder="Enter your 19-digit UID"/><small className="field-hint">Required · Numbers only · {form.uid.length}/19 digits</small></></Field>
             <Field label="Contact email *"><input required type="email" value={form.email} onChange={e=>updateForm('email',e.target.value)} placeholder="you@example.com"/></Field>
-            <Field label="Discord username"><input value={form.discord} onChange={e=>updateForm('discord',e.target.value)} placeholder="Optional"/></Field>
+            <Field label="Discord username *"><input required maxLength={80} value={form.discord} onChange={e=>updateForm('discord',e.target.value)} placeholder="Your Discord username"/></Field>
             <Field label="Region"><select value={form.region} onChange={e=>updateForm('region',e.target.value)}>{['Philippines','South East Asia','North America','Europe','Other'].map(v=><option key={v}>{v}</option>)}</select></Field>
             <Field label="Current rank *"><select value={form.rank} onChange={e=>updateForm('rank',e.target.value)}>{['Rookie','Veteran','Elite','Pro','Master','Grand Master','Legendary'].map(v=><option key={v}>{v}</option>)}</select></Field>
             <Field label="Current level"><input type="number" min="1" max="500" value={form.level} onChange={e=>updateForm('level',e.target.value)} placeholder="e.g. 220"/></Field>
@@ -1608,7 +1614,7 @@ export default function App() {
           <div className="form-grid">
             <Field label="Facebook profile link *"><input required type="url" value={form.applicantFacebookUrl} onChange={e=>updateForm('applicantFacebookUrl',e.target.value)} placeholder="https://facebook.com/…"/></Field>
             <Field label="TikTok profile link *"><input required type="url" value={form.applicantTikTokUrl} onChange={e=>updateForm('applicantTikTokUrl',e.target.value)} placeholder="https://tiktok.com/@…"/></Field>
-            <Field label="Streamer Mode ID"><input value={form.streamerModeId} maxLength={100} onChange={e=>updateForm('streamerModeId',e.target.value)} placeholder="Optional ID"/></Field>
+            <Field label="Streamer Mode ID *"><input required value={form.streamerModeId} maxLength={100} onChange={e=>updateForm('streamerModeId',e.target.value)} placeholder="Your Streamer Mode ID"/></Field>
           </div>
           <Field label="Why do you want to join ASY? *"><textarea required minLength={10} maxLength={1000} rows={3} value={form.reason} onChange={e=>updateForm('reason',e.target.value)} placeholder="A few sentences are enough…"/></Field>
 
@@ -1807,7 +1813,7 @@ export default function App() {
                 </form>
               </div>
             </section>
-          <div className="tools"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search IGN, UID, email, code…"/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All statuses</option>{statuses.map(stage=><option key={stage} value={stage}>{labels[stage]}</option>)}</select><button className="secondary" onClick={()=>void loadApplications()}>Refresh</button></div>
+          <div className="tools"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search IGN, UID, email, code…"/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">Active applications (default)</option>{statuses.map(stage=><option key={stage} value={stage}>{labels[stage]}</option>)}</select><button className="secondary" onClick={()=>void loadApplications()}>Refresh</button></div>
           <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setEditApplicationType(app.application_type);setEditSaveFeedback(null);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'DIRECT'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span>{app.status!=='rejected'&&duplicateActiveUids.has(app.codm_uid.replace(/[^0-9]/g,''))&&<span className="duplicate-uid-flag" title="Another active application uses this CODM UID">Duplicate UID</span>}<span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
           {selected&&<div className="panel detail" id="recruiter-application-detail">{selected.status!=='rejected'&&duplicateActiveUids.has(selected.codm_uid.replace(/[^0-9]/g,''))&&<div className="notice bad duplicate-uid-warning"><strong>Possible duplicate application</strong><p>Another active application uses this CODM UID. Compare both records and confirm with the applicant before deciding which submission to keep. No application has been automatically deleted or rejected.</p></div>}<header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
             <div className="details">{[['Application type',selected.application_type==='referral'?'Referral Application':'Direct Application'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['MP Legendary Series',selected.application_type==='casual'?'Not requested for Direct':selected.legendary_series_mp===null?'Not recorded separately':String(selected.legendary_series_mp)],['BR Legendary Series',selected.application_type==='casual'?'Not requested for Direct':selected.legendary_series_br===null?'Not recorded separately':String(selected.legendary_series_br)],['Legendary Series (total)',selected.application_type==='casual'?(selected.legendary_requirement_confirmed?'6+ self-declared · recruiter verifies':'Not yet confirmed'):String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Facebook Name',selected.applicant_facebook_name||'Not recorded'],['Birthdate',selected.applicant_birthdate?'Recorded privately':'Not recorded'],['Clan',selected.applicant_clan_name||'Not recorded'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank]].map(([label,value])=><div key={label}><small>{label}</small>{label==='Referrer Facebook'&&selected.referrer_facebook_url&&isAllowedProfileUrl(selected.referrer_facebook_url,['facebook.com','fb.com'])?<a className="referrer-facebook-link" href={selected.referrer_facebook_url} target="_blank" rel="noopener noreferrer" title="Open referrer Facebook profile">Open Facebook profile <ArrowRight size={14}/></a>:<b>{value}</b>}</div>)}</div>
