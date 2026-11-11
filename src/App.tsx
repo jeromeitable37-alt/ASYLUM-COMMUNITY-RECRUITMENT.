@@ -551,6 +551,11 @@ export default function App() {
     setEditApplicationType(saved.is_returnee?'returnee':saved.application_type);
     await loadApplications();
     if(routeChanged)await loadSelectedEvidence(saved.id,saved.application_type);
+    // A Returnee classification/version change must refresh the existing DIRECT sheet row.
+    if(saved.application_type==='casual'&&(Boolean(saved.is_returnee)!==Boolean(selected.is_returnee)||
+      (saved.previous_asy_version||'')!==(selected.previous_asy_version||''))) {
+      void requestCasualSheetSync(saved.application_code,saved.contact_email);
+    }
     const message=routeChanged
       ? 'Saved: Application type changed to '+(saved.is_returnee?'Returnee':saved.application_type==='referral'?'Referral':'Direct')+' Application. Tracking code kept; review required screenshots.'
       : 'Saved: Applicant details updated. Tracking code kept; review any changed details before the next step.';
