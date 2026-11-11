@@ -1283,6 +1283,7 @@ export default function App() {
         await fetch('/api/notify-discord', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(8000),
           body: JSON.stringify({ ign: payload.ign, rank: payload.rank, role: payload.main_role, mode: payload.preferred_mode, code }),
         });
       } catch (notifyError) {
