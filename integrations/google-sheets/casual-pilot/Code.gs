@@ -142,7 +142,7 @@ function pilotGoLive_(props){
 /**
  * Remove ONLY a website-originated Direct Application row, matched by the
  * exact unique tracking code in DIRECT column M.
- * Never deletes original Google Forms rows, REFERRALS or TEAMS.
+ * Never deletes original Google Forms rows, REFERRAL or TEAMS.
  * Idempotent: repeated requests for a missing row return not_found=true.
  */
 function pilotDeleteRejected_(code){
@@ -226,12 +226,12 @@ function pilotReferralUpsert_(body){
   const lock=LockService.getScriptLock();
   if(!lock.tryLock(20000))throw Error('Referral Sheet is busy; retry.');
   try{
-    const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId).getSheetByName('REFERRALS');
-    if(!tab)throw Error('REFERRALS tab does not exist.');
-    if(tab.getLastColumn()<15)throw Error('REFERRALS original columns are incomplete.');
+    const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId).getSheetByName('REFERRAL');
+    if(!tab)throw Error('REFERRAL tab does not exist.');
+    if(tab.getLastColumn()<15)throw Error('REFERRAL original columns are incomplete.');
     const header=String(tab.getRange(1,16).getDisplayValue()||'').trim();
     if(header&&!/website application code/i.test(header))
-      throw Error('REFERRALS column P is already in use.');
+      throw Error('REFERRAL column P is already in use.');
     const last=tab.getLastRow();
     let matching=[];
     if(last>1){
@@ -252,7 +252,7 @@ function pilotReferralUpsert_(body){
       // Preserve any existing screenshot/reference notes in K.
       parsed.row[10]=previous[10]||parsed.row[10];
     }
-    // REFERRALS is a Google Sheets typed table: formats are managed by the table.
+    // REFERRAL is a Google Sheets typed table: formats are managed by the table.
     // Apps Script setNumberFormat() on its typed columns throws, blocking sync.
     // Preserve existing table types and write only the mapped row values.
     tab.getRange(rowIndex,1,1,16).setValues([parsed.row]);
@@ -267,8 +267,8 @@ function pilotReferralDelete_(value){
   const lock=LockService.getScriptLock();
   if(!lock.tryLock(20000))throw Error('Referral cleanup busy; retry.');
   try{
-    const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId).getSheetByName('REFERRALS');
-    if(!tab)throw Error('REFERRALS tab missing.');
+    const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId).getSheetByName('REFERRAL');
+    if(!tab)throw Error('REFERRAL tab missing.');
     if(!/website application code/i.test(String(tab.getRange(1,16).getDisplayValue()||'')))
       throw Error('Website tracking column P is not configured.');
     const last=tab.getLastRow();
@@ -301,12 +301,12 @@ function doPost(e){
       return pilotReply_({ok:true,version:'secure-v3',records:rows,count:rows.length});
     }
     if(body.action==='referral_health'){
-      const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId).getSheetByName('REFERRALS');
-      if(!tab)throw Error('REFERRALS tab missing.');
+      const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId).getSheetByName('REFERRAL');
+      if(!tab)throw Error('REFERRAL tab missing.');
       const header=String(tab.getRange(1,16).getDisplayValue()||'').trim();
       return pilotReply_({ok:true,version:'referral-v1',mode:mode,
         access:pilotAccess_(ASY_CASUAL_SYNC.spreadsheetId),
-        destination:'REFERRALS',key_column:'P',
+        destination:'REFERRAL',key_column:'P',
         column_ready:!header||/website application code/i.test(header)});
     }
     if(body.action==='casual_go_live')return pilotGoLive_(props);
