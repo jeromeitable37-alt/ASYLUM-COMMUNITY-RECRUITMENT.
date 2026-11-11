@@ -7,13 +7,14 @@
  * spreadsheet, preserves specific staff access, and sets LIVE atomically.
  * All requests require ASY_CASUAL_SYNC_TOKEN (server secret, 32+ chars).
  *
- * Original Google Forms fields are A:K. L is the website-only tracking code
- * for idempotent upserts; Master List mapping should use A:K.
+ * DIRECT fields A:J stay unchanged, K is staff's Version dropdown,
+ * L is the existing Old GC (RETURNEE) column, M is Website Application Code.
+ * TEST retains its historical A:L layout. Never insert or reorder columns.
  */
 const ASY_CASUAL_SYNC = Object.freeze({
   spreadsheetId:'17qdrn3qwCjJTG7Ud10EEsIfZiI9n18PJLSPdw5TIQjU',
   testTab:'WEBSITE_CASUAL_TEST',
-  liveTab:'SCREENING',
+  liveTab:'DIRECT',
   secretProperty:'ASY_CASUAL_SYNC_TOKEN',
   modeProperty:'ASY_CASUAL_SYNC_TARGET'
 });
@@ -32,7 +33,7 @@ function pilotParse_(body,mode){
   const dob=String(a.birthdate||'').trim();
   const ign=String(a.ign||'').trim();
   if(!/^ASYLUM-[A-Z0-9]{6,20}$/.test(code))throw Error('Invalid application code.');
-  if(mode==='live'&&code==='ASYLUM-PILOT20261104')throw Error('Pilot demo cannot enter SCREENING.');
+  if(mode==='live'&&code==='ASYLUM-PILOT20261104')throw Error('Pilot demo cannot enter DIRECT.');
   if(!/^\d{19}$/.test(uid))throw Error('Invalid UID.');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(dob))throw Error('Invalid birthdate.');
   const date=new Date(dob+'T12:00:00Z');
@@ -59,7 +60,7 @@ function pilotParse_(body,mode){
     pilotSafeText_(a.discord_username,80),
     mode==='test'?pilotSafeText_(a.version||'',60):'',
     code
-  ]};
+  ],oldVersion:body.is_returnee===true?pilotSafeText_(a.old_version||'',80):'',isReturnee:body.is_returnee===true};
 }
 function pilotAccess_(id){
   const access=DriveApp.getFileById(id).getSharingAccess();
@@ -73,7 +74,7 @@ function pilotAccess_(id){
  */
 function pilotDirectory_(){
   const book=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId);
-  const tabs=['SCREENING','REFERRALS','TEAMS'];
+  const tabs=['DIRECT','REFERRAL','TEAMS'];
   const records=[];
   for(const name of tabs){
     const tab=book.getSheetByName(name);
@@ -104,16 +105,24 @@ function pilotDirectory_(){
  * Only link-wide access is removed. Owner and named editors retain access.
  * If the connection cannot be made private, LIVE mode is never enabled.
  */
+function pilotValidateDirectHeaders_(tab){
+  // Fail closed rather than overwrite staff-owned Version or Old GC columns.
+  const headers=tab.getRange(1,11,1,3).getDisplayValues()[0]
+    .map(h=>String(h||'').trim().toLowerCase());
+  if(!/^version$/.test(headers[0])||
+     !/^old (gc|version)/.test(headers[1])||
+     !/website application code/.test(headers[2])){
+    throw Error('DIRECT headers K:M must be Version, Old GC (RETURNEE), Website Application Code. No cells changed.');
+  }
+}
 function pilotGoLive_(props){
   const lock=LockService.getScriptLock();
   if(!lock.tryLock(20000))throw Error('Activation busy; retry.');
   try{
     const book=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId);
     const live=book.getSheetByName(ASY_CASUAL_SYNC.liveTab);
-    if(!live)throw Error('SCREENING tab not found.');
-    const header=live.getRange(1,12).getDisplayValue().trim();
-    if(header&&!/application code/i.test(header))
-      throw Error('SCREENING column L already contains a different header.');
+    if(!live)throw Error('DIRECT tab not found.');
+    pilotValidateDirectHeaders_(live);
     const count=pilotDirectory_().length;
     if(count<10)throw Error('Private directory bridge did not return enough members.');
     const file=DriveApp.getFileById(ASY_CASUAL_SYNC.spreadsheetId);
@@ -132,7 +141,7 @@ function pilotGoLive_(props){
 }
 /**
  * Remove ONLY a website-originated Direct Application row, matched by the
- * exact unique tracking code in SCREENING column L.
+ * exact unique tracking code in DIRECT column M.
  * Never deletes original Google Forms rows, REFERRALS or TEAMS.
  * Idempotent: repeated requests for a missing row return not_found=true.
  */
@@ -144,13 +153,11 @@ function pilotDeleteRejected_(code){
   try{
     const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId)
       .getSheetByName(ASY_CASUAL_SYNC.liveTab);
-    if(!tab)throw Error('SCREENING tab missing.');
-    const header=tab.getRange(1,12).getDisplayValue().trim();
-    if(!/website application code/i.test(header))
-      throw Error('SCREENING website application key column missing.');
+    if(!tab)throw Error('DIRECT tab missing.');
+    pilotValidateDirectHeaders_(tab);
     const last=tab.getLastRow();
     if(last<2)return pilotReply_({ok:true,mode:'live',removed:false,not_found:true});
-    const codes=tab.getRange(2,12,last-1,1).getDisplayValues();
+    const codes=tab.getRange(2,13,last-1,1).getDisplayValues();
     const matches=[];
     for(let i=0;i<codes.length;i++){
       if(String(codes[i][0]||'').trim()===candidate)matches.push(i+2);
@@ -319,31 +326,40 @@ function doPost(e){
     const lock=LockService.getScriptLock();
     if(!lock.tryLock(20000))return pilotReply_({ok:false,error:'Busy; retry.'});
     try{
-      const target=mode==='live'?ASY_CASUAL_SYNC.liveTab:ASY_CASUAL_SYNC.testTab;
+      const isLive=mode==='live';
+      const target=isLive?ASY_CASUAL_SYNC.liveTab:ASY_CASUAL_SYNC.testTab;
       const tab=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId).getSheetByName(target);
       if(!tab)throw Error('Destination sheet missing.');
-      const header=tab.getRange(1,12).getDisplayValue().trim();
-      if(header&&!/application code/i.test(header))throw Error('Column L is occupied; cannot use it for website deduplication.');
-      if(!header&&mode==='live')tab.getRange(1,12).setValue('Website Application Code');
+      const keyColumn=isLive?13:12; // M = DIRECT website code; L = TEST code.
+      if(isLive)pilotValidateDirectHeaders_(tab);
+      else if(!/application code/i.test(tab.getRange(1,12).getDisplayValue()))
+        throw Error('TEST tracking column L is unavailable.');
       const last=tab.getLastRow();
       let rowIndex=0;
       if(last>1){
-        const codes=tab.getRange(2,12,last-1,1).getDisplayValues();
-        const match=codes.findIndex(row=>row[0]===parsed.code);
-        if(match>=0)rowIndex=match+2;
+        const codes=tab.getRange(2,keyColumn,last-1,1).getDisplayValues();
+        const matches=[];
+        codes.forEach((row,i)=>{if(String(row[0]||'').trim()===parsed.code)matches.push(i+2);});
+        if(matches.length>1)throw Error('Duplicate website application codes; manual review required.');
+        if(matches.length)rowIndex=matches[0];
       }
       const updated=rowIndex>0;
       rowIndex=rowIndex||last+1;
       if(rowIndex>tab.getMaxRows())tab.insertRowsAfter(tab.getMaxRows(),1);
+      const row=isLive
+        ? [...parsed.row.slice(0,10),'',parsed.oldVersion,parsed.code]
+        : parsed.row;
       if(updated){
-        const old=tab.getRange(rowIndex,1,1,12).getValues()[0];
-        if(old[0] instanceof Date&&!isNaN(old[0].getTime()))parsed.row[0]=old[0];
-        if(mode==='live')parsed.row[10]=old[10]||''; // K is STAFF's original Version/notes.
+        const old=tab.getRange(rowIndex,1,1,isLive?13:12).getValues()[0];
+        if(old[0] instanceof Date&&!isNaN(old[0].getTime()))row[0]=old[0];
+        if(isLive){
+          row[10]=old[10]||''; // K: never overwrite staff Version.
+          if(!parsed.isReturnee)row[11]=old[11]||''; // Preserve older Old GC entries.
+        }
       }
-      tab.getRange(rowIndex,3).setNumberFormat('@');
-      tab.getRange(rowIndex,7).setNumberFormat('@');
-      tab.getRange(rowIndex,1,1,12).setValues([parsed.row]);
-      tab.getRange(rowIndex,1).setNumberFormat('yyyy-mm-dd hh:mm:ss');
+      // DIRECT is a typed Google Sheets table; do not call setNumberFormat on
+      // typed columns. The table owns their formats and validation.
+      tab.getRange(rowIndex,1,1,row.length).setValues([row]);
       SpreadsheetApp.flush();
       return pilotReply_({ok:true,mode,action:updated?'updated':'inserted',row:rowIndex});
     }finally{lock.releaseLock();}
@@ -358,7 +374,7 @@ function authorizeSecureSync(){
   // replacing Code.gs so Google can request the newly required Drive scope.
   const file=DriveApp.getFileById(ASY_CASUAL_SYNC.spreadsheetId);
   const book=SpreadsheetApp.openById(ASY_CASUAL_SYNC.spreadsheetId);
-  if(!book.getSheetByName(ASY_CASUAL_SYNC.liveTab))throw Error('SCREENING tab missing.');
+  if(!book.getSheetByName(ASY_CASUAL_SYNC.liveTab))throw Error('DIRECT tab missing.');
   Logger.log('Secure sync authorization completed. Current access: '+file.getSharingAccess());
 }
 function doGet(){return pilotReply_({ok:false,message:'POST only. ASY Direct connector.'});}
