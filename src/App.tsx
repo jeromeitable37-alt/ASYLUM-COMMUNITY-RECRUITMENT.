@@ -93,7 +93,7 @@ export default function App() {
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState('all');
   const [selected,setSelected]=useState<Application|null>(null);
-  const [editApplicationType,setEditApplicationType]=useState<'casual'|'referral'>('casual');
+  const [editApplicationType,setEditApplicationType]=useState<'casual'|'referral'|'returnee'>('casual');
   const [editSaveFeedback,setEditSaveFeedback]=useState<{applicationId:string;kind:'success'|'error'|'info';message:string}|null>(null);
   const [notes,setNotes]=useState('');
   const [mgcNotes,setMgcNotes]=useState('');
@@ -480,7 +480,9 @@ export default function App() {
     const values=new FormData(event.currentTarget);
     const get=(key:string)=>String(values.get(key)||'').trim();
     const email=get('contact_email').toLowerCase();
-    const routeChanged=editApplicationType!==selected.application_type;
+    const routeChanged=editApplicationType!==(selected.is_returnee?'returnee':selected.application_type);
+    const returneeEdit=editApplicationType==='returnee';
+    if(returneeEdit&&(!get('previous_asy_version')||!values.has('returnee_ptsl_confirmed'))){editError('Returnee requires Old ASY Version and recruiter PTSL confirmation.');return;}
     const routeEditable=!['rejected','accepted'].includes(selected.status)&&['eligibility_review','tag_proofs','membership_proofs','discord_roster'].includes(selected.workflow_step);
     if(routeChanged&&!routeEditable){editError('Application type can only be changed before final review or a final decision. Other fields can still be corrected.');return;}
     if(editApplicationType==='referral'&&(!get('referrer_name')||!get('referrer_facebook_url'))){editError('Referral Application requires the referring member name and Facebook profile link.');return;}
@@ -508,7 +510,11 @@ export default function App() {
     setBusy(true);
     try {
     const {data,error}=await supabase.from('asy_clan_applications').update({
-      application_type:editApplicationType,
+      application_type:returneeEdit?'casual':editApplicationType,
+      is_returnee:returneeEdit,
+      previous_asy_version:returneeEdit?get('previous_asy_version'):null,
+      returnee_ptsl_confirmed:returneeEdit?values.has('returnee_ptsl_confirmed'):false,
+      returnee_welcome_banner_requested:returneeEdit?values.has('returnee_welcome_banner_requested'):false,
       ign:get('ign'),codm_uid:get('codm_uid'),contact_email:email,
       discord_username:get('discord_username')||null,
       applicant_facebook_url:get('applicant_facebook_url')||null,
@@ -528,7 +534,9 @@ export default function App() {
     const {data:readBack,error:readError}=await supabase.from('asy_clan_applications').select('*').eq('id',applicationId).maybeSingle();
     const saved=(readBack||data) as Application;
     if(readBack&&(
-      readBack.application_type!==editApplicationType ||
+      readBack.application_type!==(returneeEdit?'casual':editApplicationType) ||
+      Boolean(readBack.is_returnee)!==returneeEdit ||
+      (returneeEdit&&(readBack.previous_asy_version||'')!==get('previous_asy_version')) ||
       readBack.ign!==get('ign') ||
       readBack.codm_uid!==get('codm_uid') ||
       readBack.contact_email!==email ||
@@ -540,11 +548,11 @@ export default function App() {
       return;
     }
     setSelected(saved);
-    setEditApplicationType(saved.application_type);
+    setEditApplicationType(saved.is_returnee?'returnee':saved.application_type);
     await loadApplications();
     if(routeChanged)await loadSelectedEvidence(saved.id,saved.application_type);
     const message=routeChanged
-      ? 'Saved: Application type changed to '+(saved.application_type==='referral'?'Referral':'Direct')+' Application. Tracking code kept; review required screenshots.'
+      ? 'Saved: Application type changed to '+(saved.is_returnee?'Returnee':saved.application_type==='referral'?'Referral':'Direct')+' Application. Tracking code kept; review required screenshots.'
       : 'Saved: Applicant details updated. Tracking code kept; review any changed details before the next step.';
     setEditSaveFeedback({applicationId,kind:'success',message:readError?message+' Database read-back was unavailable; initial save was confirmed.':message+' Verified in Supabase.'});
     notify(message);
@@ -1381,7 +1389,7 @@ export default function App() {
     }
     const app=data as Application;
     setSelected(app);
-    setEditApplicationType(app.application_type);
+    setEditApplicationType(app.is_returnee?'returnee':app.application_type);
     setEditSaveFeedback(null);
     setNotes(app.reviewer_notes||'');
     window.setTimeout(()=>document.getElementById('recruiter-application-detail')?.scrollIntoView({behavior:'smooth',block:'start'}),250);
@@ -1851,11 +1859,12 @@ export default function App() {
             </section>
             <details className="panel admin-edit-panel" key={selected.id}>
               <summary>Correct submitted applicant details</summary>
-              <p className="muted">Correct details or change Direct ↔ Referral Application without rejection. The tracking code and existing proofs stay intact; referral requirements update automatically. Route changes are available before final review and reset verification checks.</p>
+              <p className="muted">Correct details or change Direct, Referral, or Returnee Application without rejection. The tracking code and existing proofs stay intact; referral requirements update automatically. Route changes are available before final review and reset verification checks.</p>
               {selected.application_type==='referral'&&(!selected.applicant_facebook_name||!selected.applicant_birthdate||!selected.applicant_clan_name)&&<p className="admin-edit-hint">Legacy Referral: Facebook Name, Birthdate and Clan Name were not collected previously. Fill the real details below to enable automatic REFERRALS Sheet transfer. Do not create another application.</p>}
               <form className="admin-edit-grid" key={selected.id+':'+selected.updated_at} onSubmit={saveApplicantDetails} onInvalidCapture={event=>{const field=event.target as HTMLInputElement;setEditSaveFeedback({applicationId:selected.id,kind:'error',message:'Please correct the highlighted '+(field.name||'required')+' field before saving.'});}}>
                 {(['accepted','rejected'].includes(selected.status)||!['eligibility_review','tag_proofs','membership_proofs','discord_roster'].includes(selected.workflow_step))&&<p className="admin-edit-hint">Application type is locked after final review or a final decision. Other application details can still be corrected.</p>}
-                <Field label="Application type"><select value={editApplicationType} onChange={event=>setEditApplicationType(event.target.value as 'casual'|'referral')} disabled={busy||['accepted','rejected'].includes(selected.status)||!['eligibility_review','tag_proofs','membership_proofs','discord_roster'].includes(selected.workflow_step)}><option value="casual">Direct Application</option><option value="referral">Referral Application</option></select></Field>
+                <Field label="Application type"><select value={editApplicationType} onChange={event=>setEditApplicationType(event.target.value as 'casual'|'referral'|'returnee')} disabled={busy||['accepted','rejected'].includes(selected.status)||!['eligibility_review','tag_proofs','membership_proofs','discord_roster'].includes(selected.workflow_step)}><option value="casual">Direct Application</option><option value="referral">Referral Application</option><option value="returnee">Returnee Application</option></select></Field>
+                {editApplicationType==='returnee'&&<><Field label="Old ASY Version *"><input name="previous_asy_version" maxLength={80} required defaultValue={selected.previous_asy_version||''} placeholder="Their previous ASY version"/></Field><label className="screening-check"><input type="checkbox" name="returnee_ptsl_confirmed" defaultChecked={Boolean(selected.returnee_ptsl_confirmed)} required/><span>Recruiter confirmed the returnee's PTSL eligibility</span></label><label className="screening-check"><input type="checkbox" name="returnee_welcome_banner_requested" defaultChecked={Boolean(selected.returnee_welcome_banner_requested)}/><span>Returnee requests a new welcome banner (otherwise roster photo is optional)</span></label></>}
                 <Field label="IGN"><input name="ign" defaultValue={selected.ign} required /></Field>
                 <Field label="CODM UID"><input name="codm_uid" defaultValue={selected.codm_uid} required /></Field>
                 <Field label="Contact email"><input name="contact_email" type="email" defaultValue={selected.contact_email} required /></Field>
