@@ -12,7 +12,7 @@ const OPERATIONS_API_URL = SUPABASE_URL + '/functions/v1/asy-operations';
 const CASUAL_SHEETS_PILOT_API_URL = SUPABASE_URL + '/functions/v1/asy-casual-sheet-pilot';
 const REFERRAL_SHEETS_SYNC_API_URL = SUPABASE_URL + '/functions/v1/asy-referral-sheet-sync';
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-type Application = { id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; applicant_facebook_name:string|null; applicant_birthdate:string|null; applicant_clan_name:string|null; legendary_requirement_confirmed:boolean; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; membership_form_response_verified:boolean; membership_form_response_verified_by_email:string|null; membership_form_response_verified_at:string|null; legendary_series_count:number; legendary_series_mp:number|null; legendary_series_br:number|null; workflow_step:string; submitted_at:string; updated_at:string };
+type Application = { is_returnee?:boolean;previous_asy_version?:string|null;returnee_ptsl_confirmed?:boolean;returnee_welcome_banner_requested?:boolean; id:string; application_code:string; ign:string; codm_uid:string; contact_email:string; discord_username:string|null; applicant_facebook_url:string|null; applicant_tiktok_url:string|null; streamer_mode_id:string|null; applicant_facebook_name:string|null; applicant_birthdate:string|null; applicant_clan_name:string|null; legendary_requirement_confirmed:boolean; mgc_verification_status:'not_checked'|'contact_needed'|'issue_found'|'verified'; mgc_applicant_contacted:boolean; mgc_checked_by_email:string|null; mgc_checked_at:string|null; mgc_verification_notes:string|null; region:string; rank:string; level:number|null; main_role:string; preferred_mode:string; availability:string; clan_experience:string|null; reason:string; status:string; reviewer_notes:string|null; application_type:'casual'|'referral'; referrer_name:string|null; referrer_facebook_url:string|null; meets_age_requirement:boolean; age_verification_status:'pending'|'verified'|'underage'|'needs_confirmation'; age_verified_by_email:string|null; age_verified_at:string|null; age_verification_notes:string|null; application_details_verified:boolean; application_details_verified_by_email:string|null; application_details_verified_at:string|null; membership_form_response_verified:boolean; membership_form_response_verified_by_email:string|null; membership_form_response_verified_at:string|null; legendary_series_count:number; legendary_series_mp:number|null; legendary_series_br:number|null; workflow_step:string; submitted_at:string; updated_at:string };
 type Evidence = { id?:string; application_id?:string; requirement_key:string; requirement_label:string; stage_number:number; is_required?:boolean; status:'locked'|'not_submitted'|'pending'|'approved'|'needs_correction'; storage_path?:string|null; file_name?:string|null; content_type?:string|null; file_size_bytes?:number|null; applicant_note?:string|null; reviewer_notes?:string|null; submitted_at?:string|null; reviewed_at?:string|null; reviewed_by_email?:string|null };
 type ApplicantProgress = { application:{application_code:string;ign:string;status:string;workflow_step:string;application_type:'casual'|'referral';submitted_at:string};evidence:Evidence[] };
 type Roster = { id:string; ign:string; main_role:string; rank:string; member_status:string; joined_at:string; clan_name?:string|null };
@@ -39,7 +39,7 @@ const isValidScreeningAdminUrl = (value:string) => {
       !url.username && !url.password;
   } catch { return false; }
 };
-const blankForm = { applicationType:'casual', referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', facebookName:'', birthdate:'', clanName:'', legendaryRequirementConfirmed:false, ageConfirmed:'', legendaryMpCount:'0', legendaryBrCount:'0', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
+const blankForm = { applicationType:'casual', oldAsyVersion:'',ptslConfirmed:false,wantsNewWelcomeBanner:false, referrerName:'', referrerFacebookUrl:'', applicantFacebookUrl:'', applicantTikTokUrl:'', streamerModeId:'', facebookName:'', birthdate:'', clanName:'', legendaryRequirementConfirmed:false, ageConfirmed:'', legendaryMpCount:'0', legendaryBrCount:'0', facebookNameAppropriate:false, willingToAddTag:false, willingToSubmitPhoto:false, ign:'', uid:'', email:'', discord:'', region:'Philippines', rank:'Grand Master', level:'', role:'Slayer', mode:'Ranked Multiplayer', availability:'Evenings / weekends', experience:'', reason:'' };
 const createCode = () => { const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const bytes=new Uint8Array(8); crypto.getRandomValues(bytes); return 'ASYLUM-'+Array.from(bytes,b=>alphabet[b%alphabet.length]).join(''); };
 const isAllowedProfileUrl=(value:string,domains:string[])=>{
   if(!value.trim())return true;
@@ -1137,7 +1137,12 @@ export default function App() {
       notify('Confirm that you are at least 16 years old before applying.', true);
       return;
     }
-    const isCasual=form.applicationType==='casual';
+    const isReturnee=form.applicationType==='returnee';
+    const isCasual=form.applicationType!=='referral';
+    if(isReturnee&&(!form.oldAsyVersion.trim()||!form.ptslConfirmed)){
+      const message='Returnee Application requires your Old ASY Version and PTSL confirmation.';
+      setApplicationValidationError(message);notify(message,true);return;
+    }
     if(!form.streamerModeId.trim()||!form.discord.trim()){
       const message='Streamer Mode ID and Discord username are required for both Direct and Referral applications. Please complete these fields before submitting.';
       setApplicationValidationError(message);
@@ -1198,7 +1203,11 @@ export default function App() {
       const code = createCode();
       const payload = {
         application_code: code,
-        application_type: form.applicationType,
+        application_type: isReturnee?'casual':form.applicationType,
+        is_returnee: isReturnee,
+        previous_asy_version: isReturnee?form.oldAsyVersion.trim():null,
+        returnee_ptsl_confirmed: isReturnee?form.ptslConfirmed:false,
+        returnee_welcome_banner_requested: isReturnee?form.wantsNewWelcomeBanner:false,
         workflow_enabled: true,
         referrer_name: form.applicationType === 'referral' ? form.referrerName.trim() : null,
         referrer_facebook_url: form.applicationType === 'referral' ? form.referrerFacebookUrl.trim() : null,
@@ -1212,7 +1221,7 @@ export default function App() {
         applicant_clan_name: form.clanName.trim(),
         facebook_name_appropriate: form.facebookNameAppropriate,
         willing_to_add_asy_tag: form.willingToAddTag,
-        willing_to_submit_roster_photo: form.willingToSubmitPhoto,
+        willing_to_submit_roster_photo: isReturnee?true:form.willingToSubmitPhoto,
         ign: form.ign.trim(),
         codm_uid: form.uid.trim(),
         contact_email: form.email.trim().toLowerCase(),
@@ -1227,7 +1236,7 @@ export default function App() {
         preferred_mode: form.applicationType === 'referral' ? form.mode : 'Not specified',
         availability: form.applicationType === 'referral' ? form.availability : 'Not specified',
         clan_experience: form.applicationType === 'referral' ? (form.experience.trim() || null) : null,
-        reason: isCasual?'Direct membership application via website.':form.reason.trim(),
+        reason: isReturnee?'Returnee membership application via website; old version: '+form.oldAsyVersion.trim()+'.':isCasual?'Direct membership application via website.':form.reason.trim(),
         status: 'pending',
         reviewer_notes: null,
       };
@@ -1544,7 +1553,7 @@ export default function App() {
       {page==='apply'&&<section className="page"><Heading kicker="01 / RECRUITMENT FORM" title={<>YOUR RUN <em>STARTS HERE.</em></>} desc="Complete the form honestly. Required fields are marked *. No account needed."/>
         <div className={'panel intake-banner '+(intakeFull?'closed':'open')}><div><strong>{intakeFull?(!intakeSettings?.intake_open?'Applications are temporarily closed':'Application limit reached'):'Recruitment intake is open'}</strong><p>{intakeSettings?.application_limit!==null&&intakeSettings?`${intakeSettings.application_count} of ${intakeSettings.application_limit} applications used this intake.`:'Check the eligibility requirements and complete the form once. Recruiters review applications individually.'}</p></div><span className="intake-dot"/></div>
         <form className="panel form" onSubmit={submitApplication} onInvalidCapture={onInvalidApplicationField} onChangeCapture={()=>setApplicationValidationError('')}>
-          <Section n="00" title="Application route" sub="Select Direct Application or Referral Application."/>
+          <Section n="00" title="Application route" sub="Choose Direct, Referral, or Returnee Application."/>
           <fieldset className="application-route-group">
             <legend>Application type <span aria-hidden="true">*</span></legend>
             <div className="application-route-options">
@@ -1556,9 +1565,19 @@ export default function App() {
                 <input type="checkbox" name="referral-application" checked={form.applicationType==='referral'} onChange={()=>updateForm('applicationType','referral')}/>
                 <span>Referral Application</span>
               </label>
+              <label className={'application-route-option'+(form.applicationType==='returnee'?' selected':'')}>
+                <input type="checkbox" name="returnee-application" checked={form.applicationType==='returnee'} onChange={()=>updateForm('applicationType','returnee')}/>
+                <span>Returnee Application</span>
+              </label>
             </div>
             <small className="application-route-hint">Select one application type only.</small>
           </fieldset>
+          {form.applicationType==='returnee'&&<div className="form-grid">
+            <Field label="Old ASY Version *"><input required maxLength={80} value={form.oldAsyVersion} onChange={e=>updateForm('oldAsyVersion',e.target.value)} placeholder="Your previous ASY version"/></Field>
+            <label className="screening-check eligibility-check"><input type="checkbox" required checked={form.ptslConfirmed} onChange={e=>setForm(old=>({...old,ptslConfirmed:e.target.checked}))}/><span>I confirm I meet the PTSL requirement for returnees. Recruitment staff will verify this.</span></label>
+            <label className="screening-check eligibility-check"><input type="checkbox" checked={form.wantsNewWelcomeBanner} onChange={e=>setForm(old=>({...old,wantsNewWelcomeBanner:e.target.checked}))}/><span>I want a new welcome banner (optional; returning players can reuse their previous banner).</span></label>
+            <p className="muted form-helper">Returnees rejoin their previous ASY version after staff verification. No referrer name or referrer Facebook link needed. Your website form will be recorded for review.</p>
+          </div>}
           {form.applicationType==='referral'&&<>
             <div className="form-grid">
               <Field label="Referring member name *"><input required value={form.referrerName} onChange={e=>updateForm('referrerName',e.target.value)} placeholder="Member who referred you"/></Field>
@@ -1583,10 +1602,10 @@ export default function App() {
           <div className="eligibility-confirmations">
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.facebookNameAppropriate} onChange={e=>setForm(old=>({...old,facebookNameAppropriate:e.target.checked}))}/><span>I confirm that my Facebook name is appropriate and not random or inappropriate.</span></label>
             <label className="screening-check eligibility-check"><input type="checkbox" checked={form.willingToAddTag} onChange={e=>setForm(old=>({...old,willingToAddTag:e.target.checked}))}/><span>I agree to put the ASY tag AFTER my IGN on my main CODM and TikTok accounts.</span></label>
-            <label className="screening-check eligibility-check"><input type="checkbox" checked={form.willingToSubmitPhoto} onChange={e=>setForm(old=>({...old,willingToSubmitPhoto:e.target.checked}))}/><span>I agree to submit the required roster photo and follow the admin reference if accepted.</span></label>
+            {form.applicationType==='returnee'?<p className="muted form-helper">Returnee roster photo is optional unless you request a new welcome banner.</p>:<label className="screening-check eligibility-check"><input type="checkbox" checked={form.willingToSubmitPhoto} onChange={e=>setForm(old=>({...old,willingToSubmitPhoto:e.target.checked}))}/><span>I agree to submit the required roster photo and follow the admin reference if accepted.</span></label>}
           </div>
-          {form.applicationType==='casual'?<>
-            <Section n="02" title="Casual Membership Details" sub="Same applicant fields and order as the original SCREENING membership form. No Region, MP/BR breakdown, rank, or level needed."/>
+          {form.applicationType!=='referral'?<>
+            <Section n="02" title={form.applicationType==='returnee'?'Returnee Membership Details':'Direct Membership Details'} sub="Enter your latest details for membership verification. No Region, rank, or level needed."/>
             <div className="form-grid">
               <Field label="Facebook Name *"><input required minLength={2} maxLength={120} autoComplete="name" value={form.facebookName} onChange={e=>updateForm('facebookName',e.target.value)} placeholder="Your Facebook display name"/></Field>
               <Field label="Birthdate *"><input required type="date" max={new Date(new Date().setFullYear(new Date().getFullYear()-16)).toISOString().slice(0,10)} value={form.birthdate} onChange={e=>updateForm('birthdate',e.target.value)}/></Field>
@@ -1600,7 +1619,7 @@ export default function App() {
             </div>
             <Section n="03" title="Application tracking" sub="Used only to check your application status, not added to the public Master List."/>
             <Field label="Contact email *"><input required type="email" value={form.email} onChange={e=>updateForm('email',e.target.value)} placeholder="you@example.com"/></Field>
-            <p className="muted form-helper">The original SCREENING spreadsheet's Version column is maintained by staff; you do not need to fill it in.</p>
+            <p className="muted form-helper">Staff maintain the SCREENING sheet Version column. Returnees also provide their old version above for review.</p>
           </>:<>
           <Section n="02" title="Player details" sub="Your game and contact information."/>
           <div className="form-grid">
@@ -1816,9 +1835,9 @@ export default function App() {
               </div>
             </section>
           <div className="tools"><div className="search"><Search size={16}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search IGN, UID, email, code…"/></div><select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">Active applications (default)</option>{statuses.map(stage=><option key={stage} value={stage}>{labels[stage]}</option>)}</select><button className="secondary" onClick={()=>void loadApplications()}>Refresh</button></div>
-          <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setEditApplicationType(app.application_type);setEditSaveFeedback(null);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.application_type==='referral'?'REFERRAL':'DIRECT'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span>{app.status!=='rejected'&&duplicateActiveUids.has(app.codm_uid.replace(/[^0-9]/g,''))&&<span className="duplicate-uid-flag" title="Another active application uses this CODM UID">Duplicate UID</span>}<span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
+          <div className="app-list">{filtered.map(app=><button className={'app-row '+(selected?.id===app.id?'chosen':'')} key={app.id} onClick={()=>{setSelected(app);setEditApplicationType(app.application_type);setEditSaveFeedback(null);setNotes(app.reviewer_notes||'');}}><span className="app-icon"><Gamepad2 size={19}/></span><span className="app-main"><b>{app.ign}</b><small>{app.application_code} · {app.is_returnee?'RETURNEE':app.application_type==='referral'?'REFERRAL':'DIRECT'} · {app.workflow_step.replaceAll('_',' ')} · {app.rank}</small></span>{app.status!=='rejected'&&duplicateActiveUids.has(app.codm_uid.replace(/[^0-9]/g,''))&&<span className="duplicate-uid-flag" title="Another active application uses this CODM UID">Duplicate UID</span>}<span className={'pill '+app.status}>{labels[app.status]}</span><ArrowRight size={16}/></button>)}{!filtered.length&&<div className="empty-inline">No applications match these filters.</div>}</div>
           {selected&&<div className="panel detail" id="recruiter-application-detail">{selected.status!=='rejected'&&duplicateActiveUids.has(selected.codm_uid.replace(/[^0-9]/g,''))&&<div className="notice bad duplicate-uid-warning"><strong>Possible duplicate application</strong><p>Another active application uses this CODM UID. Compare both records and confirm with the applicant before deciding which submission to keep. No application has been automatically deleted or rejected.</p></div>}<header><div><small className="kicker">APPLICATION REVIEW</small><h2>{selected.ign}</h2><p className="muted">{selected.application_code} · {new Date(selected.submitted_at).toLocaleString()}</p></div><button className="close secondary" onClick={()=>setSelected(null)} aria-label="Close detail"><X/></button></header>
-            <div className="details">{[['Application type',selected.application_type==='referral'?'Referral Application':'Direct Application'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['MP Legendary Series',selected.application_type==='casual'?'Not requested for Direct':selected.legendary_series_mp===null?'Not recorded separately':String(selected.legendary_series_mp)],['BR Legendary Series',selected.application_type==='casual'?'Not requested for Direct':selected.legendary_series_br===null?'Not recorded separately':String(selected.legendary_series_br)],['Legendary Series (total)',selected.application_type==='casual'?(selected.legendary_requirement_confirmed?'6+ self-declared · recruiter verifies':'Not yet confirmed'):String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Facebook Name',selected.applicant_facebook_name||'Not recorded'],['Birthdate',selected.applicant_birthdate?'Recorded privately':'Not recorded'],['Clan',selected.applicant_clan_name||'Not recorded'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank]].map(([label,value])=><div key={label}><small>{label}</small>{label==='Referrer Facebook'&&selected.referrer_facebook_url&&isAllowedProfileUrl(selected.referrer_facebook_url,['facebook.com','fb.com'])?<a className="referrer-facebook-link" href={selected.referrer_facebook_url} target="_blank" rel="noopener noreferrer" title="Open referrer Facebook profile">Open Facebook profile <ArrowRight size={14}/></a>:<b>{value}</b>}</div>)}</div>
+            <div className="details">{[['Application type',selected.is_returnee?'Returnee Application':selected.application_type==='referral'?'Referral Application':'Direct Application'],['Old ASY Version',selected.is_returnee?(selected.previous_asy_version||'Not provided'):'Not applicable'],['PTSL confirmation',selected.is_returnee?(selected.returnee_ptsl_confirmed?'Applicant confirmed; staff must verify':'Not confirmed'):'Not applicable'],['New welcome banner',selected.is_returnee?(selected.returnee_welcome_banner_requested?'Requested':'Not requested'):'Not applicable'],['Referring member',selected.referrer_name||'Not applicable'],['Referrer Facebook',selected.referrer_facebook_url||'Not provided'],['Age requirement',selected.meets_age_requirement?'Confirmed age 16+':'Not confirmed'],['MP Legendary Series',selected.application_type==='casual'?'Not requested for Direct':selected.legendary_series_mp===null?'Not recorded separately':String(selected.legendary_series_mp)],['BR Legendary Series',selected.application_type==='casual'?'Not requested for Direct':selected.legendary_series_br===null?'Not recorded separately':String(selected.legendary_series_br)],['Legendary Series (total)',selected.application_type==='casual'?(selected.legendary_requirement_confirmed?'6+ self-declared · recruiter verifies':'Not yet confirmed'):String(selected.legendary_series_count)],['Facebook name',selected.facebook_name_appropriate?'Appropriate confirmed':'Not confirmed'],['ASY tag agreement',selected.willing_to_add_asy_tag?'Confirmed':'Not confirmed'],['Roster photo agreement',selected.willing_to_submit_roster_photo?'Confirmed':'Not confirmed'],['Workflow step',selected.workflow_step.replaceAll('_',' ')],['CODM UID',selected.codm_uid],['Streamer Mode ID',selected.streamer_mode_id||'Not provided'],['Facebook Name',selected.applicant_facebook_name||'Not recorded'],['Birthdate',selected.applicant_birthdate?'Recorded privately':'Not recorded'],['Clan',selected.applicant_clan_name||'Not recorded'],['Contact email',selected.contact_email],['Discord',selected.discord_username||'Not provided'],['Region / level',selected.region+' / '+(selected.level??'N/A')],['Rank',selected.rank]].map(([label,value])=><div key={label}><small>{label}</small>{label==='Referrer Facebook'&&selected.referrer_facebook_url&&isAllowedProfileUrl(selected.referrer_facebook_url,['facebook.com','fb.com'])?<a className="referrer-facebook-link" href={selected.referrer_facebook_url} target="_blank" rel="noopener noreferrer" title="Open referrer Facebook profile">Open Facebook profile <ArrowRight size={14}/></a>:<b>{value}</b>}</div>)}</div>
             <section className="panel application-details-review">
               <small className="kicker">FIRST REVIEW · BEFORE CODM</small>
               <h3>Check the applicant's details first</h3>
